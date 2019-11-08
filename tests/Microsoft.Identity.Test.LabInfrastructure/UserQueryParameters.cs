@@ -19,10 +19,10 @@ namespace Microsoft.Identity.Test.LabInfrastructure
         public SignInAudience? SignInAudience { get; set; }
 
         public static UserQuery DefaultUserQuery => new UserQuery()
-            {
-                UserType = LabInfrastructure.UserType.Cloud,
-                AzureEnvironment = LabInfrastructure.AzureEnvironment.azurecloud
-            };
+        {
+            UserType = LabInfrastructure.UserType.Cloud,
+            AzureEnvironment = LabInfrastructure.AzureEnvironment.azurecloud
+        };
 
         public static UserQuery B2CLocalAccountUserQuery => new UserQuery
         {
@@ -46,6 +46,11 @@ namespace Microsoft.Identity.Test.LabInfrastructure
         {
             UserType = LabInfrastructure.UserType.B2C,
             B2CIdentityProvider = LabInfrastructure.B2CIdentityProvider.MSA
+        };
+
+        public static UserQuery MsaUserQuery => new UserQuery
+        {
+            UserType = LabInfrastructure.UserType.MSA
         };
 
         // generated code, re-generate or update manually if you change the members of this class !

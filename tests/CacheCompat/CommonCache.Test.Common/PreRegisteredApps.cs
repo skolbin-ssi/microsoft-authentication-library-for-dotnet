@@ -15,6 +15,6 @@ namespace CommonCache.Test.Common
             new AppCoordinates(
                 "f0e0429e-060c-42d3-9375-913eb7c7a62d",
                 "72f988bf-86f1-41af-91ab-2d7cd011db47", // microsoft.com
-                new Uri("urn:ietf:wg:oauth:2.0:oob"));
+                new Uri("https://login.microsoftonline.com/common/oauth2/nativeclient"));
     }
 }

@@ -15,7 +15,6 @@ namespace Microsoft.Identity.Test.LabInfrastructure
         private static readonly IDictionary<UserQuery, LabResponse> s_userCache =
             new Dictionary<UserQuery, LabResponse>();
 
-
         static LabUserHelper()
         {
             s_keyVaultSecretsProvider = new KeyVaultSecretsProvider();
@@ -45,6 +44,11 @@ namespace Microsoft.Identity.Test.LabInfrastructure
         public static Task<LabResponse> GetDefaultUserAsync()
         {
             return GetLabUserDataAsync(UserQuery.PublicAadUserQuery);
+        }
+
+        public static Task<LabResponse> GetMsaUserAsync()
+        {
+            return GetLabUserDataAsync(UserQuery.MsaUserQuery);
         }
 
         public static Task<LabResponse> GetB2CLocalAccountAsync()

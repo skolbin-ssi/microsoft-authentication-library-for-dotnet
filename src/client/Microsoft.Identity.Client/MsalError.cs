@@ -709,6 +709,18 @@ namespace Microsoft.Identity.Client
         /// </summary>
         public const string WABError = "wab_error";
 
+        /// <summary>
+        /// <para>What happens?</para>You asked for one type of token, but did not receive it. 
+        /// <para>Mitigation</para>This happens if the Identity Provider (AAD, B2C, ADFS etc.) does not support / implement the requested token type. In case of ADFS, consider upgrading to the latest version.
+        /// </summary>
+        public const string TokenTypeMismatch = "token_type_mismatch";
+
+        /// <summary>
+        /// <para>What happens?</para>You are trying to use a feature which was marked as experimental
+        /// <para>Mitigation</para>When creating the PublicClientApplication or ConfidentialClientApplication, use .WithExperimentalFeatures() option. See https://aka.ms/msal-net-experimental-features for details.
+        /// </summary>
+        public const string ExperimentalFeature = "experimental_feature";
+
 #if iOS
         /// <summary>
         /// Xamarin.iOS specific. This error indicates that keychain access has not be enabled for the application.

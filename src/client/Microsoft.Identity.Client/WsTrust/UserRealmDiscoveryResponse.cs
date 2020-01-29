@@ -7,6 +7,7 @@ using Microsoft.Identity.Json;
 namespace Microsoft.Identity.Client.WsTrust
 {
     [JsonObject]
+    [Preserve(AllMembers = true)]
     internal sealed class UserRealmDiscoveryResponse
     {
         [JsonProperty(PropertyName = "ver")]

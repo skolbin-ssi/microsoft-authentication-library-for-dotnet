@@ -116,6 +116,9 @@ namespace Microsoft.Identity.Client
             return this;
         }
 
+#endif //!ANDROID_BUILDTIME && !WINDOWS_APP_BUILDTIME && !NET_CORE_BUILDTIME && !DESKTOP_BUILDTIME && !MAC_BUILDTIME
+
+#if !ANDROID_BUILDTIME && !WINDOWS_APP_BUILDTIME && !NET_CORE_BUILDTIME && !DESKTOP_BUILDTIME && !MAC_BUILDTIME
         /// <summary>
         /// On Android and iOS, brokers enable Single-Sign-On, device identification,
         /// and application identification verification. To enable one of these features,
@@ -129,10 +132,10 @@ namespace Microsoft.Identity.Client
         {
 #if iOS
             Config.IsBrokerEnabled = enableBroker;
-#endif // iOS
+#endif
             return this;
         }
-#endif // !ANDROID_BUILDTIME && !WINDOWS_APP_BUILDTIME && !NET_CORE_BUILDTIME && !DESKTOP_BUILDTIME && !MAC_BUILDTIME
+#endif //!ANDROID_BUILDTIME && !WINDOWS_APP_BUILDTIME && !NET_CORE_BUILDTIME && !DESKTOP_BUILDTIME && !MAC_BUILDTIME
 
 #if WINDOWS_APP
         /// <summary>

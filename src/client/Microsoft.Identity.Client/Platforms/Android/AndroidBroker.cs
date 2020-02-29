@@ -88,13 +88,12 @@ namespace Microsoft.Identity.Client.Platforms.Android
                 }
                 await _brokerHelper.InitiateBrokerHandshakeAsync(_activity).ConfigureAwait(false);
 
-                brokerPayload[BrokerParameter.BrokerAccountName] = AndroidBrokerHelper.GetValueFromBrokerPayload(brokerPayload, BrokerParameter.LoginHint);
+                brokerPayload[BrokerParameter.BrokerAccountName] = AndroidBrokerHelper.GetValueFromBrokerPayload(brokerPayload, BrokerParameter.Username);
 
                 // Don't send silent background request if account information is not provided
-                if (!string.IsNullOrEmpty(AndroidBrokerHelper.GetValueFromBrokerPayload(brokerPayload, BrokerParameter.BrokerAccountName)) ||
-                    !string.IsNullOrEmpty(AndroidBrokerHelper.GetValueFromBrokerPayload(brokerPayload, BrokerParameter.Username)))
+                if (brokerPayload.ContainsKey(BrokerParameter.IsSilentBrokerRequest))
                 {
-                    _logger.Verbose("User is specified for silent token request. Starting silent broker request");
+                    _logger.Verbose("User is specified for silent token request. Starting silent broker request.");
                     string silentResult = await _brokerHelper.GetBrokerAuthTokenSilentlyAsync(brokerPayload, _activity).ConfigureAwait(false);
                     if (!string.IsNullOrEmpty(silentResult))
                     {
@@ -146,9 +145,6 @@ namespace Microsoft.Identity.Client.Platforms.Android
             catch (Exception ex)
             {
                 _logger.ErrorPiiWithPrefix(ex, "Broker invocation failed.");
-
-
-                s_readyForResponse.Release();
                 throw;
             }
 
@@ -164,17 +160,32 @@ namespace Microsoft.Identity.Client.Platforms.Android
                     return;
                 }
 
-                if (resultCode != (int)BrokerResponseCode.ResponseReceived)
+                switch (resultCode)
                 {
-                    s_androidBrokerTokenResponse = new MsalTokenResponse
-                    {
-                        Error = MsalError.BrokerResponseReturnedError,
-                        ErrorDescription = data.GetStringExtra(BrokerConstants.BrokerResultV2),
-                    };
-                }
-                else
-                {
-                    s_androidBrokerTokenResponse = CreateMsalTokenResponseFromResult(data.GetStringExtra(BrokerConstants.BrokerResultV2));
+                    case (int)BrokerResponseCode.ResponseReceived:
+                        s_androidBrokerTokenResponse = CreateMsalTokenResponseFromResult(data.GetStringExtra(BrokerConstants.BrokerResultV2));
+                        break;
+                    case (int)BrokerResponseCode.UserCancelled:
+                        s_androidBrokerTokenResponse = new MsalTokenResponse
+                        {
+                            Error = MsalError.AuthenticationCanceledError,
+                            ErrorDescription = MsalErrorMessage.AuthenticationCanceled,
+                        };
+                        break;
+                    case (int)BrokerResponseCode.BrowserCodeError:
+                        s_androidBrokerTokenResponse = new MsalTokenResponse
+                        {
+                            Error = data.GetStringExtra(BrokerConstants.BrokerResultErrorCode),
+                            ErrorDescription = data.GetStringExtra(BrokerConstants.BrokerResultV2),
+                        };
+                        break;
+                    default:
+                        s_androidBrokerTokenResponse = new MsalTokenResponse
+                        {
+                            Error = BrokerConstants.BrokerUnknownErrorCode,
+                            ErrorDescription = "Broker result not returned from android broker.",
+                        };
+                        break;
                 }
             }
             finally

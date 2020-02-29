@@ -29,7 +29,7 @@ namespace Microsoft.Identity.Test.Unit
                     TestConstants.s_scope,
                     new TokenCache(harness.ServiceBundle, false),
                     null, 
-                    TestConstants.s_extraQueryParams);
+                    TestConstants.ExtraQueryParameters);
 
                 AcquireTokenInteractiveParameters interactiveParameters = new AcquireTokenInteractiveParameters();
 
@@ -80,7 +80,7 @@ namespace Microsoft.Identity.Test.Unit
                     TestConstants.s_scope,
                     new TokenCache(harness.ServiceBundle, false),
                     null,
-                    TestConstants.s_extraQueryParams);
+                    TestConstants.ExtraQueryParameters);
                 AcquireTokenSilentParameters acquireTokenSilentParameters = new AcquireTokenSilentParameters();
 
                 // Act
@@ -95,7 +95,7 @@ namespace Microsoft.Identity.Test.Unit
                 brokerSilentRequest.CreateRequestParametersForBroker();
 
                 // Assert
-                Assert.AreEqual(10, brokerSilentRequest.BrokerPayload.Count);
+                Assert.AreEqual(13, brokerSilentRequest.BrokerPayload.Count);
                 Assert.AreEqual(s_canonicalizedAuthority, brokerSilentRequest.BrokerPayload[BrokerParameter.Authority]);
                 Assert.AreEqual(TestConstants.ScopeStr, brokerSilentRequest.BrokerPayload[BrokerParameter.Scope]);
                 Assert.AreEqual(TestConstants.ClientId, brokerSilentRequest.BrokerPayload[BrokerParameter.ClientId]);
@@ -105,7 +105,7 @@ namespace Microsoft.Identity.Test.Unit
                 Assert.AreEqual(TestConstants.RedirectUri, brokerSilentRequest.BrokerPayload[BrokerParameter.RedirectUri]);
                 Assert.AreEqual(TestConstants.BrokerExtraQueryParameters, brokerSilentRequest.BrokerPayload[BrokerParameter.ExtraQp]);
                 Assert.AreEqual(TestConstants.BrokerOIDCScopes, brokerSilentRequest.BrokerPayload[BrokerParameter.ExtraOidcScopes]);
-                Assert.IsTrue(string.IsNullOrEmpty(brokerSilentRequest.BrokerPayload[BrokerParameter.LoginHint]));
+                Assert.IsTrue(string.IsNullOrEmpty(brokerSilentRequest.BrokerPayload[BrokerParameter.Username]));
                 Assert.AreEqual("False", brokerSilentRequest.BrokerPayload[BrokerParameter.ForceRefresh]);
             }
         }

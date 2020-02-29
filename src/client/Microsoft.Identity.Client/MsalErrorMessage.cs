@@ -1,6 +1,7 @@
 ﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+using System;
 using System.Globalization;
 
 namespace Microsoft.Identity.Client
@@ -285,7 +286,19 @@ namespace Microsoft.Identity.Client
             "You can modify the configuration in the application registration portal. See https://aka.ms/msal-net-invalid-client for details. ";
         public const string SSHCertUsedAsHttpHeader = "MSAL was configured to request SSH certificates from AAD, and these cannot be used as an HTTP authentication header. Developers are responsible for transporting the SSH certificates to the target machines.";
         public const string BrokerApplicationRequired = "Installation of broker failed. The broker application must be installed to continue authentication";
+        public static string AuthorityTypeMismatch(
+            AuthorityType appAuthorityType, 
+            AuthorityType requestAuthorityType)
+            {
+            return string.Format(
+                CultureInfo.InvariantCulture,
+                "A authority of type {0} was used at the application and of type {1} at the request level. " +
+                "Please use the same authority type between the two.", 
+                appAuthorityType, 
+                requestAuthorityType);
+        }
 
+        public const string NoAndroidBrokerAccountFound = "Android account manager could not find an account that matched the provided account information.";
         public static string ExperimentalFeature(string methodName)
         {
             return string.Format(
@@ -320,5 +333,12 @@ namespace Microsoft.Identity.Client
                 requestTokenType, responseTokenType);
         }
 
+        public static string InvalidJsonClaimsFormat(string claims)
+        {
+            return string.Format(
+                CultureInfo.InvariantCulture,
+                "You have configured a claims parameter that is not in JSON format: {0}. Inspect the inner exception for details about the JSON parsing error. To learn more about claim requests, please see https://openid.net/specs/openid-connect-core-1_0.html#ClaimsParameter",
+                claims);
+        }
     }
 }

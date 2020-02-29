@@ -130,40 +130,7 @@ namespace Microsoft.Identity.Test.Unit.PublicApiTests
             }
         }
 
-        [TestMethod]
-        public async Task ClaimsAreSentTo_AuthorizationEndpoint_And_TokenEndpoint_Async()
-        {
-            // Arrange
-            using (var harness = CreateTestHarness())
-            {
-                harness.HttpManager.AddInstanceDiscoveryMockHandler();
-
-                PublicClientApplication app = PublicClientApplicationBuilder.Create(TestConstants.ClientId)
-                                                                            .WithAuthority(new Uri(ClientApplicationBase.DefaultAuthority), true)
-                                                                            .WithHttpManager(harness.HttpManager)
-                                                                            .WithTelemetry(new TraceTelemetryConfig())
-                                                                            .BuildConcrete();
-
-                var mockUi = MsalMockHelpers.ConfigureMockWebUI(
-                     app.ServiceBundle.PlatformProxy,
-                     AuthorizationResult.FromUri(app.AppConfig.RedirectUri + "?code=some-code"));
-
-                mockUi.QueryParamsToValidate = new Dictionary<string, string> { { OAuth2Parameter.Claims, TestConstants.Claims } };
-
-                harness.HttpManager.AddMockHandlerForTenantEndpointDiscovery(TestConstants.AuthorityCommonTenant);
-                harness.HttpManager.AddSuccessTokenResponseMockHandlerForPost(
-                    TestConstants.AuthorityCommonTenant,
-                    queryParameters: mockUi.QueryParamsToValidate);
-
-                AuthenticationResult result = await app
-                    .AcquireTokenInteractive(TestConstants.s_scope)
-                    .WithClaims(TestConstants.Claims)
-                    .ExecuteAsync(CancellationToken.None)
-                    .ConfigureAwait(false);
-
-                Assert.IsNotNull(result.Account);
-            }
-        }
+       
 
         [TestMethod]
         public async Task DifferentStateReturnedTestAsync()

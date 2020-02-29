@@ -430,6 +430,11 @@ namespace Microsoft.Identity.Client
         public const string AndroidBrokerOperationFailed = "android_broker_operation_failed";
 
         /// <summary>
+        /// Unable to query the Android account manager because no username or home account ID is provided in the silent authentication request.
+        /// </summary>
+        public const string NoUsernameOrAccountIDProvidedForSilentAndroidBrokerAuthentication = "no_username_or_accountid_provided_for_silent_android_broker_authentication";
+
+        /// <summary>
         /// Error code used when the HTTP response returns HttpStatusCode.NotFound
         /// </summary>
         public const string HttpStatusNotFound = "not_found";
@@ -750,6 +755,18 @@ namespace Microsoft.Identity.Client
         /// <para>Mitigation</para>Install a broker application, such as Authenticator, from the application store
         /// </summary>
         public const string BrokerApplicationRequired = "broker_application_required";
+
+        /// <summary>
+        /// <para>What happens?</para>You have configured a claims request, but the claims string is not in JSON format
+        /// <para>Mitigation</para>Ensure that the claims parameter is valid JSON. Inspect the inner exception for details about JSON parsing. 
+        /// </summary>
+        public const string InvalidJsonClaimsFormat = "invalid_json_claims_format";
+
+        /// <summary>
+        /// <para>What happens?</para>The authority configured at the application level is different than the authority configured at the request level
+        /// <para>Mitigation</para>Ensure the same authority type is used
+        /// </summary>
+        public const string AuthorityTypeMismatch = "authority_type_mismatch";
 
 #if iOS
         /// <summary>

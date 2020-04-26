@@ -756,7 +756,7 @@ namespace Microsoft.Identity.Client
 
         /// <summary>
         /// <para>What happens?</para>You have configured your own instance metadata using both an Uri and a string. Only one is supported.
-        /// <para>Mitigation</para>Call WithInstanceDicoveryMetadata only once. See https://aka.ms/msal-net-custom-instance-metadata for more details.
+        /// <para>Mitigation</para>Call WithInstanceDiscoveryMetadata only once. See https://aka.ms/msal-net-custom-instance-metadata for more details.
         /// </summary>
         public const string CustomMetadataInstanceOrUri = "custom_metadata_instance_or_uri";
 
@@ -771,6 +771,12 @@ namespace Microsoft.Identity.Client
         /// <para>Mitigation</para>Ensure the certificate has a private key.
         /// </summary>
         public const string CertWithoutPrivateKey = "cert_without_private_key";
+
+        /// <summary>
+        /// <para>What happens?</para>The ADAL cache is invalid as it contains multiple refresh token entries for one user.
+        /// <para>Mitigation</para>Delete the ADAL cache. If you do not maintain an ADAL cache, this may be a bug in MSAL.
+        /// </summary>
+        public const string InvalidAdalCacheMultipleRTs = "invalid_adal_cache";
 
 #if iOS
         /// <summary>

@@ -37,7 +37,7 @@ namespace Microsoft.Identity.Client.Internal.Requests
             Scope = ScopeHelper.CreateSortedSetFromEnumerable(commonParameters.Scopes);
             RedirectUri = new Uri(serviceBundle.Config.RedirectUri);
             RequestContext = requestContext;
-            IsBrokerConfigured = serviceBundle.Config.IsBrokerEnabled;
+            IsBrokerConfigured = serviceBundle.Config.IsBrokerConfigured;
 
             // Set application wide query parameters.
             ExtraQueryParameters = serviceBundle.Config.ExtraQueryParameters ?? new Dictionary<string, string>();
@@ -136,7 +136,6 @@ namespace Microsoft.Identity.Client.Internal.Requests
 #endif
             }
         }
-        public bool IsRefreshTokenRequest => ApiId == ApiEvent.ApiIds.AcquireTokenByRefreshToken;
         public UserAssertion UserAssertion { get; set; }
 
 #endregion

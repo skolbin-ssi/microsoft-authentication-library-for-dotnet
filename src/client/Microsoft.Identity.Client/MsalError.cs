@@ -19,6 +19,15 @@ namespace Microsoft.Identity.Client
         /// </summary>
         public const string InvalidGrantError = "invalid_grant";
 
+        /// <summary>
+        /// Standard OAuth2 protocol error code. It indicates that the application needs to expose the UI to the user
+        /// so the user can do an interactive log-in to get a token with updated claims.
+        /// <para>Mitigation:</para> If your application is a <see cref="T:IPublicClientApplication"/> call <c>AcquireTokenInteractive</c>
+        /// perform an interactive authentication. If your application is a <see cref="T:ConfidentialClientApplication"/> chances are that the Claims member
+        /// of the exception is not empty. See <see cref="P:MsalServiceException.Claims"/> for the right mitigation
+        /// </summary>
+        public const string InteractionRequired = "interaction_required";
+
 #if !DESKTOP && !NET_CORE
 #pragma warning disable CS1574 // XML comment has cref attribute that could not be resolved
 #endif
@@ -613,6 +622,12 @@ namespace Microsoft.Identity.Client
         /// <para>What happens?</para>You configured MSAL confidential client authentication with more than one authentication type (Certificate, Secret, Client Assertion)
         /// </summary>
         public const string ClientCredentialAuthenticationTypesAreMutuallyExclusive = "Client_Credential_Authentication_Types_Are_Mutually_Exclusive";
+
+        /// <summary>
+        /// <para>What happens?</para>You configured MSAL confidential client authentication without an authentication type (Certificate, Secret, Client Assertion)
+        /// <para>Mitigation</para>Either call ConfidentialClientApplicationBuilder.WithClientSecret, ConfidentialClientApplicationBuilder.WithCertificate, ConfidentialClientApplicationBuilder.WithClientAssertion
+        /// </summary>
+        public const string ClientCredentialAuthenticationTypeMustBeDefined = "Client_Credentials_Required_In_Confidential_Client_Application";
 
         #region InvalidGrant suberrors
         /// <summary>

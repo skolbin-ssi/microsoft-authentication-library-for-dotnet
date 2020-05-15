@@ -34,20 +34,12 @@ namespace Microsoft.Identity.Client
 
             var tenantId = Authority
                 .CreateAuthority(requestParams.TenantUpdatedCanonicalAuthority.AuthorityInfo.CanonicalAuthority)
-                .GetTenantId();
+                .TenantId;
 
             bool isAdfsAuthority = requestParams.AuthorityInfo.AuthorityType == AuthorityType.Adfs;
             string preferredUsername = GetPreferredUsernameFromIdToken(isAdfsAuthority, idToken);
             string username = isAdfsAuthority ? idToken?.Upn : preferredUsername;
-
-            string subject = idToken?.Subject;
-            if (idToken?.Subject != null)
-            {
-                requestParams.RequestContext.Logger.Warning("Subject not present in Id token");
-            }
-            
-            ClientInfo clientInfo = response.ClientInfo != null ? ClientInfo.CreateFromJson(response.ClientInfo) : null;
-            string homeAccountId = clientInfo?.ToAccountIdentifier() ?? subject; // ADFS does not have client info, so we use subject
+            string homeAccountId = GetHomeAccountId(requestParams, response, idToken);
 
             // Do a full instance discovery when saving tokens (if not cached),
             // so that the PreferredNetwork environment is up to date.
@@ -201,6 +193,19 @@ namespace Microsoft.Identity.Client
             }
         }
 
+        private static string GetHomeAccountId(AuthenticationRequestParameters requestParams, MsalTokenResponse response, IdToken idToken)
+        {
+            string subject = idToken?.Subject;
+            if (idToken?.Subject != null)
+            {
+                requestParams.RequestContext.Logger.Info("Subject not present in Id token");
+            }
+
+            ClientInfo clientInfo = response.ClientInfo != null ? ClientInfo.CreateFromJson(response.ClientInfo) : null;
+            string homeAccountId = clientInfo?.ToAccountIdentifier() ?? subject; // ADFS does not have client info, so we use subject
+            return homeAccountId;
+        }
+
         private static string GetPreferredUsernameFromIdToken(bool isAdfsAuthority, IdToken idToken)
         {
             // The preferred_username value cannot be null or empty in order to comply with the ADAL/MSAL Unified cache schema.
@@ -307,7 +312,7 @@ namespace Microsoft.Identity.Client
                                 "Filtering by user assertion id");
             }
 
-            string requestTenantId = requestParams.Authority.GetTenantId();
+            string requestTenantId = requestParams.Authority.TenantId;
 
             tokenCacheItems = tokenCacheItems.FilterWithLogging(item =>
                 string.Equals(item.TenantId ?? string.Empty, requestTenantId ?? string.Empty, StringComparison.OrdinalIgnoreCase),

@@ -4,12 +4,12 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using Microsoft.Identity.Client.Internal;
 using Microsoft.Identity.Client.Internal.Requests;
 using System.Linq;
 using Microsoft.Identity.Client.ApiConfig.Parameters;
 using Microsoft.Identity.Client.ApiConfig.Executors;
 using Microsoft.Identity.Client.Cache;
+using Microsoft.Identity.Client.Internal;
 
 namespace Microsoft.Identity.Client
 {
@@ -17,7 +17,8 @@ namespace Microsoft.Identity.Client
 #pragma warning disable CS1574 // XML comment has cref attribute that could not be resolved
 #endif
     /// <Summary>
-    /// Abstract class containing common API methods and properties. Both <see cref="Microsoft.Identity.Client.PublicClientApplication"/> and <see cref="Microsoft.Identity.Client.ConfidentialClientApplication"/>
+    /// Abstract class containing common API methods and properties. Both <see cref="Microsoft.Identity.Client.PublicClientApplication"/> and 
+    /// <see cref="Microsoft.Identity.Client.ConfidentialClientApplication"/>
     /// extend this class. For details see https://aka.ms/msal-net-client-applications
     /// </Summary>
     public abstract partial class ClientApplicationBase : IClientApplicationBase
@@ -40,7 +41,6 @@ namespace Microsoft.Identity.Client
         /// The return value of this property is either the value provided by the developer in the constructor of the application, or otherwise
         /// the value of the <see cref="DefaultAuthority"/> static member (that is <c>https://login.microsoftonline.com/common/</c>)
         /// </Summary>
-        // TODO: obsolete this and move to IAppConfig?
         public string Authority => ServiceBundle.Config.AuthorityInfo.CanonicalAuthority;
 
         /// <Summary>
@@ -77,18 +77,15 @@ namespace Microsoft.Identity.Client
         public async Task<IEnumerable<IAccount>> GetAccountsAsync()
         {
             RequestContext requestContext = CreateRequestContext(Guid.NewGuid());
-            IEnumerable<IAccount> accounts = Enumerable.Empty<IAccount>();
-
-            if (AppConfig.IsBrokerEnabled && ServiceBundle.PlatformProxy.CanBrokerSupportSilentAuth())
-            {
-                var broker = ServiceBundle.PlatformProxy.CreateBroker(null);
-                accounts = await broker.GetAccountsAsync(AppConfig.ClientId, AppConfig.RedirectUri).ConfigureAwait(false);
-                return accounts;
-            }
+            IEnumerable<IAccount> localAccounts = Enumerable.Empty<IAccount>();
+            IEnumerable<IAccount> brokerAccounts = Enumerable.Empty<IAccount>();
 
             if (UserTokenCache == null)
             {
-                requestContext.Logger.Info("Token cache is null or empty. Returning empty list of accounts.");
+                if (!AppConfig.IsBrokerEnabled)
+                {
+                    requestContext.Logger.Info("Token cache is null or empty. Returning empty list of accounts.");
+                }
             }
             else
             {
@@ -101,10 +98,47 @@ namespace Microsoft.Identity.Client
                         new AcquireTokenCommonParameters(), 
                         requestContext));
 
-                accounts = await cacheSessionManager.GetAccountsAsync(Authority).ConfigureAwait(false);
+                localAccounts = await cacheSessionManager.GetAccountsAsync(Authority).ConfigureAwait(false);
             }
 
-            return accounts;
+            if (AppConfig.IsBrokerEnabled && ServiceBundle.PlatformProxy.CanBrokerSupportSilentAuth())
+            {
+                //Broker is available so accounts will be merged using home account ID with local accounts taking priority
+                var broker = ServiceBundle.PlatformProxy.CreateBroker(null);
+                brokerAccounts = await broker.GetAccountsAsync(AppConfig.ClientId, AppConfig.RedirectUri).ConfigureAwait(false);
+
+                foreach(IAccount account in brokerAccounts)
+                {
+                    if (!localAccounts.Any(x => x.HomeAccountId.Equals(account.HomeAccountId)))
+                    {
+                        (localAccounts as List<IAccount>).Add(account);
+                    }
+                }
+
+                return localAccounts;
+            }
+
+            return localAccounts;
+        }
+
+        /// <summary>
+        /// Get the <see cref="IAccount"/> collection by its identifier among the accounts available in the token cache,
+        /// based on the user flow. This is for Azure AD B2C scenarios.
+        /// </summary>
+        /// <param name="userFlow">The identifier is the user flow being targeted by the specific B2C authority/>.
+        /// </param>
+        public async Task<IEnumerable<IAccount>> GetAccountsAsync(string userFlow)
+        {
+            if (string.IsNullOrWhiteSpace(userFlow))
+            {
+                throw new ArgumentException($"{nameof(userFlow)} should not be null or whitespace", nameof(userFlow));
+            }
+
+            var accounts = await GetAccountsAsync().ConfigureAwait(false);
+
+            return accounts.Where(acc => 
+                acc.HomeAccountId.ObjectId.Split('.')[0].EndsWith(
+                    userFlow, StringComparison.OrdinalIgnoreCase));
         }
 
         /// <summary>
@@ -126,17 +160,16 @@ namespace Microsoft.Identity.Client
         /// <param name="account">Instance of the account that needs to be removed</param>
         public async Task RemoveAsync(IAccount account)
         {
-            if (AppConfig.IsBrokerEnabled && ServiceBundle.PlatformProxy.CanBrokerSupportSilentAuth())
-            {
-                var broker = ServiceBundle.PlatformProxy.CreateBroker(null);
-                await broker.RemoveAccountAsync(AppConfig.ClientId, account).ConfigureAwait(false);
-                return;
-            }
-
             RequestContext requestContext = CreateRequestContext(Guid.NewGuid());
             if (account != null && UserTokenCacheInternal != null)
             {
                 await UserTokenCacheInternal.RemoveAccountAsync(account, requestContext).ConfigureAwait(false);
+            }
+
+            if (AppConfig.IsBrokerEnabled && ServiceBundle.PlatformProxy.CanBrokerSupportSilentAuth())
+            {
+                var broker = ServiceBundle.PlatformProxy.CreateBroker(null);
+                await broker.RemoveAccountAsync(AppConfig.ClientId, account).ConfigureAwait(false);
             }
         }
 

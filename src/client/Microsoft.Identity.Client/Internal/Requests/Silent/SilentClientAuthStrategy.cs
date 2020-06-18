@@ -1,98 +1,42 @@
 ﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Identity.Client.ApiConfig.Parameters;
+using Microsoft.Identity.Client.Cache;
 using Microsoft.Identity.Client.Cache.Items;
-using Microsoft.Identity.Client.OAuth2;
-using Microsoft.Identity.Client.TelemetryCore.Internal.Events;
-using System.Linq;
-using System;
 using Microsoft.Identity.Client.Instance;
-using Microsoft.Identity.Client.Internal.Broker;
+using Microsoft.Identity.Client.OAuth2;
 
-namespace Microsoft.Identity.Client.Internal.Requests
+namespace Microsoft.Identity.Client.Internal.Requests.Silent
 {
-    internal class SilentRequest : RequestBase
+    internal class SilentClientAuthStretegy : ISilentAuthRequestStrategy
     {
+        private AuthenticationRequestParameters AuthenticationRequestParameters { get; }
+        private ICacheSessionManager CacheManager => AuthenticationRequestParameters.CacheSessionManager;
+        protected IServiceBundle ServiceBundle { get; }
         private readonly AcquireTokenSilentParameters _silentParameters;
         private const string TheOnlyFamilyId = "1";
-        private bool? _canExecuteBrokerValue;
+        private readonly SilentRequest _silentRequest;
 
-        public SilentRequest(
+        public SilentClientAuthStretegy(
+            SilentRequest request,
             IServiceBundle serviceBundle,
             AuthenticationRequestParameters authenticationRequestParameters,
             AcquireTokenSilentParameters silentParameters)
-            : base(serviceBundle, authenticationRequestParameters, silentParameters)
         {
+            AuthenticationRequestParameters = authenticationRequestParameters;
             _silentParameters = silentParameters;
+            ServiceBundle = serviceBundle;
+            _silentRequest = request;
         }
 
-        private bool BrokerIsInstalledAndSupportsSilentAuth
+        public async Task PreRunAsync()
         {
-            get
-            {
-                if (_canExecuteBrokerValue == null)
-                {
-                    _canExecuteBrokerValue = AuthenticationRequestParameters.IsBrokerConfigured && ServiceBundle.PlatformProxy.CanBrokerSupportSilentAuth();
-                }
-
-                return (bool)_canExecuteBrokerValue;
-            }
-        }
-
-        private async Task<IAccount> GetSingleAccountForLoginHintAsync(string loginHint)
-        {
-            var accounts = await CacheManager.GetAccountsAsync(ServiceBundle.Config.AuthorityInfo.CanonicalAuthority)
-                .ConfigureAwait(false);
-
-            accounts = accounts
-                .Where(a => !string.IsNullOrWhiteSpace(a.Username) &&
-                       a.Username.Equals(loginHint, StringComparison.OrdinalIgnoreCase))
-                .ToList();
-
-            if (!accounts.Any())
-            {
-                throw new MsalUiRequiredException(
-                    MsalError.NoAccountForLoginHint,
-                    MsalErrorMessage.NoAccountForLoginHint,
-                    null,
-                    UiRequiredExceptionClassification.AcquireTokenSilentFailed);
-            }
-
-            if (accounts.Count() > 1)
-            {
-                throw new MsalUiRequiredException(
-                    MsalError.MultipleAccountsForLoginHint,
-                    MsalErrorMessage.MultipleAccountsForLoginHint,
-                    null,
-                    UiRequiredExceptionClassification.AcquireTokenSilentFailed);
-
-            }
-
-            return accounts.First();
-        }
-
-        private async Task<IAccount> GetAccountFromParamsOrLoginHintAsync(AcquireTokenSilentParameters silentParameters)
-        {
-            if (silentParameters.Account != null)
-            {
-                return silentParameters.Account;
-            }
-
-            return await GetSingleAccountForLoginHintAsync(silentParameters.LoginHint).ConfigureAwait(false);
-        }
-
-        internal async override Task PreRunAsync()
-        {
-
-            if (BrokerIsInstalledAndSupportsSilentAuth)
-            {
-                return;
-            }
-
             IAccount account = await GetAccountFromParamsOrLoginHintAsync(_silentParameters).ConfigureAwait(false);
             AuthenticationRequestParameters.Account = account;
 
@@ -102,19 +46,14 @@ namespace Microsoft.Identity.Client.Internal.Requests
                 account?.HomeAccountId?.TenantId);
         }
 
-        protected override async Task<AuthenticationResult> ExecuteAsync(CancellationToken cancellationToken)
+        public async Task<AuthenticationResult> ExecuteAsync(CancellationToken cancellationToken)
         {
             var logger = AuthenticationRequestParameters.RequestContext.Logger;
             MsalAccessTokenCacheItem cachedAccessTokenItem = null;
-            if (BrokerIsInstalledAndSupportsSilentAuth)
-            {
-                var msalTokenResponse = await ExecuteBrokerAsync(cancellationToken).ConfigureAwait(false);
-                return await CacheTokenResponseAndCreateAuthenticationResultAsync(msalTokenResponse).ConfigureAwait(false);
-            }
 
             ThrowIfNoScopesOnB2C();
 
-            if (!_silentParameters.ForceRefresh && !AuthenticationRequestParameters.HasClaims)
+            if (!_silentParameters.ForceRefresh && string.IsNullOrEmpty(AuthenticationRequestParameters.Claims))
             {
                 cachedAccessTokenItem = await CacheManager.FindAccessTokenAsync().ConfigureAwait(false);
 
@@ -161,47 +100,6 @@ namespace Microsoft.Identity.Client.Internal.Requests
             }
         }
 
-
-        private void ThrowIfNoScopesOnB2C()
-        {
-            // B2C will not issue an access token if no scopes are requested
-            // And we don't want to refresh the RT on every ATS call
-            // See https://github.com/AzureAD/microsoft-authentication-library-for-dotnet/issues/715 for details
-
-            if (!AuthenticationRequestParameters.HasScopes &&
-                AuthenticationRequestParameters.AuthorityInfo.AuthorityType == AuthorityType.B2C )
-            {
-                throw new MsalUiRequiredException(
-                    MsalError.ScopesRequired,
-                    MsalErrorMessage.ScopesRequired,
-                    null,
-                    UiRequiredExceptionClassification.AcquireTokenSilentFailed);
-            }
-        }
-
-        private async Task<MsalTokenResponse> ExecuteBrokerAsync(CancellationToken cancellationToken)
-        {
-            IBroker broker = base.ServiceBundle.PlatformProxy.CreateBroker(null);
-
-            var brokerSilentRequest = new BrokerSilentRequest(
-                AuthenticationRequestParameters,
-                _silentParameters,
-                ServiceBundle,
-                broker);
-
-            return await brokerSilentRequest.SendTokenRequestToBrokerAsync().ConfigureAwait(false);
-        }
-
-        private async Task<AuthenticationResult> CreateAuthenticationResultAsync(MsalAccessTokenCacheItem cachedAccessTokenItem)
-        {
-            var msalIdTokenItem = await CacheManager.GetIdTokenCacheItemAsync(cachedAccessTokenItem.GetIdTokenItemKey()).ConfigureAwait(false);
-            return new AuthenticationResult(
-                cachedAccessTokenItem, 
-                msalIdTokenItem, 
-                AuthenticationRequestParameters.AuthenticationScheme, 
-                AuthenticationRequestParameters.RequestContext.CorrelationId);
-        }
-
         private async Task<AuthenticationResult> RefreshRtOrFailAsync(CancellationToken cancellationToken)
         {
             // Try FOCI first
@@ -218,7 +116,34 @@ namespace Microsoft.Identity.Client.Internal.Requests
                 msalTokenResponse = await RefreshAccessTokenAsync(appRefreshToken, cancellationToken)
                     .ConfigureAwait(false);
             }
-            return await CacheTokenResponseAndCreateAuthenticationResultAsync(msalTokenResponse).ConfigureAwait(false);
+            return await _silentRequest.CacheTokenResponseAndCreateAuthenticationResultAsync(msalTokenResponse).ConfigureAwait(false);
+        }
+
+        private async Task<AuthenticationResult> CreateAuthenticationResultAsync(MsalAccessTokenCacheItem cachedAccessTokenItem)
+        {
+            var msalIdTokenItem = await CacheManager.GetIdTokenCacheItemAsync(cachedAccessTokenItem.GetIdTokenItemKey()).ConfigureAwait(false);
+            return new AuthenticationResult(
+                cachedAccessTokenItem,
+                msalIdTokenItem,
+                AuthenticationRequestParameters.AuthenticationScheme,
+                AuthenticationRequestParameters.RequestContext.CorrelationId);
+        }
+
+        private void ThrowIfNoScopesOnB2C()
+        {
+            // During AT Silent with no scopes, Unlike AAD, B2C will not issue an access token if no scopes are requested
+            // And we don't want to refresh the RT on every ATS call
+            // See https://github.com/AzureAD/microsoft-authentication-library-for-dotnet/issues/715 for details
+
+            if (!AuthenticationRequestParameters.HasScopes &&
+                AuthenticationRequestParameters.AuthorityInfo.AuthorityType == AuthorityType.B2C)
+            {
+                throw new MsalUiRequiredException(
+                    MsalError.ScopesRequired,
+                    MsalErrorMessage.ScopesRequired,
+                    null,
+                    UiRequiredExceptionClassification.AcquireTokenSilentFailed);
+            }
         }
 
         private async Task<MsalTokenResponse> TryGetTokenUsingFociAsync(CancellationToken cancellationToken)
@@ -286,9 +211,10 @@ namespace Microsoft.Identity.Client.Internal.Requests
         private async Task<MsalTokenResponse> RefreshAccessTokenAsync(MsalRefreshTokenCacheItem msalRefreshTokenItem, CancellationToken cancellationToken)
         {
             AuthenticationRequestParameters.RequestContext.Logger.Verbose("Refreshing access token...");
-            await ResolveAuthorityEndpointsAsync().ConfigureAwait(false);
+            await AuthorityEndpoints.UpdateAuthorityEndpointsAsync(AuthenticationRequestParameters)
+                .ConfigureAwait(false);
 
-            var msalTokenResponse = await SendTokenRequestAsync(GetBodyParameters(msalRefreshTokenItem.Secret), cancellationToken)
+            var msalTokenResponse = await _silentRequest.SendTokenRequestAsync(GetBodyParameters(msalRefreshTokenItem.Secret), cancellationToken)
                                     .ConfigureAwait(false);
 
             if (msalTokenResponse.RefreshToken == null)
@@ -318,14 +244,6 @@ namespace Microsoft.Identity.Client.Internal.Requests
             return msalRefreshTokenItem;
         }
 
-        protected override void EnrichTelemetryApiEvent(ApiEvent apiEvent)
-        {
-            if (_silentParameters.LoginHint != null)
-            {
-                apiEvent.LoginHint = _silentParameters.LoginHint;
-            }
-        }
-
         private Dictionary<string, string> GetBodyParameters(string refreshTokenSecret)
         {
             var dict = new Dictionary<string, string>
@@ -335,6 +253,48 @@ namespace Microsoft.Identity.Client.Internal.Requests
             };
 
             return dict;
+        }
+
+        private async Task<IAccount> GetSingleAccountForLoginHintAsync(string loginHint)
+        {
+            var accounts = await CacheManager.GetAccountsAsync(ServiceBundle.Config.AuthorityInfo.CanonicalAuthority)
+                .ConfigureAwait(false);
+
+            accounts = accounts
+                .Where(a => !string.IsNullOrWhiteSpace(a.Username) &&
+                       a.Username.Equals(loginHint, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            if (!accounts.Any())
+            {
+                throw new MsalUiRequiredException(
+                    MsalError.NoAccountForLoginHint,
+                    MsalErrorMessage.NoAccountForLoginHint,
+                    null,
+                    UiRequiredExceptionClassification.AcquireTokenSilentFailed);
+            }
+
+            if (accounts.Count() > 1)
+            {
+                throw new MsalUiRequiredException(
+                    MsalError.MultipleAccountsForLoginHint,
+                    MsalErrorMessage.MultipleAccountsForLoginHint,
+                    null,
+                    UiRequiredExceptionClassification.AcquireTokenSilentFailed);
+
+            }
+
+            return accounts.First();
+        }
+
+        private async Task<IAccount> GetAccountFromParamsOrLoginHintAsync(AcquireTokenSilentParameters silentParameters)
+        {
+            if (silentParameters.Account != null)
+            {
+                return silentParameters.Account;
+            }
+
+            return await GetSingleAccountForLoginHintAsync(silentParameters.LoginHint).ConfigureAwait(false);
         }
     }
 }

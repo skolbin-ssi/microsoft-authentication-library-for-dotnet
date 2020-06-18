@@ -25,6 +25,7 @@ using Microsoft.Identity.Client.Internal.Broker;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
 using Microsoft.Identity.Client.Internal;
+using Microsoft.Identity.Client.Internal.Requests.Silent;
 
 namespace Microsoft.Identity.Test.Unit.RequestsTests
 {
@@ -109,6 +110,14 @@ namespace Microsoft.Identity.Test.Unit.RequestsTests
         }
 
         [TestMethod]
+        public async Task BrokerSilentRequestLocalCacheTestAsync()
+        {
+            //Broker is configured by user and is installed.
+            //Should be pulling from local cache
+            await BrokerSilentRequestTestExecutorAsync(true, true).ConfigureAwait(false);
+        }
+
+        [TestMethod]
         public async Task BrokerSilentRequestBrokerRequiredTestAsync()
         {
             //Broker is not configured by user but is installed
@@ -131,11 +140,6 @@ namespace Microsoft.Identity.Test.Unit.RequestsTests
 
         public async Task BrokerSilentRequestTestExecutorAsync(bool brokerConfiguredByUser, bool brokerIsInstalledAndInvokable)
         {
-            if (brokerConfiguredByUser && brokerIsInstalledAndInvokable)
-            {
-                Assert.Fail("Test error - not implemented");
-            }
-
             string brokerID = "Broker@broker.com";
             using (var harness = new MockHttpTestHarness(TestConstants.AuthorityHomeTenant))
             {

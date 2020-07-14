@@ -43,7 +43,7 @@ namespace Microsoft.Identity.Client.Internal.Requests.Silent
             AuthenticationRequestParameters.Authority = Authority.CreateAuthorityForRequest(
                 ServiceBundle.Config.AuthorityInfo,
                 AuthenticationRequestParameters.AuthorityOverride,
-                account?.HomeAccountId?.TenantId);
+                account.HomeAccountId?.TenantId);
         }
 
         public async Task<AuthenticationResult> ExecuteAsync(CancellationToken cancellationToken)
@@ -257,7 +257,7 @@ namespace Microsoft.Identity.Client.Internal.Requests.Silent
 
         private async Task<IAccount> GetSingleAccountForLoginHintAsync(string loginHint)
         {
-            var accounts = await CacheManager.GetAccountsAsync(ServiceBundle.Config.AuthorityInfo.CanonicalAuthority)
+            var accounts = await CacheManager.GetAccountsAsync()
                 .ConfigureAwait(false);
 
             accounts = accounts

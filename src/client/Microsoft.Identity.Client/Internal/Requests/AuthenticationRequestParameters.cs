@@ -24,7 +24,8 @@ namespace Microsoft.Identity.Client.Internal.Requests
             IServiceBundle serviceBundle,
             ITokenCacheInternal tokenCache,
             AcquireTokenCommonParameters commonParameters,
-            RequestContext requestContext)
+            RequestContext requestContext, 
+            string homeAccountId = null)
         {
             _serviceBundle = serviceBundle;
             _commonParameters = commonParameters;
@@ -53,6 +54,8 @@ namespace Microsoft.Identity.Client.Internal.Requests
             ClaimsAndClientCapabilities = ClaimsHelper.GetMergedClaimsAndClientCapabilities(
                 _commonParameters.Claims,
                 _serviceBundle.Config.ClientCapabilities);
+
+            HomeAccountId = homeAccountId;
         }
 
         public ApiTelemetryId ApiTelemId => _commonParameters.ApiTelemId;
@@ -75,7 +78,9 @@ namespace Microsoft.Identity.Client.Internal.Requests
         public bool HasScopes => Scope != null && Scope.Any();
 
         public string ClientId { get; }
+
         public Uri RedirectUri { get; set; }
+
 
         /// <summary>
         /// The original redirect uri as a string, which preserves case. Useful for iOS broker, 
@@ -84,7 +89,7 @@ namespace Microsoft.Identity.Client.Internal.Requests
         public string OriginalRedirectUriString => _serviceBundle.Config.RedirectUri;
         public IDictionary<string, string> ExtraQueryParameters { get; }
 
-        public string ClaimsAndClientCapabilities { get; private set; }
+        public string ClaimsAndClientCapabilities { get; private set; }    
 
         /// <summary>
         /// Indicates if the user configured claims via .WithClaims. Not affected by Client Capabilities
@@ -100,7 +105,7 @@ namespace Microsoft.Identity.Client.Internal.Requests
 
         public AuthorityInfo AuthorityOverride => _commonParameters.AuthorityOverride;
 
-        internal bool IsBrokerConfigured { get; set; }
+        internal bool IsBrokerConfigured { get; set; /* set only for test */ }
 
         public IAuthenticationScheme AuthenticationScheme => _commonParameters.AuthenticationScheme;
 
@@ -113,6 +118,7 @@ namespace Microsoft.Identity.Client.Internal.Requests
 #endif
         // TODO: ideally, this can come from the particular request instance and not be in RequestBase since it's not valid for all requests.
         public bool SendX5C { get; set; }
+        
         public string LoginHint
         {
             get
@@ -128,6 +134,9 @@ namespace Microsoft.Identity.Client.Internal.Requests
             set => _loginHint = value;
         }
         public IAccount Account { get; set; }
+
+        public string HomeAccountId { get;}
+
 
         public bool IsClientCredentialRequest => ApiId == ApiEvent.ApiIds.AcquireTokenForClient;
         public bool IsConfidentialClient
@@ -158,6 +167,13 @@ namespace Microsoft.Identity.Client.Internal.Requests
             builder.AppendLine("Redirect Uri - " + RedirectUri?.OriginalString);
             builder.AppendLine("Extra Query Params Keys (space separated) - " + ExtraQueryParameters.Keys.AsSingleString());
             builder.AppendLine("ClaimsAndClientCapabilities - " + ClaimsAndClientCapabilities);
+            builder.AppendLine("Authority - " + AuthorityInfo?.CanonicalAuthority);
+            builder.AppendLine("ApiId - " + ApiId);
+            builder.AppendLine("IsConfidentialClient - " + IsConfidentialClient);
+            builder.AppendLine("SendX5C - " + SendX5C);
+            builder.AppendLine("LoginHint - " + LoginHint);
+            builder.AppendLine("IsBrokerConfigured - " + IsBrokerConfigured);
+            builder.AppendLine("HomeAccountId - " + HomeAccountId);
 
             string messageWithPii = builder.ToString();
 
@@ -168,6 +184,14 @@ namespace Microsoft.Identity.Client.Internal.Requests
                 Environment.NewLine);
             builder.AppendLine("Scopes - " + Scope?.AsSingleString());
             builder.AppendLine("Extra Query Params Keys (space separated) - " + ExtraQueryParameters.Keys.AsSingleString());
+            builder.AppendLine("ApiId - " + ApiId);
+            builder.AppendLine("IsConfidentialClient - " + IsConfidentialClient);
+            builder.AppendLine("SendX5C - " + SendX5C);
+            builder.AppendLine("LoginHint ? " + !string.IsNullOrEmpty(LoginHint));
+            builder.AppendLine("IsBrokerConfigured - " + IsBrokerConfigured);
+            builder.AppendLine("HomeAccountId - " + !string.IsNullOrEmpty(HomeAccountId));
+
+
             logger.InfoPii(messageWithPii, builder.ToString());
         }
 

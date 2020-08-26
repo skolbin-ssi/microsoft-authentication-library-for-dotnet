@@ -95,7 +95,12 @@ namespace Microsoft.Identity.Test.Integration.HeadlessTests
             var uriParams1 = HttpUtility.ParseQueryString(uri1.Query);
             var uriParams2 = HttpUtility.ParseQueryString(uri2.Query);
 
-            CoreAssert.AreEqual("offline_access openid profile User.Read", uriParams1["scope"], uriParams2["scope"]);
+            CollectionAssert.AreEquivalent(
+                "offline_access openid profile User.Read".Split(' '),
+                uriParams1["scope"].Split(' '));
+            CollectionAssert.AreEquivalent(
+                "offline_access openid profile User.Read".Split(' '),
+                uriParams2["scope"].Split(' '));
             CoreAssert.AreEqual("code", uriParams1["response_type"], uriParams2["response_type"]);
             CoreAssert.AreEqual(PublicCloudConfidentialClientID, uriParams1["client_id"], uriParams2["client_id"]);
             CoreAssert.AreEqual(RedirectUri, uriParams1["redirect_uri"], uriParams2["redirect_uri"]);
@@ -599,6 +604,29 @@ namespace Microsoft.Identity.Test.Integration.HeadlessTests
 
             await confidentialApp.GetAccountsAsync().ConfigureAwait(false);
             Assert.IsNull(userCacheRecorder.LastAfterAccessNotificationArgs.SuggestedCacheKey);
+        }
+
+        [TestMethod]
+        public async Task RegionalAuthHappyPathAsync()
+        {
+            var dict = new Dictionary<string, string>
+            {
+                ["allowestsrnonmsi"] = "true"
+            };
+
+            Environment.SetEnvironmentVariable("REGION_NAME", "centralus");
+            var cca = ConfidentialClientApplicationBuilder.Create(PublicCloudConfidentialClientID)
+                .WithClientSecret(s_publicCloudCcaSecret)
+                .WithAuthority(PublicCloudTestAuthority)
+                .Build();
+
+            var result = await cca.AcquireTokenForClient(s_keyvaultScope)
+                .WithAzureRegion(true)
+                .WithExtraQueryParameters(dict)
+                .ExecuteAsync()
+                .ConfigureAwait(false);
+
+            Assert.IsNotNull(result);
         }
     }
 }

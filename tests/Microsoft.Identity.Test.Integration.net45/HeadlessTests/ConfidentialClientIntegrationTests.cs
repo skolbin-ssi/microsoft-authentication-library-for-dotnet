@@ -609,6 +609,7 @@ namespace Microsoft.Identity.Test.Integration.HeadlessTests
         [TestMethod]
         public async Task RegionalAuthHappyPathAsync()
         {
+            var claims = GetClaims();
             var dict = new Dictionary<string, string>
             {
                 ["allowestsrnonmsi"] = "true"
@@ -616,8 +617,9 @@ namespace Microsoft.Identity.Test.Integration.HeadlessTests
 
             Environment.SetEnvironmentVariable("REGION_NAME", "centralus");
             var cca = ConfidentialClientApplicationBuilder.Create(PublicCloudConfidentialClientID)
-                .WithClientSecret(s_publicCloudCcaSecret)
+                .WithClientAssertion(GetSignedClientAssertionUsingMsalInternal(PublicCloudConfidentialClientID, claims))
                 .WithAuthority(PublicCloudTestAuthority)
+                .WithExperimentalFeatures(true)
                 .Build();
 
             var result = await cca.AcquireTokenForClient(s_keyvaultScope)

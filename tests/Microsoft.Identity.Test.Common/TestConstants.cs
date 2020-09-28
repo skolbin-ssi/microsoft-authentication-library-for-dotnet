@@ -16,6 +16,7 @@ namespace Microsoft.Identity.Test.Unit
 {
     internal static class TestConstants
     {
+
         public static HashSet<string> s_scope
         {
             get
@@ -28,7 +29,7 @@ namespace Microsoft.Identity.Test.Unit
         public static readonly string[] s_graphScopes = new[] { "user.read" };
         public const uint JwtToAadLifetimeInSeconds = 60 * 10; // Ten minutes
         public const string ClientCredentialAudience = "https://login.microsoftonline.com/72f988bf-86f1-41af-91ab-2d7cd011db47/v2.0";
-        public const string AutomationTestThumbprint = "57B11F2FDBCDA0FDF34837FC7E89A90AD7CBBC1E";
+        public const string AutomationTestThumbprint = "97D8C9DB3C84874D0363DCA540778461B2291780";
         public const string RSATestCertThumbprint = "3051A5BE699BC4596EE47E9FEBBF48DBA85BE67B";
 
         public static readonly SortedSet<string> s_scopeForAnotherResource = new SortedSet<string>(new[] { "r2/scope1", "r2/scope2" });
@@ -48,6 +49,7 @@ namespace Microsoft.Identity.Test.Unit
 
         public const string ProductionPrefNetworkEnvironment = "login.microsoftonline.com";
         public const string ProductionPrefCacheEnvironment = "login.windows.net";
+        public const string ProductionPrefRegionalEnvironment = "centralus.login.microsoft.com";
         public const string ProductionNotPrefEnvironmentAlias = "sts.windows.net";
 
         public const string AuthorityNotKnownCommon = "https://sts.access.edu/common/";
@@ -59,6 +61,7 @@ namespace Microsoft.Identity.Test.Unit
         public const string AuthorityUtid2Tenant = "https://" + ProductionPrefNetworkEnvironment + "/" + Utid2 + "/";
         public const string AuthorityGuestTenant = "https://" + ProductionPrefNetworkEnvironment + "/guest/";
         public const string AuthorityCommonTenant = "https://" + ProductionPrefNetworkEnvironment + "/common/";
+        public const string AuthorityRegional = "https://" + ProductionPrefRegionalEnvironment + "/" + TenantId + "/";
         public const string AuthorityCommonTenantNotPrefAlias = "https://" + ProductionNotPrefEnvironmentAlias + "/common/";
 
         public const string PrefCacheAuthorityCommonTenant = "https://" + ProductionPrefCacheEnvironment + "/common/";
@@ -119,6 +122,9 @@ namespace Microsoft.Identity.Test.Unit
         public const string FamilyName = "Doe";
         public const string Username = "joe@localhost.com";
         public const string PKeyAuthResponse = "PKeyAuth Context=\"context\",Version=\"1.0\"";
+
+        public const string RegionName = "REGION_NAME";
+        public const string Region = "centralus";
 
         //This value is only for testing purposes. It is for a certificate that is not used for anything other than running tests
         public const string _defaultx5cValue = @"MIIDHzCCAgegAwIBAgIQM6NFYNBJ9rdOiK+C91ZzFDANBgkqhkiG9w0BAQsFADAgMR4wHAYDVQQDExVBQ1MyQ2xpZW50Q2VydGlmaWNhdGUwHhcNMTIwNTIyMj

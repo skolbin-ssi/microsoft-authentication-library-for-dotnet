@@ -1,3 +1,13 @@
+4.19
+============
+New Features:
+**MSAL now adds telemetry data for the detected region** See Issue [#2018](https://github.com/AzureAD/microsoft-authentication-library-for-dotnet/issues/2018)
+
+Bug Fixes:
+**The creation of HTTPClient is now threadsafe** This will prevent threading issues MSAL.NETs HttpClient. See Issue [2034](https://github.com/AzureAD/microsoft-authentication-library-for-dotnet/issues/2034)
+**MSAL will now add missing data from broker communication issues** this will allow us to more easily diagnose broker authentication issues on Android. See Issues [2045](https://github.com/AzureAD/microsoft-authentication-library-for-dotnet/issues/2045)
+**MSAL now properly bypasses device auth challenges on mobile** This will allow users to bypass challenges when the web client cannot handle client TLS. [See Issue](https://github.com/AzureAD/microsoft-authentication-library-for-dotnet/pull/2052)
+
 4.18.0
 ============
 New Features:
@@ -7,6 +17,7 @@ New Features:
 
 Bug Fixes:
 **When the parsing of a WsTrust error fails, MSAL will now return the entire body**. This allows for a better understanding of the error. See issue [#1984](https://github.com/AzureAD/microsoft-authentication-library-for-dotnet/pull/1984) for details.
+**When creating an HttpClient we were forcing a ServicePointManager.DefaultConnectionLimit = 30**. The fix removes the setting of the connection limit (though the max limit in the config setting is updated to 50 connections it's not set for net desktop and net core. See issue [#1992](https://github.com/AzureAD/microsoft-authentication-library-for-dotnet/issues/1992).
 
 4.17.1
 ============

@@ -362,7 +362,7 @@ namespace Microsoft.Identity.Client.Platforms.iOS
         /// <summary>
         /// iOS broker does not handle silent flow
         /// </summary>
-        public Task RemoveAccountAsync(string clientID, IAccount account)
+        public Task RemoveAccountAsync(IApplicationConfiguration applicationConfiguration, IAccount account)
         {
             throw new NotImplementedException();
         }
@@ -379,6 +379,11 @@ namespace Microsoft.Identity.Client.Platforms.iOS
         /// iOS broker does not handle silent flow
         /// </summary>
         public Task<MsalTokenResponse> AcquireTokenSilentAsync(AuthenticationRequestParameters authenticationRequestParameters, AcquireTokenSilentParameters acquireTokenSilentParameters)
+        {
+            throw new NotImplementedException();
+        }
+
+        public Task<MsalTokenResponse> AcquireTokenSilentDefaultUserAsync(AuthenticationRequestParameters authenticationRequestParameters, AcquireTokenSilentParameters acquireTokenSilentParameters)
         {
             throw new NotImplementedException();
         }

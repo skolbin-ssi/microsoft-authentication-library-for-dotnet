@@ -21,6 +21,10 @@ namespace Microsoft.Identity.Client.Internal.Broker
             AuthenticationRequestParameters authenticationRequestParameters,
             AcquireTokenSilentParameters acquireTokenSilentParameters);
 
+        Task<MsalTokenResponse> AcquireTokenSilentDefaultUserAsync(
+            AuthenticationRequestParameters authenticationRequestParameters,
+            AcquireTokenSilentParameters acquireTokenSilentParameters);
+
         /// <summary>
         /// If device auth is required but the broker is not enabled, AAD will
         /// signal this by returning an url pointing to the broker app that needs to be installed.
@@ -31,7 +35,7 @@ namespace Microsoft.Identity.Client.Internal.Broker
         #region Silent Flow Methods
         Task<IEnumerable<IAccount>> GetAccountsAsync(string clientID, string redirectUri);
 
-        Task RemoveAccountAsync(string clientID, IAccount account);
+        Task RemoveAccountAsync(IApplicationConfiguration appConfig, IAccount account);
         #endregion Silent Flow Methods
     }
 }

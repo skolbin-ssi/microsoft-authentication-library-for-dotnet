@@ -16,6 +16,7 @@ using Microsoft.Identity.Json.Linq;
 using Microsoft.Identity.Client.Internal.Requests;
 using Microsoft.Identity.Client.ApiConfig.Parameters;
 using Microsoft.Identity.Client.Http;
+using System.Net;
 
 namespace Microsoft.Identity.Client.Platforms.Android.Broker
 {
@@ -81,7 +82,7 @@ namespace Microsoft.Identity.Client.Platforms.Android.Broker
             }
 
             using (_logger.LogBlockDuration("waiting for broker response"))
-            {                
+            {
                 await s_readyForResponse.WaitAsync().ConfigureAwait(false);
                 return s_androidBrokerTokenResponse;
             }
@@ -91,7 +92,6 @@ namespace Microsoft.Identity.Client.Platforms.Android.Broker
             AuthenticationRequestParameters authenticationRequestParameters,
             AcquireTokenSilentParameters acquireTokenSilentParameters)
         {
-
             BrokerRequest brokerRequest = BrokerRequest.FromSilentParameters(
                 authenticationRequestParameters, acquireTokenSilentParameters);
 
@@ -107,7 +107,7 @@ namespace Microsoft.Identity.Client.Platforms.Android.Broker
                 HandleBrokerOperationError(ex);
                 throw;
             }
-        }      
+        }
 
         private async Task AcquireTokenInteractiveViaBrokerAsync(BrokerRequest brokerRequest)
         {
@@ -223,9 +223,8 @@ namespace Microsoft.Identity.Client.Platforms.Android.Broker
                         }
 
                         var httpResponse = new HttpResponse();
-                        httpResponse.Body = errorResult[BrokerResponseConst.BrokerHttpBody];
-                        httpResponse.Headers = errorResult[BrokerResponseConst.BrokerHttpHeaders];
-                        httpResponse.StatusCode = errorResult[BrokerResponseConst.BrokerHttpStatusCode];
+                        //TODO: figure out how to get status code properly deserialized from JObject
+                        httpResponse.Body = errorResult[BrokerResponseConst.BrokerHttpBody]?.ToString();
 
                         s_androidBrokerTokenResponse = new MsalTokenResponse
                         {
@@ -280,7 +279,7 @@ namespace Microsoft.Identity.Client.Platforms.Android.Broker
             }
         }
 
-        public async Task RemoveAccountAsync(string clientID, IAccount account)
+        public async Task RemoveAccountAsync(IApplicationConfiguration applicationConfiguration, IAccount account)
         {
             using (_logger.LogMethodDuration())
             {
@@ -289,11 +288,11 @@ namespace Microsoft.Identity.Client.Platforms.Android.Broker
                     _logger.Warning("Android broker is either not installed or not reachable so no accounts will be removed.");
                     return;
                 }
-           
+
                 try
                 {
                     await _brokerHelper.InitiateBrokerHandshakeAsync(_parentActivity).ConfigureAwait(false);
-                    _brokerHelper.RemoveBrokerAccountInAccountManager(clientID, account);
+                    _brokerHelper.RemoveBrokerAccountInAccountManager(applicationConfiguration.ClientId, account);
                 }
                 catch (Exception ex)
                 {
@@ -306,11 +305,23 @@ namespace Microsoft.Identity.Client.Platforms.Android.Broker
 
         private void HandleBrokerOperationError(Exception ex)
         {
-            _logger.Error(ex.Message + MsalErrorMessage.AndroidBrokerCannotBeInvoked);
+            _logger.Error(ex.Message);
             if (ex is MsalException)
                 throw ex;
             else
                 throw new MsalClientException(MsalError.AndroidBrokerOperationFailed, ex.Message, ex);
+        }
+
+        /// <summary>
+        /// Android Broker does not support logging in a "default" user.
+        /// </summary>
+        public Task<MsalTokenResponse> AcquireTokenSilentDefaultUserAsync(AuthenticationRequestParameters authenticationRequestParameters, AcquireTokenSilentParameters acquireTokenSilentParameters)
+        {
+            throw new MsalUiRequiredException(
+                       MsalError.UserNullError,
+                       MsalErrorMessage.MsalUiRequiredMessage,
+                       null,
+                       UiRequiredExceptionClassification.AcquireTokenSilentFailed);
         }
     }
 }

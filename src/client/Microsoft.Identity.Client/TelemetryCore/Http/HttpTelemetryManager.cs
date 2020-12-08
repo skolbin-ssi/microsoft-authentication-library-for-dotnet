@@ -1,6 +1,7 @@
 ﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+using System;
 using System.Collections.Concurrent;
 using System.Text;
 using Microsoft.Identity.Client.TelemetryCore.Internal.Constants;
@@ -49,7 +50,7 @@ namespace Microsoft.Identity.Client.TelemetryCore.Http
         /// Csv expected format:
         ///      2|silent_successful_count|failed_requests|errors|platform_fields
         ///      failed_request is: api_id_1,correlation_id_1,api_id_2,correlation_id_2|error_1,error_2
-        ///      platform_fields: region_1,region_2
+        ///      platform_fields: region_1,region_source_1,region_2,region_source_2
         /// </summary>
         public string GetLastRequestHeader()
         {
@@ -60,14 +61,13 @@ namespace Microsoft.Identity.Client.TelemetryCore.Http
 
             foreach (var ev in _failedEvents)
             {
-                string errorCode = ev[MsalTelemetryBlobEventNames.ApiErrorCodeConstStrKey];
                 if (!firstFailure)
                     errors.Append(",");
 
-                errors.Append(ev.ApiErrorCode);
-
-                string correlationId = ev[MsalTelemetryBlobEventNames.MsalCorrelationIdConstStrKey];
-                string apiId = ev[MsalTelemetryBlobEventNames.ApiIdConstStrKey];
+                errors.Append(
+                    // error codes come from the server / broker and can sometimes be full blown sentences,
+                    // with punctuation that is illegal in an HTTP Header 
+                    HttpHeaderSantizer.SantizeHeader(ev.ApiErrorCode));
 
                 if (!firstFailure)
                     failedRequests.Append(",");
@@ -76,15 +76,13 @@ namespace Microsoft.Identity.Client.TelemetryCore.Http
                 failedRequests.Append(",");
                 failedRequests.Append(ev.CorrelationId);
 
-                if (ev.ContainsKey(MsalTelemetryBlobEventNames.RegionDiscovered))
-                {
-                    string region = ev[MsalTelemetryBlobEventNames.RegionDiscovered];
+                if (!firstFailure)
+                    platformFields.Append(",");
 
-                    if (!firstFailure)
-                        platformFields.Append(",");
-
-                    platformFields.Append(region);
-                }
+                ev.TryGetValue(MsalTelemetryBlobEventNames.RegionSource, out string regionSource);
+                platformFields.Append(ev.RegionDiscovered);
+                platformFields.Append(",");
+                platformFields.Append(regionSource);
 
                 firstFailure = false;
             }
@@ -108,7 +106,7 @@ namespace Microsoft.Identity.Client.TelemetryCore.Http
 
         /// <summary>
         /// Expected format: 2|api_id,force_refresh|platform_config
-        /// platform_config: region
+        /// platform_config: region,region_source,is_token_cache_serialized
         /// </summary>
         public string GetCurrentRequestHeader(ApiEvent eventInProgress)
         {
@@ -120,12 +118,19 @@ namespace Microsoft.Identity.Client.TelemetryCore.Http
             eventInProgress.TryGetValue(MsalTelemetryBlobEventNames.ApiIdConstStrKey, out string apiId);
             eventInProgress.TryGetValue(MsalTelemetryBlobEventNames.ForceRefreshId, out string forceRefresh);
             eventInProgress.TryGetValue(MsalTelemetryBlobEventNames.RegionDiscovered, out string regionDiscovered);
+            eventInProgress.TryGetValue(MsalTelemetryBlobEventNames.RegionSource, out string regionSource);
+            eventInProgress.TryGetValue(MsalTelemetryBlobEventNames.IsTokenCacheSerializedKey, out string isTokenCacheSerialized);
+
+            // Since regional fields will only be logged in case it is opted.
+            var regionalFields = new StringBuilder();
+            regionalFields.Append(regionDiscovered);
+            regionalFields.Append(",");
+            regionalFields.Append((regionSource));
 
             return $"{TelemetryConstants.HttpTelemetrySchemaVersion2}" +
                 $"|{apiId},{ConvertFromStringToBitwise(forceRefresh)}" +
-                $"|{regionDiscovered}";
+                $"|{regionalFields},{ConvertFromStringToBitwise(isTokenCacheSerialized)}";
         }
-
 
         private string ConvertFromStringToBitwise(string value)
         {
@@ -136,6 +141,5 @@ namespace Microsoft.Identity.Client.TelemetryCore.Http
 
             return TelemetryConstants.One;
         }
-
     }
 }

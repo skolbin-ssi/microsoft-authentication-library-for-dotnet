@@ -28,24 +28,20 @@ namespace Microsoft.Identity.Client
         /// </summary>
         public const string InteractionRequired = "interaction_required";
 
-#if !DESKTOP && !NET_CORE
-#pragma warning disable CS1574 // XML comment has cref attribute that could not be resolved
-#endif
         /// <summary>
         /// No token was found in the token cache.
         /// <para>Mitigation:</para> If your application is a <see cref="IPublicClientApplication"/> call <c>AcquireTokenInteractive</c> so
-        /// that the user of your application signs-in and accepts consent. If your application is a <see cref="T:ConfidentialClientApplication"/>.:
+        /// that the user of your application signs-in and accepts consent.
         /// <list type="bullet">
         /// <item>
-        /// If it's a Web App you should have previously called <see cref="IConfidentialClientApplication.AcquireTokenByAuthorizationCode(System.Collections.Generic.IEnumerable{string}, string)"/>
+        /// If it's a web app you should have previously called IConfidentialClientApplication.AcquireTokenByAuthorizationCode
         /// as described in https://aka.ms/msal-net-authorization-code. You need to make sure that you have requested the right scopes. For details
         /// See https://github.com/Azure-Samples/ms-identity-aspnetcore-webapp-tutorial
         /// </item>
-        /// <item>This error should not happen in Web APIs</item>
+        /// <item>This error should not happen in web APIs</item>
         /// </list>
         /// </summary>
         public const string NoTokensFoundError = "no_tokens_found";
-#pragma warning restore CS1574 // XML comment has cref attribute that could not be resolved
 
         /// <summary>
         /// This error code comes back from <see cref="IClientApplicationBase.AcquireTokenSilent(System.Collections.Generic.IEnumerable{string}, IAccount)"/> calls when a null user is
@@ -55,6 +51,15 @@ namespace Microsoft.Identity.Client
         /// Pass a different account, or otherwise call <see cref="IPublicClientApplication.AcquireTokenInteractive(System.Collections.Generic.IEnumerable{string})"/>
         /// </summary>
         public const string UserNullError = "user_null";
+
+
+        /// <summary>
+        /// This error code comes back from <see cref="IClientApplicationBase.AcquireTokenSilent(System.Collections.Generic.IEnumerable{string}, IAccount)"/> calls when the 
+        /// <see cref="PublicClientApplication.OperatingSystemAccount"/> user is passed as the <c>account</c> parameter. Only some brokers (WAM) can login the current user.
+        /// <para>Mitigation</para>
+        /// On Windows, use the broker via .WithBroker(true), use a different account, or otherwise call <see cref="IPublicClientApplication.AcquireTokenInteractive(System.Collections.Generic.IEnumerable{string})"/>
+        /// </summary>
+        public const string CurrentBrokerAccount = "current_broker_account";
 
         /// <summary>
         /// This error code denotes that no account was found having the given login hint.
@@ -101,13 +106,13 @@ namespace Microsoft.Identity.Client
         public const string ServiceNotAvailable = "service_not_available";
 
         /// <summary>
-        /// The Http Request to the STS timed out.
+        /// The HTTP Request to the STS timed out.
         /// <para>Mitigation</para> you can retry after a delay.
         /// </summary>
         public const string RequestTimeout = "request_timeout";
 
         /// <summary>
-        /// loginHint should be a Upn
+        /// loginHint should be a UPN
         /// <para>What happens?</para> An override of a token acquisition operation was called in <see cref="T:IPublicClientApplication"/> which
         /// takes a <c>loginHint</c> as a parameters, but this login hint was not using the UserPrincipalName (UPN) format, e.g. <c>john.doe@contoso.com</c>
         /// expected by the service
@@ -142,13 +147,13 @@ namespace Microsoft.Identity.Client
         public const string InvalidAuthorityType = "invalid_authority_type";
 
         /// <summary>
-        /// Unknown Error occured.
+        /// Unknown Error occurred.
         /// <para>Mitigation</para> None. You might want to inform the end user.
         /// </summary>
         public const string UnknownError = "unknown_error";
 
         /// <summary>
-        /// Unknown broker error occured.
+        /// Unknown broker error occurred.
         /// <para>Mitigation</para> None. You might want to inform the end user.
         /// </summary>
         public const string UnknownBrokerError = "unknown_broker_error";
@@ -270,7 +275,14 @@ namespace Microsoft.Identity.Client
         public const string UserRealmDiscoveryFailed = "user_realm_discovery_failed";
 
         /// <summary>
-        /// Federation Metadata Url is missing for federated user.
+        /// Resource Owner Password Credential (ROPC) grant attempted with an MSA (Microsoft personal) account.
+        /// ROPC does not support MSA accounts.
+        /// See https://aka.ms/msal-net-ropc for details.
+        /// </summary>
+        public const string RopcDoesNotSupportMsaAccounts = "ropc_not_supported_for_msa";
+
+        /// <summary>
+        /// Federation Metadata URL is missing for federated user.
         /// </summary>
         public const string MissingFederationMetadataUrl = "missing_federation_metadata_url";
 
@@ -448,14 +460,14 @@ namespace Microsoft.Identity.Client
         public const string HttpStatusCodeNotOk = "http_status_not_200";
 
         /// <summary>
-        /// Error code used when the <see cref="Extensibility.ICustomWebUi"/> has returned an uri, but it is invalid - it is either null or has no code.
-        /// Consider throwing an exception if you are unable to intercept the uri containing the code.
+        /// Error code used when the <see cref="Extensibility.ICustomWebUi"/> has returned a URI, but it is invalid - it is either null or has no code.
+        /// Consider throwing an exception if you are unable to intercept the URI containing the code.
         /// </summary>
         public const string CustomWebUiReturnedInvalidUri = "custom_webui_returned_invalid_uri";
 
         /// <summary>
-        /// Error code used when the CustomWebUI has returned an uri, but it does not match the Authority and AbsolutePath of
-        /// the configured redirect uri.
+        /// Error code used when the CustomWebUI has returned a URI, but it does not match the Authority and AbsolutePath of
+        /// the configured redirect URI.
         /// </summary>
         public const string CustomWebUiRedirectUriMismatch = "custom_webui_invalid_mismatch";
 
@@ -514,9 +526,6 @@ namespace Microsoft.Identity.Client
         /// </summary>
         public const string B2CAuthorityHostMismatch = "B2C_authority_host_mismatch";
 
-#if !DESKTOP && !NET_CORE
-#pragma warning disable CS1574 // XML comment has cref attribute that could not be resolved
-#endif
         /// <summary>
         /// Duplicate query parameter was found in extraQueryParameters.
         /// <para>What happens?</para> You have used <c>extraQueryParameter</c> of overrides
@@ -524,9 +533,7 @@ namespace Microsoft.Identity.Client
         /// URL (either because you had it in another way, or the library added it).
         /// <para>Mitigation [App Development]</para> RemoveAccount the duplicate parameter from the token acquisition override.
         /// </summary>
-        /// <seealso cref="ConfidentialClientApplication.GetAuthorizationRequestUrlAsync(System.Collections.Generic.IEnumerable{string}, string, string, string, System.Collections.Generic.IEnumerable{string}, string)"/>
         public const string DuplicateQueryParameterError = "duplicate_query_parameter";
-#pragma warning restore CS1574 // XML comment has cref attribute that could not be resolved
 
         /// <summary>
         /// The request could not be performed because of a failure in the UI flow.
@@ -589,16 +596,16 @@ namespace Microsoft.Identity.Client
         public const string InvalidAuthorizationUri = "invalid_authorization_uri";
 
         /// <summary>
-        /// <para>What happens?</para>The current redirect Url is not a loopback Url.
-        /// <para>Mitigation</para> To use the OS browser, a loopback url, with or without a port, must be configured both during app registration and when initializing the IPublicClientApplication object. See https://aka.ms/msal-net-os-browser for details.
+        /// <para>What happens?</para>The current redirect URL is not a loopback URL.
+        /// <para>Mitigation</para> To use the OS browser, a loopback URL, with or without a port, must be configured both during app registration and when initializing the IPublicClientApplication object. See https://aka.ms/msal-net-os-browser for details.
         /// </summary>
         public const string LoopbackRedirectUri = "loopback_redirect_uri";
 
         /// <summary>
         /// <para>What happens?</para>MSAL has intercepted a Uri possibly containing an authorization code, but it does not match 
-        /// the configured redirect url.
+        /// the configured redirect URL.
         /// <para>Mitigation</para>If you are using an ICustomWebUi implementation, make sure the
-        /// redirect url matches the url containing the auth code. If you are not using an ICustomWebUI,
+        /// redirect URL matches the URL containing the auth code. If you are not using an ICustomWebUI,
         /// this could be a man-in-the middle attack.
         /// </summary>
         public const string LoopbackResponseUriMismatch = "loopback_response_uri_mismatch";
@@ -709,19 +716,19 @@ namespace Microsoft.Identity.Client
 
         /// <summary>
         /// <para>What happens?</para>You haven't set a client ID.
-        /// <para>Mitigation</para>Use the application ID (a Guid) from the application portal as client ID in this SDK
+        /// <para>Mitigation</para>Use the application ID (a GUID) from the application portal as client ID in this SDK
         /// </summary>
         public const string NoClientId = "no_client_id";
 
         /// <summary>
         /// <para>What happens?</para>You've specified a client ID that is not a <see cref="Guid"/>
-        /// <para>Mitigation</para>Use the application ID (a Guid) from the application portal as client ID in this SDK
+        /// <para>Mitigation</para>Use the application ID (a GUID) from the application portal as client ID in this SDK
         /// </summary>
         public const string ClientIdMustBeAGuid = "client_id_must_be_guid";
 
         /// <summary>
-        /// <para>What happens?</para>You have configured both a telememtry callback and a telemetry config. 
-        /// <para>Mitigation</para>Only one telememtry mechanism can be configured.
+        /// <para>What happens?</para>You have configured both a telemetry callback and a telemetry config. 
+        /// <para>Mitigation</para>Only one telemetry mechanism can be configured.
         /// </summary>
         public const string TelemetryConfigOrTelemetryCallback = "telemetry_config_or_telemetry_callback";
 
@@ -849,7 +856,7 @@ namespace Microsoft.Identity.Client
         public const string MissingEntitlements = "missing_entitlements";
 
         /// <summary>
-        /// Xamarin.iOS + broker specific. This error indidates that the UIViewController is null.
+        /// Xamarin.iOS + broker specific. This error indicates that the UIViewController is null.
         /// <para>Mitigation</para> In order to access the broker, you will need to pass in a UIViewController.
         /// <para>For more details</para> see https://aka.ms/msal-net-ios-broker
         /// </summary>
@@ -879,7 +886,7 @@ namespace Microsoft.Identity.Client
         public const string BrokerKeySaveFailed = "ios_broker_key_save_failed";
 
         /// <summary>
-        /// A broker key was generated but it was not retrived from the KeyChain. 
+        /// A broker key was generated but it was not retrieved from the KeyChain. 
         /// <para>Mitigation</para> Make sure the app has permissions to write to the keychain group 'com.microsoft.adalcache'.
         /// Capture and inspect the logs to see why the fetch operation failed.
         /// </summary>

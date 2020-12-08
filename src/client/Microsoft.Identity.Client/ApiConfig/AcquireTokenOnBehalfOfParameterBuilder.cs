@@ -10,12 +10,13 @@ using Microsoft.Identity.Client.TelemetryCore.Internal.Events;
 
 namespace Microsoft.Identity.Client
 {
-#if !ANDROID_BUILDTIME && !iOS_BUILDTIME && !WINDOWS_APP_BUILDTIME && !MAC_BUILDTIME && !MAC_BUILDTIME // Hide confidential client on mobile platforms
-
     /// <summary>
     /// Builder for AcquireTokenOnBehalfOf (OBO flow)
     /// See https://aka.ms/msal-net-on-behalf-of
     /// </summary>
+#if !SUPPORTS_CONFIDENTIAL_CLIENT
+    [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]  // hide confidential client on mobile
+#endif
     public sealed class AcquireTokenOnBehalfOfParameterBuilder :
         AbstractConfidentialClientAcquireTokenParameterBuilder<AcquireTokenOnBehalfOfParameterBuilder>
     {
@@ -52,7 +53,7 @@ namespace Microsoft.Identity.Client
         /// this method will send the public certificate to Azure AD along with the token request,
         /// so that Azure AD can use it to validate the subject name based on a trusted issuer policy.
         /// This saves the application admin from the need to explicitly manage the certificate rollover
-        /// (either via portal or powershell/CLI operation). For details see https://aka.ms/msal-net-sni
+        /// (either via portal or PowerShell/CLI operation). For details see https://aka.ms/msal-net-sni
         /// </summary>
         /// <param name="withSendX5C"><c>true</c> if the x5c should be sent. Otherwise <c>false</c>.
         /// The default is <c>false</c></param>
@@ -61,6 +62,26 @@ namespace Microsoft.Identity.Client
         {
             CommonParameters.AddApiTelemetryFeature(ApiTelemetryFeature.WithSendX5C, withSendX5C);
             Parameters.SendX5C = withSendX5C;
+            return this;
+        }
+
+        /// <summary>
+        /// Specifies if the client application should force refreshing the
+        /// token from the user token cache. By default the token is taken from the
+        /// the user token cache (forceRefresh=false)
+        /// </summary>
+        /// <param name="forceRefresh">If <c>true</c>, ignore any access token in the user token cache
+        /// and attempt to acquire new access token using the refresh token for the account
+        /// if one is available. This can be useful in the case when the application developer wants to make
+        /// sure that conditional access policies are applied immediately, rather than after the expiration of the access token.
+        /// The default is <c>false</c></param>
+        /// <returns>The builder to chain the .With methods</returns>
+        /// <remarks>Avoid unnecessarily setting <paramref name="forceRefresh"/> to <c>true</c> true in order to
+        /// avoid negatively affecting the performance of your application</remarks>
+        public AcquireTokenOnBehalfOfParameterBuilder WithForceRefresh(bool forceRefresh)
+        {
+            CommonParameters.AddApiTelemetryFeature(ApiTelemetryFeature.WithForceRefresh, forceRefresh);
+            Parameters.ForceRefresh = forceRefresh;
             return this;
         }
 
@@ -76,5 +97,4 @@ namespace Microsoft.Identity.Client
             return ApiEvent.ApiIds.AcquireTokenOnBehalfOf;
         }
     }
-#endif
 }

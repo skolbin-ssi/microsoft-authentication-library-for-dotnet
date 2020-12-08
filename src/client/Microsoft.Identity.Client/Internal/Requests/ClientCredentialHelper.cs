@@ -12,11 +12,9 @@ namespace Microsoft.Identity.Client.Internal.Requests
 {
     internal static class ClientCredentialHelper
     {
-#if !ANDROID_BUILDTIME && !iOS_BUILDTIME && !WINDOWS_APP_BUILDTIME && !MAC_BUILDTIME // Hide confidential client on mobile platforms
         /// <summary>
         ///     Determines whether or not the cached client assertion can be used again for the next authentication request by
-        ///     checking it's
-        ///     values against incoming request parameters.
+        ///     checking its values against incoming request parameters.
         /// </summary>
         /// <returns>Returns true if the previously cached client assertion is valid</returns>
         public static bool ValidateClientAssertion(ClientCredentialWrapper clientCredential, string audience, bool sendX5C)
@@ -102,6 +100,5 @@ namespace Microsoft.Identity.Client.Internal.Requests
             }
             return parameters;
         }
-#endif
     }
 }

@@ -14,10 +14,10 @@ using Microsoft.Identity.Client.TelemetryCore.Internal.Events;
 namespace Microsoft.Identity.Client.Cache
 {
     /// <summary>
-    /// MSAL should only interact with the cache though this object. It is reponsible for firing cache notifications.
+    /// MSAL should only interact with the cache though this object. It is responsible for firing cache notifications.
     /// Flows should only perform (at most) 2 cache accesses: one to read data and one to write tokens. Reading data multiple times 
-    /// (e.g. read all ATs, read all RTs) should not refresh the cache from disk because of perf impact.
-    /// Write operations are still the responsability of TokenCache.
+    /// (e.g. read all ATs, read all RTs) should not refresh the cache from disk because of performance impact.
+    /// Write operations are still the responsibility of TokenCache.
     /// </summary>
     internal class CacheSessionManager : ICacheSessionManager
     {
@@ -84,57 +84,64 @@ namespace Microsoft.Identity.Client.Cache
 
         #endregion
 
+        /// <remarks>
+        /// Possibly refreshes the internal cache by calling OnBeforeAccessAsync and OnAfterAccessAsync delegates.
+        /// </remarks>
         private async Task RefreshCacheForReadOperationsAsync(CacheEvent.TokenTypes cacheEventType)
         {
-            if (!_cacheRefreshedForRead)
+            if (TokenCacheInternal.IsTokenCacheSerialized())
             {
-                string telemetryId = _requestParams.RequestContext.CorrelationId.AsMatsCorrelationId();
-                var cacheEvent = new CacheEvent(CacheEvent.TokenCacheLookup, telemetryId)
+                if (!_cacheRefreshedForRead)
                 {
-                    TokenType = cacheEventType
-                };
-
-                await TokenCacheInternal.Semaphore.WaitAsync().ConfigureAwait(false);
-
-                try
-                {
-                    if (!_cacheRefreshedForRead) // double check locking
+                    string telemetryId = _requestParams.RequestContext.CorrelationId.AsMatsCorrelationId();
+                    var cacheEvent = new CacheEvent(CacheEvent.TokenCacheLookup, telemetryId)
                     {
-                        using (_requestParams.RequestContext.CreateTelemetryHelper(cacheEvent))
-                        {
-                            string key = SuggestedWebCacheKeyFactory.GetKeyFromRequest(_requestParams);
-                            try
-                            {
-                                var args = new TokenCacheNotificationArgs(
-                                   TokenCacheInternal,
-                                   _requestParams.ClientId,
-                                   _requestParams.Account,
-                                   hasStateChanged: false,
-                                   TokenCacheInternal.IsApplicationCache,
-                                   hasTokens: TokenCacheInternal.HasTokensNoLocks(),
-                                   suggestedCacheKey: key);
-                                await TokenCacheInternal.OnBeforeAccessAsync(args).ConfigureAwait(false);
-                            }
-                            finally
-                            {
-                                var args = new TokenCacheNotificationArgs(
-                                   TokenCacheInternal,
-                                   _requestParams.ClientId,
-                                   _requestParams.Account,
-                                   hasStateChanged: false,
-                                   TokenCacheInternal.IsApplicationCache,
-                                   hasTokens: TokenCacheInternal.HasTokensNoLocks(),
-                                   suggestedCacheKey: key);
-                                await TokenCacheInternal.OnAfterAccessAsync(args).ConfigureAwait(false);
-                            }
+                        TokenType = cacheEventType
+                    };
 
-                            _cacheRefreshedForRead = true;
+                    await TokenCacheInternal.Semaphore.WaitAsync().ConfigureAwait(false);
+
+                    try
+                    {
+                        if (!_cacheRefreshedForRead) // double check locking
+                        {
+                            using (_requestParams.RequestContext.CreateTelemetryHelper(cacheEvent))
+                            {
+                                string key = SuggestedWebCacheKeyFactory.GetKeyFromRequest(_requestParams);
+
+                                try
+                                {
+                                    var args = new TokenCacheNotificationArgs(
+                                       TokenCacheInternal,
+                                       _requestParams.ClientId,
+                                       _requestParams.Account,
+                                       hasStateChanged: false,
+                                       TokenCacheInternal.IsApplicationCache,
+                                       hasTokens: TokenCacheInternal.HasTokensNoLocks(),
+                                       suggestedCacheKey: key);
+                                    await TokenCacheInternal.OnBeforeAccessAsync(args).ConfigureAwait(false);
+                                }
+                                finally
+                                {
+                                    var args = new TokenCacheNotificationArgs(
+                                        TokenCacheInternal,
+                                       _requestParams.ClientId,
+                                       _requestParams.Account,
+                                       hasStateChanged: false,
+                                       TokenCacheInternal.IsApplicationCache,
+                                       hasTokens: TokenCacheInternal.HasTokensNoLocks(),
+                                       suggestedCacheKey: key);
+                                    await TokenCacheInternal.OnAfterAccessAsync(args).ConfigureAwait(false);
+                                }
+
+                                _cacheRefreshedForRead = true;
+                            }
                         }
                     }
-                }
-                finally
-                {
-                    TokenCacheInternal.Semaphore.Release();
+                    finally
+                    {
+                        TokenCacheInternal.Semaphore.Release();
+                    }
                 }
             }
         }

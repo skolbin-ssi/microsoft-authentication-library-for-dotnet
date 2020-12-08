@@ -13,7 +13,7 @@ using UIKit;
 using Android.App;
 #endif
 
-#if DESKTOP
+#if DESKTOP || NET5_WIN
 using System.Windows.Forms;
 #endif
 
@@ -66,6 +66,7 @@ namespace Microsoft.Identity.Client
             return this;
         }
 
+
         /// <summary>
         /// Configures the public client application to use the recommended reply URI for the platform. 
         /// See https://aka.ms/msal-net-default-reply-uri.
@@ -87,7 +88,7 @@ namespace Microsoft.Identity.Client
         /// <term><c>http://localhost</c></term>
         /// </item>
         /// </list>
-        /// NOTE:There will be an update to the default rediect uri in the future to accomodate for system browsers on the 
+        /// NOTE:There will be an update to the default redirect URI in the future to accommodate for system browsers on the 
         /// .NET desktop and .NET Core platforms.
         /// </summary>
         /// <returns>A <see cref="PublicClientApplicationBuilder"/> from which to set more
@@ -98,16 +99,18 @@ namespace Microsoft.Identity.Client
             return this;
         }
 
-#if !ANDROID_BUILDTIME && !WINDOWS_APP_BUILDTIME && !NET_CORE_BUILDTIME && !DESKTOP_BUILDTIME && !MAC_BUILDTIME
         /// <summary>
         /// You can specify a Keychain Access Group to use for persisting the token cache across multiple applications.
-        /// This enables you to share the token cache between several applications having the same keychain access group.
+        /// This enables you to share the token cache between several applications having the same Keychain access group.
         /// Sharing the token cache allows single sign-on between all of the applications that use the same Keychain access Group.
         /// See https://aka.ms/msal-net-ios-keychain-security-group for more information.
         /// </summary>
         /// <param name="keychainSecurityGroup"></param>
         /// <returns>A <see cref="PublicClientApplicationBuilder"/> from which to set more
         /// parameters, and to create a public client application instance</returns>
+#if !iOS
+        [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)] 
+#endif
         public PublicClientApplicationBuilder WithIosKeychainSecurityGroup(string keychainSecurityGroup)
         {
 #if iOS
@@ -116,9 +119,6 @@ namespace Microsoft.Identity.Client
             return this;
         }
 
-#endif //!ANDROID_BUILDTIME && !WINDOWS_APP_BUILDTIME && !NET_CORE_BUILDTIME && !DESKTOP_BUILDTIME && !MAC_BUILDTIME
-
-#if !NET_CORE_BUILDTIME && !DESKTOP_BUILDTIME && !MAC_BUILDTIME
         /// <summary>
         /// On Android and iOS, brokers enable Single-Sign-On, device identification,
         /// and application identification verification. To enable one of these features,
@@ -128,9 +128,12 @@ namespace Microsoft.Identity.Client
         /// <param name="enableBroker">Determines whether or not to use broker with the default set to true.</param>
         /// <returns>A <see cref="PublicClientApplicationBuilder"/> from which to set more
         /// parameters, and to create a public client application instance</returns>
+#if !SUPPORTS_BROKER
+        [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]  // hide confidential client on mobile
+#endif
         public PublicClientApplicationBuilder WithBroker(bool enableBroker = true)
         {
-#if DESKTOP || NET_CORE || WINDOWS_APP 
+#if DESKTOP || WINDOWS_APP
             if (!Config.ExperimentalFeaturesEnabled)
             {
                 throw new MsalClientException(
@@ -143,14 +146,11 @@ namespace Microsoft.Identity.Client
             return this;
         }
 
-
-#endif // !NET_CORE_BUILDTIME && !MAC_BUILDTIME
-
 #if WINDOWS_APP
         /// <summary>
-        /// Flag to enable authentication with the user currently logged-in in Windows.
+        /// Flag to enable authentication with the user currently signed-in on Windows.
         /// </summary>
-        /// <param name="useCorporateNetwork">When set to true, the application will try to connect to the corporate network using windows integrated authentication.</param>
+        /// <param name="useCorporateNetwork">When set to true, the application will try to connect to the corporate network using Windows Integrated Authentication.</param>
         /// <returns>A <see cref="PublicClientApplicationBuilder"/> from which to set more
         /// parameters, and to create a public client application instance</returns>
         public PublicClientApplicationBuilder WithUseCorporateNetwork(bool useCorporateNetwork)
@@ -160,7 +160,6 @@ namespace Microsoft.Identity.Client
         }
 #endif
 
-#if RUNTIME || NETSTANDARD_BUILDTIME
         /// <summary>
         ///  Sets a reference to the ViewController (if using Xamarin.iOS), Activity (if using Xamarin.Android)
         ///  IWin32Window or IntPtr (if using .Net Framework). Used for invoking the browser.
@@ -171,11 +170,14 @@ namespace Microsoft.Identity.Client
         /// </remarks>
         /// <param name="parentActivityOrWindowFunc">The parent as an object, so that it can be used from shared NetStandard assemblies</param>
         /// <returns>The builder to chain the .With methods</returns>
+        /// 
+#if !NETSTANDARD
+        [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)] // hide everywhere but NetStandard
+#endif
         public PublicClientApplicationBuilder WithParentActivityOrWindow(Func<object> parentActivityOrWindowFunc)
         {
             return WithParentFunc(parentActivityOrWindowFunc);
         }
-#endif
 
         private PublicClientApplicationBuilder WithParentFunc(Func<object> parentFunc)
         {
@@ -220,7 +222,7 @@ namespace Microsoft.Identity.Client
         }
 #endif
 
-#if DESKTOP
+#if DESKTOP || NET5_WIN
         /// <summary>
         /// Sets a reference to the current IWin32Window that triggers the browser to be shown.
         /// Used to center the browser that pop-up onto this window.

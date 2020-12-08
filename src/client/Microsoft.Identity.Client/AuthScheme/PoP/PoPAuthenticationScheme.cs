@@ -18,11 +18,10 @@ using Microsoft.Identity.Json.Linq;
 
 namespace Microsoft.Identity.Client.AuthScheme.PoP
 {
-#if !ANDROID && !iOS
     internal class PoPAuthenticationScheme : IAuthenticationScheme
     {
         private static readonly DateTime s_jwtBaselineTime = new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc);
-        private readonly PopAuthenticationConfiguration _popAuthenticationConfiguration;
+        private readonly PoPAuthenticationConfiguration _popAuthenticationConfiguration;
 
         /// <summary>
         /// Creates POP tokens, i.e. tokens that are bound to an HTTP request and are digitally signed.
@@ -31,7 +30,7 @@ namespace Microsoft.Identity.Client.AuthScheme.PoP
         /// Currently the signing credential algorithm is hard-coded to RSA with SHA256. Extensibility should be done
         /// by integrating Wilson's SigningCredentials
         /// </remarks>
-        public PoPAuthenticationScheme(PopAuthenticationConfiguration popAuthenticationConfiguration, IServiceBundle serviceBundle)
+        public PoPAuthenticationScheme(PoPAuthenticationConfiguration popAuthenticationConfiguration, IServiceBundle serviceBundle)
         {
             if (serviceBundle == null)
             {
@@ -139,5 +138,4 @@ namespace Microsoft.Identity.Client.AuthScheme.PoP
             return sb.ToString();
         }
     }
-#endif
 }

@@ -12,11 +12,11 @@ namespace Microsoft.Identity.Client
 #pragma warning disable CS1587 // XML comment is not placed on a valid language element
     /// <summary>
     /// Type containing an assertion representing a user's credentials. This type is used in the
-    /// On-Behalf-Of flow in confidential client applications, enabling a Web API to request a token
-    /// for another downsteam API in the name of the user whose credentials are held by this <c>UserAssertion</c>
+    /// On-Behalf-Of flow in confidential client applications, enabling a web API to request a token
+    /// for another downstream API in the name of the user whose credentials are held by this <c>UserAssertion</c>
     /// See https://aka.ms/msal-net-on-behalf-of
     /// </summary>
-#if DESKTOP || NET_CORE || NETSTANDARD1_3
+#if SUPPORTS_CONFIDENTIAL_CLIENT
     /// <seealso cref="IConfidentialClientApplication.AcquireTokenOnBehalfOf(System.Collections.Generic.IEnumerable{string}, UserAssertion)"/>
 #endif
     public sealed class UserAssertion

@@ -8,11 +8,12 @@ using Microsoft.Identity.Client.ApiConfig;
 
 namespace Microsoft.Identity.Client
 {
-#if !ANDROID_BUILDTIME && !iOS_BUILDTIME && !WINDOWS_APP_BUILDTIME && !MAC_BUILDTIME // Hide confidential client on mobile platforms
-
     /// <summary>
-    /// Component to be used with confidential client applications like Web Apps/API.
+    /// Component to be used with confidential client applications like web apps/API.
     /// </summary>
+#if !SUPPORTS_CONFIDENTIAL_CLIENT
+        [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]  // hide confidential client on mobile
+#endif
     public partial interface IConfidentialClientApplication : IClientApplicationBase
     {
         /// <Summary>
@@ -28,7 +29,7 @@ namespace Microsoft.Identity.Client
         /// [V3 API] Acquires a security token from the authority configured in the app using the authorization code
         /// previously received from the STS.
         /// It uses the OAuth 2.0 authorization code flow (See https://aka.ms/msal-net-authorization-code).
-        /// It's usually used in Web Apps (for instance ASP.NET / ASP.NET Core Web apps) which sign-in users,
+        /// It's usually used in web apps (for instance ASP.NET / ASP.NET Core web apps) which sign-in users,
         /// and can request an authorization code.
         /// This method does not lookup the token cache, but stores the result in it, so it can be looked up
         /// using other methods such as <see cref="IClientApplicationBase.AcquireTokenSilent(IEnumerable{string}, IAccount)"/>.
@@ -91,5 +92,4 @@ namespace Microsoft.Identity.Client
         /// </remarks>
         GetAuthorizationRequestUrlParameterBuilder GetAuthorizationRequestUrl(IEnumerable<string> scopes);
     }
-#endif
 }

@@ -20,13 +20,19 @@ namespace Microsoft.Identity.Client
     /// It can however respond with a 200 OK message or a 302 Redirect, which can be configured here.
     /// For more details see https://aka.ms/msal-net-os-browser
     /// </summary>
-#if NET_CORE || NETSTANDARD || DESKTOP || RUNTIME
-    public
-#else
-    internal
+#if !SUPPORTS_OS_SYSTEM_BROWSER
+    [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
 #endif
-    class SystemWebViewOptions
+    public class SystemWebViewOptions
     {
+        /// <summary>
+        /// Constructor
+        /// </summary>
+        public SystemWebViewOptions()
+        {
+            ValidatePlatformAvailability();
+        }
+
         /// <summary>
         /// When the user finishes authenticating, MSAL will respond with a 200 OK message,
         /// which the browser will show to the user. 
@@ -73,11 +79,20 @@ namespace Microsoft.Identity.Client
                "BrowserRedirectError? " + (BrowserRedirectError != null));
         }
 
-#if NET_CORE || DESKTOP || NETSTANDARD
+        internal static void ValidatePlatformAvailability()
+        {
+#if !SUPPORTS_OS_SYSTEM_BROWSER
+            throw new PlatformNotSupportedException(
+                "WithSystemWebViewOptions API is only supported on .NET Classic and .NET Core. " +
+                "No options are available on other platforms.");
+#endif
+        }
+
+#if SUPPORTS_OS_SYSTEM_BROWSER
 
         /// <summary>
-        /// Use Microsoft Edge to navigate to the given uri. On non-windows platforms it uses 
-        /// whatever browser is the default
+        /// Use Microsoft Edge to navigate to the given URI. On non-windows platforms it uses 
+        /// whatever browser is the default.
         /// </summary>
         public static async Task OpenWithEdgeBrowserAsync(Uri uri)
         {
@@ -110,7 +125,7 @@ namespace Microsoft.Identity.Client
 
 
         /// <summary>
-        /// Use Microsoft Edge Chromium to navigate to the given uri. Requires the browser to be installed.
+        /// Use Microsoft Edge Chromium to navigate to the given URI. Requires the browser to be installed.
         /// On Linux, uses the default system browser instead, as Edge is not available.
         /// </summary>
         public static async Task OpenWithChromeEdgeBrowserAsync(Uri uri)

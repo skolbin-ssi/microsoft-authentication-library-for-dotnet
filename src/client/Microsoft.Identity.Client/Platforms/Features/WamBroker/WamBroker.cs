@@ -19,14 +19,12 @@ using Windows.Foundation.Metadata;
 using Windows.Security.Authentication.Web.Core;
 using Windows.Security.Credentials;
 
-#if DESKTOP || NET_CORE
+#if DESKTOP || NET5_WIN
 using Microsoft.Identity.Client.Platforms.Features.Windows;
 using System.Runtime.InteropServices;
-#endif
-
-#if DESKTOP
 using System.Windows.Forms;
 #endif
+
 
 namespace Microsoft.Identity.Client.Platforms.Features.WamBroker
 {
@@ -243,7 +241,7 @@ namespace Microsoft.Identity.Client.Platforms.Features.WamBroker
                 webTokenRequest = await wamPlugin.CreateWebTokenRequestAsync(
                      accountProvider,
                      authenticationRequestParameters,
-                     isForceLoginPrompt: true,
+                     isForceLoginPrompt: false,
                      isInteractive: true,
                      isAccountInWam: false)
                     .ConfigureAwait(true);
@@ -280,7 +278,7 @@ namespace Microsoft.Identity.Client.Platforms.Features.WamBroker
 #if WINDOWS_APP
             // On UWP there is no need for a window handle
             return IntPtr.Zero;
-#elif DESKTOP
+#else
 
             if (uiParent?.OwnerWindow is IntPtr ptr)
             {
@@ -295,10 +293,8 @@ namespace Microsoft.Identity.Client.Platforms.Features.WamBroker
             }
 
             return WindowsNativeMethods.GetForegroundWindow();
-
-#elif NET_CORE
-            return WindowsNativeMethods.GetForegroundWindow();
 #endif
+
         }
 
         private void AddPOPParamsToRequest(WebTokenRequest webTokenRequest)
@@ -525,7 +521,11 @@ namespace Microsoft.Identity.Client.Platforms.Features.WamBroker
                 var webAccount = await FindWamAccountForMsalAccountAsync(provider, wamPlugin, account, null, appConfig.ClientId)
                     .ConfigureAwait(false);
                 _logger.Info("Found a webAccount? " + (webAccount != null));
-                await webAccount.SignOutAsync();
+
+                if (webAccount != null)
+                {
+                    await webAccount.SignOutAsync();
+                }
             }
         }
 

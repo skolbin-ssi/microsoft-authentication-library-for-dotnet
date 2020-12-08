@@ -12,7 +12,7 @@ namespace Microsoft.Identity.Client
 #pragma warning disable CS1574 // XML comment has cref attribute that could not be resolved
     /// <summary>
     /// Class to be used to acquire tokens in desktop or mobile applications (Desktop / UWP / Xamarin.iOS / Xamarin.Android).
-    /// public client applications are not trusted to safely keep application secrets, and therefore they only access Web APIs in the name of the user only.
+    /// public client applications are not trusted to safely keep application secrets, and therefore they only access web APIs in the name of the user only.
     /// For details see https://aka.ms/msal-net-client-applications
     /// </summary>
     /// <remarks>
@@ -29,6 +29,30 @@ namespace Microsoft.Identity.Client
         {
         }
 
+        private const string CurrentOSAccountDescriptor = "current_os_account";
+        private static IAccount s_currentOsAccount = 
+            new Account(CurrentOSAccountDescriptor, null, null, null);
+
+        /// <summary>
+        /// Currently only the Windows broker is able to login with the current user, see https://aka.ms/msal-net-wam for details.
+        /// 
+        /// A special account value that indicates that the current Operating System account should be used 
+        /// to login the user. Not all operating systems and authentication flows support this concept, in which 
+        /// case calling `AcquireTokenSilent` will throw an <see cref="MsalUiRequiredException"/>. 
+        /// </summary>
+        public static IAccount OperatingSystemAccount
+        {
+            get
+            {
+                return s_currentOsAccount;
+            }
+        }
+
+        internal static bool IsOperatingSystemAccount(IAccount account)
+        {
+            return string.Equals(account?.HomeAccountId?.Identifier, CurrentOSAccountDescriptor, StringComparison.Ordinal);
+        }
+
         /// <summary>
         ///
         /// </summary>
@@ -39,7 +63,7 @@ namespace Microsoft.Identity.Client
 
         /// <summary>
         /// Interactive request to acquire a token for the specified scopes. The interactive window will be parented to the specified
-        /// window. The user will be required to select an account
+        /// window. The user will be required to select an account.
         /// </summary>
         /// <param name="scopes">Scopes requested to access a protected API</param>
         /// <returns>A builder enabling you to add optional parameters before executing the token request</returns>
@@ -47,6 +71,7 @@ namespace Microsoft.Identity.Client
         /// and will consent to scopes and do multi-factor authentication if such a policy was enabled in the Azure AD tenant.
         ///
         /// You can also pass optional parameters by calling:
+        ///         
         /// <see cref="AcquireTokenInteractiveParameterBuilder.WithPrompt(Prompt)"/> to specify the user experience
         /// when signing-in, <see cref="AcquireTokenInteractiveParameterBuilder.WithUseEmbeddedWebView(bool)"/> to specify
         /// if you want to use the embedded web browser or the system default browser,
@@ -72,7 +97,7 @@ namespace Microsoft.Identity.Client
 #pragma warning restore CS1574 // XML comment has cref attribute that could not be resolved
 
         /// <summary>
-        /// Acquires a security token on a device without a Web browser, by letting the user authenticate on
+        /// Acquires a security token on a device without a web browser, by letting the user authenticate on
         /// another device. This is done in two steps:
         /// <list type="bullet">
         /// <item><description>The method first acquires a device code from the authority and returns it to the caller via

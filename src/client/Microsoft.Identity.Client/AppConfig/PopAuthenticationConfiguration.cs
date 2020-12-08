@@ -8,14 +8,27 @@ using Microsoft.Identity.Client.AuthScheme.PoP;
 
 namespace Microsoft.Identity.Client.AppConfig
 {
-#if !ANDROID && !iOS
+
     /// <summary>
-    /// Configuration properties used to construct a proof of possesion request.
+    /// Configuration properties used to construct a proof of possession request.
     /// </summary>
-    public class PopAuthenticationConfiguration
+#if !SUPPORTS_CONFIDENTIAL_CLIENT
+    [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
+#endif
+    public class PoPAuthenticationConfiguration
     {
         /// <summary>
-        /// An HTTP uri to the protected resource which requires a PoP token. The PoP token will be cryptographically bound to the request.
+        /// Constructs the configuration properties used to construct a proof of possession request
+        /// </summary>
+        /// <param name="requestUri">An Uri to the protected resource which requires a PoP token. The PoP token will be cryptographically bound to the request uri</param>
+        public PoPAuthenticationConfiguration(Uri requestUri)
+        {
+            ConfidentialClientApplication.GuardMobileFrameworks();
+            RequestUri = requestUri ?? throw new ArgumentNullException(nameof(requestUri));
+        }
+
+        /// <summary>
+        /// An Uri to the protected resource which requires a PoP token. The PoP token will be cryptographically bound to the request uri (to the host and query parts of it)
         /// </summary>
         public Uri RequestUri { get; }
 
@@ -28,18 +41,8 @@ namespace Microsoft.Identity.Client.AppConfig
         /// An extensibility point that allows developers to define their own key management. 
         /// Leave <c>null</c> and MSAL will use a default implementation, which generates an RSA key pair in memory and refreshes it every 8 hours.
         /// Important note: if you want to change the key (e.g. rotate the key), you should create a new instance of this object,
-        /// as MSAL.NET will keep a thumbprint of keys in memory
+        /// as MSAL.NET will keep a thumbprint of keys in memory.
         /// </summary>
         public IPoPCryptoProvider PopCryptoProvider { get; set; }
-
-        /// <summary>
-        /// Constructs the configuration properties used to construct a proof of possesion request
-        /// </summary>
-        /// <param name="requestUri"></param>
-        public PopAuthenticationConfiguration(Uri requestUri)
-        {
-            RequestUri = requestUri ?? throw new ArgumentNullException(nameof(requestUri));
-        }
     }
-#endif
 }

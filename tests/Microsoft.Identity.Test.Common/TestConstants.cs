@@ -26,6 +26,7 @@ namespace Microsoft.Identity.Test.Unit
         }
 
         public const string ScopeStr = "r1/scope1 r1/scope2";
+        public const string ScopeStrFormat = "r{0}/scope1 r{0}/scope2";
         public static readonly string[] s_graphScopes = new[] { "user.read" };
         public const uint JwtToAadLifetimeInSeconds = 60 * 10; // Ten minutes
         public const string ClientCredentialAudience = "https://login.microsoftonline.com/72f988bf-86f1-41af-91ab-2d7cd011db47/v2.0";
@@ -120,6 +121,7 @@ namespace Microsoft.Identity.Test.Unit
         public const TokenSubjectType TokenSubjectTypeUser = 0;
         public const string TestMessage = "test message";
         public const string LoginHint = "loginHint";
+        public const string LoginHintParam = "login_hint";
 
         public const string LocalAccountId = "test_local_account_id";
         public const string GivenName = "Joe";
@@ -129,6 +131,8 @@ namespace Microsoft.Identity.Test.Unit
 
         public const string RegionName = "REGION_NAME";
         public const string Region = "centralus";
+
+        public const string UserAssertion = "fake_access_token";
 
         //This value is only for testing purposes. It is for a certificate that is not used for anything other than running tests
         public const string _defaultx5cValue = @"MIIDHzCCAgegAwIBAgIQM6NFYNBJ9rdOiK+C91ZzFDANBgkqhkiG9w0BAQsFADAgMR4wHAYDVQQDExVBQ1MyQ2xpZW50Q2VydGlmaWNhdGUwHhcNMTIwNTIyMj
@@ -149,7 +153,7 @@ m1t9gRT1mNeeluL4cZa6WyVXqXc6U2wfR5DY6GOMUubN5Nr1n8Czew8TPfab4OG37BuEMNmBpqoRrRgF
             }
         }
 
-        public const string Bearer = "bearer";
+        public const string Bearer = "Bearer";
 
         public static IDictionary<string, string> ExtraQueryParameters
         {

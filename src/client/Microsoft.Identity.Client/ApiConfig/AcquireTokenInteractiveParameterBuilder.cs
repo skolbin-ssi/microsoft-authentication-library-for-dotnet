@@ -19,7 +19,7 @@ using UIKit;
 using Android.App;
 #endif
 
-#if DESKTOP
+#if DESKTOP || NET5_WIN
 using System.Windows.Forms;
 #endif
 
@@ -68,13 +68,10 @@ namespace Microsoft.Identity.Client
 
         internal AcquireTokenInteractiveParameterBuilder WithParentActivityOrWindowFunc(Func<object> parentActivityOrWindowFunc)
         {
-#if RUNTIME || NETSTANDARD_BUILDTIME
-
             if (parentActivityOrWindowFunc != null)
             {
                 WithParentActivityOrWindow(parentActivityOrWindowFunc());
             }
-#endif 
 
             return this;
         }
@@ -90,7 +87,7 @@ namespace Microsoft.Identity.Client
         /// <returns>The builder to chain the .With methods</returns>
         public AcquireTokenInteractiveParameterBuilder WithUseEmbeddedWebView(bool useEmbeddedWebView)
         {
-#if NET_CORE || NETSTANDARD
+#if NET_CORE || NETSTANDARD || NET5_WIN
             if (useEmbeddedWebView)
             {
                 throw new MsalClientException(MsalError.WebviewUnavailable, "An embedded webview is not available on this platform. " +
@@ -114,21 +111,24 @@ namespace Microsoft.Identity.Client
             return this;
         }
 
-        // Default browser WebUI is not available on mobile (Android, iOS, UWP), but allow it at runtime
+        // Remark: Default browser WebUI is not available on mobile (Android, iOS, UWP), but allow it at runtime
         // to avoid MissingMethodException
-#if NET_CORE || NETSTANDARD || DESKTOP || RUNTIME
         /// <summary>
         /// Specifies options for using the system OS browser handle interactive authentication.
         /// </summary>
         /// <param name="options">Data object with options</param>
         /// <returns>The builder to chain the .With methods</returns>
+#if !SUPPORTS_OS_SYSTEM_BROWSER
+        [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)] // hide everywhere but NetStandard
+#endif
         public AcquireTokenInteractiveParameterBuilder WithSystemWebViewOptions(SystemWebViewOptions options)
         {
+            SystemWebViewOptions.ValidatePlatformAvailability();
+
             CommonParameters.AddApiTelemetryFeature(ApiTelemetryFeature.WithSystemBrowserOptions);
             Parameters.UiParent.SystemWebViewOptions = options;
             return this;
         }
-#endif
 
         /// <summary>
         /// Sets the <paramref name="loginHint"/>, in order to avoid select account
@@ -182,7 +182,7 @@ namespace Microsoft.Identity.Client
             return this;
         }
 
-        #region WithParentActivityOrWindow
+#region WithParentActivityOrWindow
 
         /*
          * .WithParentActivityOrWindow is platform specific but we need a solution for
@@ -191,7 +191,7 @@ namespace Microsoft.Identity.Client
          * since Activity, ViewController etc. do not exist in NetStandard.
          */
 
-#if RUNTIME || NETSTANDARD_BUILDTIME
+        
         /// <summary>
         ///  Sets a reference to the ViewController (if using Xamarin.iOS), Activity (if using Xamarin.Android)
         ///  IWin32Window or IntPtr (if using .Net Framework). Used for invoking the browser.
@@ -199,11 +199,15 @@ namespace Microsoft.Identity.Client
         /// <remarks>Mandatory only on Android. Can also be set via the PublicClientApplcation builder.</remarks>
         /// <param name="parent">The parent as an object, so that it can be used from shared NetStandard assemblies</param>
         /// <returns>The builder to chain the .With methods</returns>
+
+#if !NETSTANDARD
+        [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)] // hide everywhere but NetStandard
+#endif
         public AcquireTokenInteractiveParameterBuilder WithParentActivityOrWindow(object parent)
         {
             return WithParentObject(parent);
         }
-#endif
+
 
         private AcquireTokenInteractiveParameterBuilder WithParentObject(object parent)
         {
@@ -225,7 +229,7 @@ namespace Microsoft.Identity.Client
                 Parameters.UiParent.CallerWindow = nsWindow;
             }
 
-#elif DESKTOP
+#elif DESKTOP || NET5_WIN
             if (parent is IWin32Window win32Window)
             {
                 Parameters.UiParent.OwnerWindow = win32Window;
@@ -277,12 +281,13 @@ namespace Microsoft.Identity.Client
         }
 #endif
 
-#if DESKTOP
+#if DESKTOP || NET5_WIN
         /// <summary>
         /// Sets a reference to the current IWin32Window that triggers the browser to be shown.
         /// Used to center the browser that pop-up onto this window.
+        /// The center of the screen or the foreground app if a value is configured
         /// </summary>
-        /// <param name="window">The current window</param>
+        /// <param name="window">The current window as a IWin32Window</param>
         /// <returns>The builder to chain the .With methods</returns>
         [CLSCompliant(false)]
         public AcquireTokenInteractiveParameterBuilder WithParentActivityOrWindow(IWin32Window window)
@@ -298,17 +303,14 @@ namespace Microsoft.Identity.Client
         /// <summary>
         /// Sets a reference to the IntPtr to a window that triggers the browser to be shown.
         /// Used to center the browser that pop-up onto this window.
+        /// The center of the screen or the foreground app if a value is configured.
         /// </summary>
-        /// <param name="window">The current window</param>
+        /// <param name="window">The current window as IntPtr</param>
         /// <returns>The builder to chain the .With methods</returns>
+        /// <remarks></remarks>
         [CLSCompliant(false)]
         public AcquireTokenInteractiveParameterBuilder WithParentActivityOrWindow(IntPtr window)
         {
-            if (window == null)
-            {
-                throw new ArgumentNullException(nameof(window));
-            }
-
             return WithParentObject((object)window);
         }
 #endif
@@ -332,7 +334,7 @@ namespace Microsoft.Identity.Client
         }
 #endif
 
-        #endregion
+#endregion
 
         /// <inheritdoc />
         protected override void Validate()

@@ -21,6 +21,7 @@ using Microsoft.Win32;
 using Microsoft.Identity.Client.AuthScheme.PoP;
 using Microsoft.Identity.Client.Internal;
 using Microsoft.Identity.Client.Platforms.net45.Http;
+using Microsoft.Identity.Client.Internal.Broker;
 using Microsoft.Identity.Client.Platforms.Features.Windows;
 
 namespace Microsoft.Identity.Client.Platforms.net45
@@ -88,57 +89,6 @@ namespace Microsoft.Identity.Client.Platforms.net45
             }
 
             return sb.ToString();
-        }
-
-        public override Task<bool> IsUserLocalAsync(RequestContext requestContext)
-        {
-            var current = WindowsIdentity.GetCurrent();
-            if (current != null)
-            {
-                string prefix = WindowsIdentity.GetCurrent().Name.Split('\\')[0].ToUpperInvariant();
-                return Task.FromResult(
-                    prefix.Equals(Environment.MachineName.ToUpperInvariant(), StringComparison.OrdinalIgnoreCase));
-            }
-
-            return Task.FromResult(false);
-        }
-
-        public override bool IsDomainJoined()
-        {
-            if (!IsWindows)
-            {
-                return false;
-            }
-
-            bool returnValue = false;
-            try
-            {
-                int result = WindowsNativeMethods.NetGetJoinInformation(null, out var pDomain, out var status);
-                if (pDomain != IntPtr.Zero)
-                {
-                    WindowsNativeMethods.NetApiBufferFree(pDomain);
-                }
-
-                returnValue = result == WindowsNativeMethods.ErrorSuccess &&
-                              status == WindowsNativeMethods.NetJoinStatus.NetSetupDomainName;
-            }
-            catch (Exception ex)
-            {
-                Logger.WarningPii(ex);
-                // ignore the exception as the result is already set to false;
-            }
-
-            return returnValue;
-        }
-
-        public override string GetEnvironmentVariable(string variable)
-        {
-            if (string.IsNullOrWhiteSpace(variable))
-            {
-                throw new ArgumentNullException(nameof(variable));
-            }
-
-            return Environment.GetEnvironmentVariable(variable);
         }
 
         /// <inheritdoc />
@@ -317,6 +267,20 @@ namespace Microsoft.Identity.Client.Platforms.net45
         public override IMsalHttpClientFactory CreateDefaultHttpClientFactory()
         {
             return new NetDesktopHttpClientFactory();
+        }
+
+        public override IBroker CreateBroker(CoreUIParent uiParent)
+        {
+#if NET45
+            throw new PlatformNotSupportedException("Windows Authentication Manager (WAM) integration is not available on the current platform - it is only available on .NET 4.6.1+, .NET Core 3.0+ (Windows only) and UWP");
+#else // net461
+            return base.OverloadBrokerForTest ?? new Features.WamBroker.WamBroker(uiParent, Logger);           
+#endif
+        }
+
+        public override bool CanBrokerSupportSilentAuth()
+        {
+            return true;
         }
 
         public override bool BrokerSupportsWamAccounts => true;

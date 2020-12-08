@@ -8,19 +8,19 @@ using System.Security.Cryptography.X509Certificates;
 namespace Microsoft.Identity.Client
 {
     /// <summary>
-    /// Configuration properties used to build a public or confidential client application
+    /// Configuration properties used to build a public or confidential client application.
     /// </summary>
     public interface IAppConfig
     {
         /// <summary>
         /// Client ID (also known as App ID) of the application as registered in the
-        /// application registration portal (https://aka.ms/msal-net-register-app)
+        /// application registration portal (https://aka.ms/msal-net-register-app).
         /// </summary>
         string ClientId { get; }
 
         /// <summary>
         /// Flag telling if logging of Personally Identifiable Information (PII) is enabled/disabled for
-        /// the application. See https://aka.ms/msal-net-logging
+        /// the application. See https://aka.ms/msal-net-logging.
         /// </summary>
         /// <seealso cref="IsDefaultPlatformLoggingEnabled"/>
         bool EnablePiiLogging { get; }
@@ -33,14 +33,14 @@ namespace Microsoft.Identity.Client
 
         /// <summary>
         /// Level of logging requested for the app.
-        /// See https://aka.ms/msal-net-logging
+        /// See https://aka.ms/msal-net-logging.
         /// </summary>
         LogLevel LogLevel { get; }
 
         /// <summary>
         /// Flag telling if logging to platform defaults is enabled/disabled for the app.
         /// In Desktop/UWP, Event Tracing is used. In iOS, NSLog is used.
-        /// In Android, logcat is used. See https://aka.ms/msal-net-logging
+        /// In Android, logcat is used. See https://aka.ms/msal-net-logging.
         /// </summary>
         bool IsDefaultPlatformLoggingEnabled { get; }
 
@@ -88,7 +88,7 @@ namespace Microsoft.Identity.Client
         /// <summary>
         /// Allows usage of features that are experimental and would otherwise throw a specific exception. 
         /// Use of experimental features in production is not recommended and are subject to be removed between builds. 
-        /// For details see https://aka.ms/msal-net-experimental-features
+        /// For details see https://aka.ms/msal-net-experimental-features.
         /// </summary>
         bool ExperimentalFeaturesEnabled { get; }
 
@@ -104,15 +104,19 @@ namespace Microsoft.Identity.Client
         IEnumerable<string> ClientCapabilities { get; }
 
 
-#if !ANDROID_BUILDTIME && !iOS_BUILDTIME && !WINDOWS_APP_BUILDTIME && !MAC_BUILDTIME // Hide confidential client on mobile platforms
         /// <summary>
         /// </summary>
+#if !SUPPORTS_CONFIDENTIAL_CLIENT
+        [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]  // hide confidential client on mobile
+#endif
         string ClientSecret { get; }
 
         /// <summary>
         /// </summary>
-        X509Certificate2 ClientCredentialCertificate { get; }
+#if !SUPPORTS_CONFIDENTIAL_CLIENT
+        [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]  // hide confidential client on mobile
 #endif
+        X509Certificate2 ClientCredentialCertificate { get; }
 
         /// <summary>
         /// </summary>
@@ -120,8 +124,8 @@ namespace Microsoft.Identity.Client
 
 #if WINDOWS_APP
         /// <summary>
-        /// Flag to enable authentication with the user currently logged-in in Windows.
-        /// When set to true, the application will try to connect to the corporate network using windows integrated authentication.
+        /// Flag to enable authentication with the user currently signed-in on Windows.
+        /// When set to true, the application will try to connect to the corporate network using Windows Integrated Authentication.
         /// </summary>
         bool UseCorporateNetwork { get; }
 #endif // WINDOWS_APP

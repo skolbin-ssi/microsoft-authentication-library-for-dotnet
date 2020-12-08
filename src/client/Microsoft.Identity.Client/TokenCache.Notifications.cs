@@ -29,6 +29,12 @@ namespace Microsoft.Identity.Client
         internal Func<TokenCacheNotificationArgs, Task> AsyncAfterAccess { get; set; }
         internal Func<TokenCacheNotificationArgs, Task> AsyncBeforeWrite { get; set; }
 
+        bool ITokenCacheInternal.IsTokenCacheSerialized()
+        {
+            return BeforeAccess != null || AfterAccess != null || BeforeWrite != null ||
+                AsyncBeforeAccess != null || AsyncAfterAccess != null || AsyncBeforeWrite != null;
+        }
+
         async Task ITokenCacheInternal.OnAfterAccessAsync(TokenCacheNotificationArgs args)
         {
             AfterAccess?.Invoke(args);
@@ -64,8 +70,6 @@ namespace Microsoft.Identity.Client
             }
         }
 
-#if !ANDROID_BUILDTIME && !iOS_BUILDTIME
-
         /// <summary>
         /// Sets a delegate to be notified before any library method accesses the cache. This gives an option to the
         /// delegate to deserialize a cache entry for the application and accounts specified in the <see cref="TokenCacheNotificationArgs"/>.
@@ -74,6 +78,9 @@ namespace Microsoft.Identity.Client
         /// <param name="beforeAccess">Delegate set in order to handle the cache deserialiation</param>
         /// <remarks>In the case where the delegate is used to deserialize the cache, it might
         /// want to call <see cref="Deserialize(byte[])"/></remarks>
+#if !SUPPORTS_CUSTOM_CACHE
+        [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
+#endif
         public void SetBeforeAccess(TokenCacheCallback beforeAccess)
         {
             GuardOnMobilePlatforms();
@@ -87,8 +94,11 @@ namespace Microsoft.Identity.Client
         /// </summary>
         /// <param name="afterAccess">Delegate set in order to handle the cache serialization in the case where the <see cref="TokenCache.HasStateChanged"/>
         /// member of the cache is <c>true</c></param>
-        /// <remarks>In the case where the delegate is used to serialize the cache entierely (not just a row), it might
+        /// <remarks>In the case where the delegate is used to serialize the cache entirely (not just a row), it might
         /// want to call <see cref="Serialize()"/></remarks>
+#if !SUPPORTS_CUSTOM_CACHE
+        [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
+#endif
         public void SetAfterAccess(TokenCacheCallback afterAccess)
         {
             GuardOnMobilePlatforms();
@@ -101,6 +111,9 @@ namespace Microsoft.Identity.Client
         /// registered with <see cref="SetAfterAccess(TokenCacheCallback)"/>
         /// </summary>
         /// <param name="beforeWrite">Delegate set in order to prepare the cache serialization</param>
+#if !SUPPORTS_CUSTOM_CACHE
+        [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
+#endif
         public void SetBeforeWrite(TokenCacheCallback beforeWrite)
         {
             GuardOnMobilePlatforms();
@@ -111,6 +124,9 @@ namespace Microsoft.Identity.Client
         /// 
         /// </summary>
         /// <param name="beforeAccess"></param>
+#if !SUPPORTS_CUSTOM_CACHE
+        [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
+#endif
         public void SetBeforeAccessAsync(Func<TokenCacheNotificationArgs, Task> beforeAccess)
         {
             GuardOnMobilePlatforms();
@@ -121,6 +137,9 @@ namespace Microsoft.Identity.Client
         /// 
         /// </summary>
         /// <param name="afterAccess"></param>
+#if !SUPPORTS_CUSTOM_CACHE
+        [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
+#endif
         public void SetAfterAccessAsync(Func<TokenCacheNotificationArgs, Task> afterAccess)
         {
             GuardOnMobilePlatforms();
@@ -131,16 +150,18 @@ namespace Microsoft.Identity.Client
         /// 
         /// </summary>
         /// <param name="beforeWrite"></param>
+#if !SUPPORTS_CUSTOM_CACHE
+        [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
+#endif
         public void SetBeforeWriteAsync(Func<TokenCacheNotificationArgs, Task> beforeWrite)
         {
             GuardOnMobilePlatforms();
             AsyncBeforeWrite = beforeWrite;
         }
-#endif
 
         private static void GuardOnMobilePlatforms()
         {
-#if ANDROID || iOS
+#if !SUPPORTS_CUSTOM_CACHE
         throw new PlatformNotSupportedException("You should not use these TokenCache methods on mobile platforms. " +
             "They are meant to allow applications to define their own storage strategy on .net desktop and non-mobile platforms such as .net core. " +
             "On mobile platforms, MSAL.NET implements a secure and performant storage mechanism. " +

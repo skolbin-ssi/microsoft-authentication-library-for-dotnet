@@ -9,6 +9,12 @@ using Windows.Foundation.Metadata;
 using Windows.Security.Authentication.Web.Core;
 using Windows.Security.Credentials;
 
+#if NET5_WIN
+using Microsoft.Identity.Client.Platforms.net5win;
+#elif DESKTOP
+using Microsoft.Identity.Client.Platforms.netdesktop;
+#endif
+
 namespace Microsoft.Identity.Client.Platforms.Features.WamBroker
 {
     internal class WamProxy : IWamProxy
@@ -97,7 +103,7 @@ namespace Microsoft.Identity.Client.Platforms.Features.WamBroker
                 if (findResult.Status != FindAllWebAccountsStatus.Success)
                 {
                     var error = findResult.ProviderError;
-                    _logger.Error($"[WAM Proxy] WebAuthenticationCoreManager.FindAllAccountsAsync failed " +
+                    _logger.Info($"[WAM Proxy] WebAuthenticationCoreManager.FindAllAccountsAsync failed " +
                         $" with error code {error.ErrorCode} error message {error.ErrorMessage} and status {findResult.Status}");
 
                     return Enumerable.Empty<WebAccount>().ToList();

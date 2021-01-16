@@ -52,9 +52,16 @@ namespace Microsoft.Identity.Client.Region
             s_region = null;
         }
 
-        public async Task<InstanceDiscoveryMetadataEntry> GetMetadataAsync(Uri authority, RequestContext requestContext)
+        public async Task<InstanceDiscoveryMetadataEntry> TryGetMetadataAsync(Uri authority, RequestContext requestContext)
         {
             Uri regionalizedAuthority = await BuildAuthorityWithRegionAsync(authority, requestContext).ConfigureAwait(false);
+
+            if (regionalizedAuthority == null && requestContext.ServiceBundle.Config.AuthorityInfo.FallbackToGlobal)
+            {
+                requestContext.Logger.Verbose($"[Region Discovery] Unable to determine region. Falling back to global.");
+                return null;
+            }
+
             InstanceDiscoveryMetadataEntry cachedEntry = _networkCacheMetadataProvider.GetMetadata(regionalizedAuthority.Host, requestContext.Logger);
 
             if (cachedEntry == null)
@@ -104,7 +111,9 @@ namespace Microsoft.Identity.Client.Region
 
                 if (response.StatusCode == HttpStatusCode.OK && !response.Body.IsNullOrEmpty())
                 {
-                    return response.Body;
+                    region = response.Body;
+                    LogTelemetryData(region, RegionSource.Imds, requestContext);
+                    return region;
                 }
 
                 requestContext.Logger.Info($"[Region discovery] Call to local IMDS failed with status code: {response.StatusCode} or an empty response.");
@@ -141,11 +150,8 @@ namespace Microsoft.Identity.Client.Region
         private void LogTelemetryData(string region, RegionSource regionSource, RequestContext requestContext)
         {
             requestContext.ApiEvent.RegionDiscovered = region;
-
-            if (requestContext.ApiEvent.RegionSource == 0)
-            {
-                requestContext.ApiEvent.RegionSource = (int) regionSource;
-            }
+            requestContext.ApiEvent.RegionSource = (int) regionSource;
+            requestContext.ApiEvent.UserProvidedRegion = requestContext.ServiceBundle.Config.AuthorityInfo.RegionToUse;
         }
 
         private async Task<string> GetImdsUriApiVersionAsync(ICoreLogger logger, Dictionary<string, string> headers, CancellationToken userCancellationToken)
@@ -204,11 +210,48 @@ namespace Microsoft.Identity.Client.Region
 
         private async Task<Uri> BuildAuthorityWithRegionAsync(Uri canonicalAuthority, RequestContext requestContext)
         {
+            string regionToUse = requestContext.ServiceBundle.Config.AuthorityInfo.RegionToUse;
+
             if (s_region.IsNullOrEmpty())
             {
-                s_region = await GetRegionAsync(requestContext).ConfigureAwait(false);
+                try
+                {
+                    s_region = await GetRegionAsync(requestContext).ConfigureAwait(false);
+
+                    if (!regionToUse.IsNullOrEmpty())
+                    {
+                        requestContext.ApiEvent.IsValidUserProvidedRegion = s_region.Equals(regionToUse);
+                        requestContext.Logger.Info($"The auto detected region is {s_region}.");
+                        requestContext.ApiEvent.FallbackToGlobal = false;
+
+                        if (s_region.Equals(regionToUse))
+                        {
+                            requestContext.Logger.Info("The region provided by the user is valid and equal to the auto detected region.");
+                        }
+                        else
+                        {
+                            requestContext.Logger.Info($"The region provided by the user is invalid. Region detected: {s_region} Region provided: {regionToUse}");
+                        }
+                    }
+                }
+                catch 
+                {
+                    if (regionToUse.IsNullOrEmpty())
+                    {
+                        throw;
+                    }
+
+                    s_region = regionToUse;
+                    requestContext.ApiEvent.FallbackToGlobal = false;
+                    requestContext.Logger.Info($"Region auto detection failed. Region provided by the user will be used: ${regionToUse}.");
+                    LogTelemetryData(s_region, RegionSource.UserProvided, requestContext);
+                }
             }
-            
+            else
+            {
+                requestContext.ApiEvent.FallbackToGlobal = false;
+            }
+
             var builder = new UriBuilder(canonicalAuthority);
 
             if (KnownMetadataProvider.IsPublicEnvironment(canonicalAuthority.Host))

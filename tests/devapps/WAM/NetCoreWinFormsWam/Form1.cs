@@ -13,6 +13,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using Microsoft.Identity.Client;
+using Microsoft.Identity.Client.MsaPassthrough;
 #if NETCOREAPP3_1
 using Microsoft.Identity.Client.Desktop;
 #endif
@@ -28,7 +29,8 @@ namespace NetCoreWinFormsWAM
         {
             new ClientEntry() { Id = "1d18b3b0-251b-4714-a02a-9956cec86c2d", Name = "1d18b3b0-251b-4714-a02a-9956cec86c2d (App in 49f)"},
             new ClientEntry() { Id = "872cd9fa-d31f-45e0-9eab-6e460a02d1f1", Name = "872cd9fa-d31f-45e0-9eab-6e460a02d1f1 (VS)"},
-            new ClientEntry() { Id = "655015be-5021-4afc-a683-a4223eb5d0e5", Name = "655015be-5021-4afc-a683-a4223eb5d0e5"}
+            new ClientEntry() { Id = "655015be-5021-4afc-a683-a4223eb5d0e5", Name = "655015be-5021-4afc-a683-a4223eb5d0e5"},
+            new ClientEntry() { Id = "c0186a6c-0bfc-4d83-9543-c2295b676f3b", Name = "MSA-PT (lab user and tenanted only)"}
         };
 
         private BindingList<AccountModel> s_accounts = new BindingList<AccountModel>();
@@ -69,12 +71,6 @@ namespace NetCoreWinFormsWAM
         {
             string clientId = GetClientId();
             bool msaPt = IsMsaPassthroughConfigured();
-            string extraQp = null;
-            if (msaPt)
-            {
-                // TODO: better config option, e.g. WithMsaPt(true), 
-                extraQp = "MSAL_MSA_PT=1"; // not an actual QP, MSAL will simply use this to provide good experience for MSA-PT
-            }
 
             var pca = PublicClientApplicationBuilder
                 .Create(clientId)
@@ -88,7 +84,7 @@ namespace NetCoreWinFormsWAM
                 // there is no need to construct the PCA with this redirect URI, 
                 // but WAM uses it. We could enforce it.
                 .WithRedirectUri($"ms-appx-web://microsoft.aad.brokerplugin/{clientId}")                
-                .WithExtraQueryParameters(extraQp)
+                .WithMsaPassthrough(msaPt)
                 .WithLogging((x, y, z) => Debug.WriteLine($"{x} {y}"), LogLevel.Verbose, true)
                 .Build();
 
@@ -164,12 +160,6 @@ namespace NetCoreWinFormsWAM
                 cbxAccount.SelectedItem != s_nullAccount)
             {
                 var acc = (cbxAccount.SelectedItem as AccountModel).Account;
-
-                // Today, apps using MSA-PT must manually target the correct tenant 
-                if (IsMsaPassthroughConfigured() && acc.HomeAccountId.TenantId == "9188040d-6c67-4c5b-b112-36a304b66dad")
-                {
-                    reqAuthority = "https://login.microsoftonline.com/f8cdef31-a31e-4b4a-93e4-5f571e91255a";
-                }
 
                 Log($"ATS with IAccount for {acc?.Username ?? acc.HomeAccountId.ToString() ?? "null"}");
                 return await pca.AcquireTokenSilent(GetScopes(), acc)
@@ -439,7 +429,11 @@ namespace NetCoreWinFormsWAM
                 authorityCbx.SelectedItem = "https://login.windows-ppe.net/organizations";
             }
 
-
+            if (clientEntry.Id == "c0186a6c-0bfc-4d83-9543-c2295b676f3b") // MSA-PT app
+            {
+                cbxScopes.SelectedItem = "api://51eb3dd6-d8b5-46f3-991d-b1d4870de7de/myaccess";
+                authorityCbx.SelectedItem = "https://login.microsoftonline.com/61411618-6f67-4fc5-ba6a-4a0fe32d4eec";
+            }
         }
 
         private async void btnExpire_Click(object sender, EventArgs e)
@@ -510,8 +504,9 @@ namespace NetCoreWinFormsWAM
             string env = string.IsNullOrEmpty(Account?.Environment) || Account.Environment == "login.microsoftonline.com" ?
                 "" :
                 $"({Account.Environment})";
+            string homeTenantId = account?.HomeAccountId?.TenantId?.Substring(0, 5);
 
-            DisplayValue = displayValue ?? $"{Account.Username} {env}";
+            DisplayValue = displayValue ?? $"{Account.Username} {env} {homeTenantId}";
         }
 
 
@@ -526,6 +521,5 @@ namespace NetCoreWinFormsWAM
 
         public AccountId HomeAccountId => null;
     }
-
 }
 

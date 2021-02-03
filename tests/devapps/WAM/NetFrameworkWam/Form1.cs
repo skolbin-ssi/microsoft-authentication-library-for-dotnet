@@ -12,6 +12,7 @@ using System.Threading.Tasks;
 using System.Windows.Forms;
 using Microsoft.Identity.Client;
 using Microsoft.Identity.Client.Desktop;
+using Microsoft.Identity.Client.MsaPassthrough;
 
 namespace NetDesktopWinForms
 {
@@ -24,7 +25,8 @@ namespace NetDesktopWinForms
         {
             new ClientEntry() { Id = "1d18b3b0-251b-4714-a02a-9956cec86c2d", Name = "1d18b3b0-251b-4714-a02a-9956cec86c2d (App in 49f)"},
             new ClientEntry() { Id = "872cd9fa-d31f-45e0-9eab-6e460a02d1f1", Name = "872cd9fa-d31f-45e0-9eab-6e460a02d1f1 (VS)"},
-            new ClientEntry() { Id = "655015be-5021-4afc-a683-a4223eb5d0e5", Name = "655015be-5021-4afc-a683-a4223eb5d0e5"}
+            new ClientEntry() { Id = "655015be-5021-4afc-a683-a4223eb5d0e5", Name = "655015be-5021-4afc-a683-a4223eb5d0e5"},
+            new ClientEntry() { Id = "c0186a6c-0bfc-4d83-9543-c2295b676f3b", Name = "MSA-PT (lab user and tenanted only)"}
         };
 
         private BindingList<AccountModel> s_accounts = new BindingList<AccountModel>();
@@ -65,22 +67,20 @@ namespace NetDesktopWinForms
         {
             string clientId = GetClientId();
             bool msaPt = IsMsaPassthroughConfigured();
-            string extraQp = null;
-            if (msaPt)
-            {
-                // TODO: better config option, e.g. WithMsaPt(true), 
-                extraQp = "MSAL_MSA_PT=1"; // not an actual QP, MSAL will simply use this to provide good experience for MSA-PT
-            }
 
             var pca = PublicClientApplicationBuilder
                 .Create(clientId)
                 .WithAuthority(this.authorityCbx.Text)
                 .WithExperimentalFeatures(true)
-                .WithWindowsBroker(true)
+#if NETCOREAPP3_1
+                .WithWindowsBroker(this.useBrokerChk.Checked)
+#else
+                .WithBroker(this.useBrokerChk.Checked)
+#endif
                 // there is no need to construct the PCA with this redirect URI, 
                 // but WAM uses it. We could enforce it.
                 .WithRedirectUri($"ms-appx-web://microsoft.aad.brokerplugin/{clientId}")
-                .WithExtraQueryParameters(extraQp)
+                .WithMsaPassthrough(msaPt)
                 .WithLogging((x, y, z) => Debug.WriteLine($"{x} {y}"), LogLevel.Verbose, true)
                 .Build();
 
@@ -152,22 +152,12 @@ namespace NetDesktopWinForms
                         .ConfigureAwait(false);
             }
 
-            if (cbxAccount.SelectedItem != null && 
+            if (cbxAccount.SelectedItem != null &&
                 cbxAccount.SelectedItem != s_nullAccount)
             {
                 var acc = (cbxAccount.SelectedItem as AccountModel).Account;
 
-                // Today, apps using MSA-PT must manually target the correct tenant 
-                //if (IsMsaPassthroughConfigured() && acc.HomeAccountId.TenantId == "9188040d-6c67-4c5b-b112-36a304b66dad")
-                //{
-                //    reqAuthority = "https://login.microsoftonline.com/f8cdef31-a31e-4b4a-93e4-5f571e91255a";
-                //}
-
-
                 Log($"ATS with IAccount for {acc?.Username ?? acc.HomeAccountId.ToString() ?? "null"}");
-
-                await MoveToBackgroundThreadIfConfiguredAsync().ConfigureAwait(true);
-
                 return await pca.AcquireTokenSilent(GetScopes(), acc)
                     .WithAuthority(reqAuthority)
                     .ExecuteAsync()
@@ -178,14 +168,6 @@ namespace NetDesktopWinForms
             return await pca.AcquireTokenSilent(GetScopes(), (IAccount)null)
                 .ExecuteAsync()
                 .ConfigureAwait(false);
-        }
-
-        private async Task MoveToBackgroundThreadIfConfiguredAsync()
-        {
-            if (cbxBackgroundThread.Enabled)
-            {
-                await Task.Delay(500).ConfigureAwait(false);
-            }
         }
 
         private string[] GetScopes()
@@ -204,9 +186,9 @@ namespace NetDesktopWinForms
             string clientId = null;
 
             clientIdCbx.Invoke((MethodInvoker)delegate
-                {
-                    clientId = (this.clientIdCbx.SelectedItem as ClientEntry)?.Id ?? this.clientIdCbx.Text;
-                });
+            {
+                clientId = (this.clientIdCbx.SelectedItem as ClientEntry)?.Id ?? this.clientIdCbx.Text;
+            });
 
             return clientId;
         }
@@ -260,7 +242,6 @@ namespace NetDesktopWinForms
 
         private async Task<AuthenticationResult> RunAtiAsync(IPublicClientApplication pca)
         {
-
             string loginHint = GetLoginHint();
             if (!string.IsNullOrEmpty(loginHint) && cbxAccount.SelectedIndex > 0)
             {
@@ -268,9 +249,10 @@ namespace NetDesktopWinForms
             }
 
             AuthenticationResult result = null;
-            
+            var scopes = GetScopes();
 
-            var builder = pca.AcquireTokenInteractive(GetScopes());
+            var builder = pca.AcquireTokenInteractive(scopes)
+                .WithParentActivityOrWindow(this.Handle);
 
 
             Prompt? prompt = GetPrompt();
@@ -295,9 +277,11 @@ namespace NetDesktopWinForms
                 Log($"ATI without login_hint or account. It should display the account picker");
             }
 
-            await MoveToBackgroundThreadIfConfiguredAsync().ConfigureAwait(false);
 
+            await Task.Delay(500).ConfigureAwait(false);
             result = await builder.ExecuteAsync().ConfigureAwait(false);
+
+
             return result;
         }
 
@@ -351,9 +335,6 @@ namespace NetDesktopWinForms
                     return Prompt.NoPrompt;
                 case "consent":
                     return Prompt.Consent;
-                case "never":
-                    return Prompt.Never;
-
 
                 default:
                     throw new NotImplementedException();
@@ -444,7 +425,11 @@ namespace NetDesktopWinForms
                 authorityCbx.SelectedItem = "https://login.windows-ppe.net/organizations";
             }
 
-
+            if (clientEntry.Id == "c0186a6c-0bfc-4d83-9543-c2295b676f3b") // MSA-PT app
+            {
+                cbxScopes.SelectedItem = "api://51eb3dd6-d8b5-46f3-991d-b1d4870de7de/myaccess";
+                authorityCbx.SelectedItem = "https://login.microsoftonline.com/61411618-6f67-4fc5-ba6a-4a0fe32d4eec";
+            }
         }
 
         private async void btnExpire_Click(object sender, EventArgs e)
@@ -515,13 +500,11 @@ namespace NetDesktopWinForms
             string env = string.IsNullOrEmpty(Account?.Environment) || Account.Environment == "login.microsoftonline.com" ?
                 "" :
                 $"({Account.Environment})";
+            string homeTenantId = account?.HomeAccountId?.TenantId?.Substring(0, 5);
 
-            DisplayValue = displayValue ?? $"{Account.Username} {env}";
+            DisplayValue = displayValue ?? $"{Account.Username} {env} {homeTenantId}";
         }
-
-
     }
-
 
     public class NullAccount : IAccount
     {

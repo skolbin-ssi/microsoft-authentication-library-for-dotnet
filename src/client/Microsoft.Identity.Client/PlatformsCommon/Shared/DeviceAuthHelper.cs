@@ -9,11 +9,10 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Runtime.InteropServices;
 using Microsoft.Identity.Client.Http;
-using Microsoft.Identity.Client.PlatformsCommon.Shared;
 using Microsoft.Identity.Client.Utils;
 using Microsoft.Win32;
 
-namespace Microsoft.Identity.Client.PlatformsCommon
+namespace Microsoft.Identity.Client.PlatformsCommon.Shared
 {
     internal class DeviceAuthHelper
     {
@@ -58,7 +57,7 @@ namespace Microsoft.Identity.Client.PlatformsCommon
         /// </summary>
         public static string GetBypassChallengeResponse(HttpResponseHeaders responseHeaders)
         {
-            var challengeData = DeviceAuthHelper.ParseChallengeData(responseHeaders);
+            var challengeData = ParseChallengeData(responseHeaders);
             return string.Format(CultureInfo.InvariantCulture,
                                    PKeyAuthConstants.PKeyAuthBypassReponseFormat,
                                    challengeData[PKeyAuthConstants.ChallengeResponseContext],
@@ -84,7 +83,7 @@ namespace Microsoft.Identity.Client.PlatformsCommon
             }
 
             //PKeyAuth can only be performed on operating systems with a major OS version of 6.
-            //This corresponds to windows 7, 8, 8.1 and their server equivilents.
+            //This corresponds to windows 7, 8, 8.1 and their server equivalents.
             //Environment.OSVersion as it will return incorrect information on some operating systems
             //For more information on how to acquire the current OS version from the registry
             //See (https://stackoverflow.com/a/61914068)
@@ -101,8 +100,8 @@ namespace Microsoft.Identity.Client.PlatformsCommon
             var reg = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows NT\CurrentVersion");
 
             string OSInfo = (string)reg.GetValue("ProductName");
-            
-            if (OSInfo.IndexOf("Windows", StringComparison.InvariantCultureIgnoreCase) >= 0 
+
+            if (OSInfo.IndexOf("Windows", StringComparison.InvariantCultureIgnoreCase) >= 0
                 && OSInfo.IndexOf("Windows 10", StringComparison.InvariantCultureIgnoreCase) < 0
                 && OSInfo.IndexOf("Windows Server 2016", StringComparison.InvariantCultureIgnoreCase) < 0
                 && OSInfo.IndexOf("Windows Server 2019", StringComparison.InvariantCultureIgnoreCase) < 0)

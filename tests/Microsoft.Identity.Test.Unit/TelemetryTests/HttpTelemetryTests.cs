@@ -20,6 +20,9 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
 using static Microsoft.Identity.Client.TelemetryCore.Internal.Events.ApiEvent;
+using Microsoft.Identity.Client.Cache.Items;
+using Microsoft.Identity.Client.Cache;
+using Microsoft.Identity.Client.Utils;
 
 namespace Microsoft.Identity.Test.Unit.TelemetryTests
 {
@@ -38,59 +41,59 @@ namespace Microsoft.Identity.Test.Unit.TelemetryTests
 
         /// <summary>
         /// 1.  Acquire Token Interactive successfully
-        ///        Current_request = 2 | ATI_ID, 0 | 0
-        ///        Last_request = 2 | 0 | | |
+        ///        Current_request = 3 | ATI_ID, 0, | 0
+        ///        Last_request = 3 | 0 | | |
         /// 2. Acquire token silent with AT served from cache ... no calls to /token endpoint
         ///        
         /// 3. Acquire token silent with AT not served from cache (AT expired)
-        ///         Current_request = 2 | ATS_ID, 0 | 0
-        ///         Last_request = 2 | 1 | | |
+        ///         Current_request = 3 | ATS_ID, 0, 0 | 0
+        ///         Last_request = 3 | 1 | | |
         ///         
         /// 4. Acquire Token silent with force_refresh = true -> error invalid_client
         /// Sent to server - 
-        ///         Current_request = 2 | ATS_ID, 1 | 0
-        ///         Last_request = 2 | 0 | | |
+        ///         Current_request = 3 | ATS_ID, 1, 3 | 0
+        ///         Last_request = 3 | 0 | | |
         ///         
         /// State of client after error response is returned – (the successful silent request counter was flushed, last_request is reset, and now we add the error from step 4)
-        ///         Last_request = 2 | 0 | ATS_ID, Corr_step_4 | invalid_client |
+        ///         Last_request = 3 | 0 | ATS_ID, Corr_step_4 | invalid_client |
         /// 
         /// 5. Acquire Token silent with force_refresh = true -> error interaction_required
         /// Sent to the server - 
-        ///         Current_request = 2 | ATS_ID, 1 | 0
-        ///         Last_request = 2 | 0 | ATS_ID, corr_step_4 | invalid_client
+        ///         Current_request = 3 | ATS_ID, 1, 3 | 0
+        ///         Last_request = 3 | 0 | ATS_ID, corr_step_4 | invalid_client
         /// State of client after response is returned - 
-        ///         Last_request = 2 | 0 | ATS_ID, corr_step_5 | interaction_required
+        ///         Last_request = 3 | 0 | ATS_ID, corr_step_5 | interaction_required
         ///         
         /// 6. Acquire Token interactive -> error user_cancelled (i.e. no calls to /token endpoint)
         ///       No calls to token endpoint
         /// 
         /// 7. Acquire Token interactive -> HTTP error 503 (Service Unavailable)
         ///
-        ///        Current_request = 2 | ATI_ID, 0 | 0
-        ///        Last_request = 2 | 0 |  ATS_ID, corr_step_5, ATI_ID, corr_step-6, | interaction_required, 
+        ///        Current_request = 3 | ATI_ID, 0, | 0
+        ///        Last_request = 3 | 0 |  ATS_ID, corr_step_5, ATI_ID, corr_step-6, | interaction_required, 
         ///       authentication_canceled|
         ///
         /// State of the client: 
         ///
-        ///        Last_request = 2 | 0 |  ATS_ID, corr_step_5, ATI_ID, corr_step-6, ATI-ID, corr_step-6b | interaction_required, 
+        ///        Last_request = 3 | 0 |  ATS_ID, corr_step_5, ATI_ID, corr_step-6, ATI-ID, corr_step-6b | interaction_required, 
         ///       authentication_canceled, ServiceUnavailable|
         ///
         /// 8. Acquire Token interactive -> successful
         ///
         /// Sent to the server - 
-        ///        Current_request = 2 | ATI_ID, 0 | 0
-        ///        Last_request = 2 | 0 |  ATS_ID, corr_step_5, ATI_ID, corr_step-6, ATI-ID, corr_step-6b  | interaction_required, 
+        ///        Current_request = 3 | ATI_ID, 0, | 0
+        ///        Last_request = 3 | 0 |  ATS_ID, corr_step_5, ATI_ID, corr_step-6, ATI-ID, corr_step-6b  | interaction_required, 
         ///        authentication_canceled, ServiceUnavailable |
         ///
         /// State of the client after response is returned - 
         ///        Last_request = NULL
         ///
-        /// 9. Acquire Token Silent with force-refresh -> successful
+        /// 9. Acquire Token Silent with force-refresh false -> successful
         /// Sent to the server - 
-        ///         Current_request = 2 | ATI_ID, 1 | 0
+        ///         Current_request = 3 | ATI_ID, 0, 0 | 0
         ///         Last_request = NULL
         /// State of the client after response is returned - 
-        ///        Last_request = 2 | 1 | | |
+        ///        Last_request = 3 | 1 | | |
         /// </summary>
         [TestMethod]
         public async Task TelemetryAcceptanceTestAsync()
@@ -102,7 +105,7 @@ namespace Microsoft.Identity.Test.Unit.TelemetryTests
                 _app = PublicClientApplicationBuilder.Create(TestConstants.ClientId)
                             .WithHttpManager(_harness.HttpManager)
                             .WithDefaultRedirectUri()
-                            .WithLogging((lvl,msg,pii) => Trace.WriteLine($"[MSAL_LOG][{lvl}] {msg}"))
+                            .WithLogging((lvl, msg, pii) => Trace.WriteLine($"[MSAL_LOG][{lvl}] {msg}"))
                             .BuildConcrete();
 
                 Trace.WriteLine("Step 1. Acquire Token Interactive successful");
@@ -116,12 +119,12 @@ namespace Microsoft.Identity.Test.Unit.TelemetryTests
 
                 Trace.WriteLine("Step 3. Acquire Token Silent successful - via refresh_token flow");
                 result = await RunAcquireTokenSilentAsync(AcquireTokenSilentOutcome.SuccessViaRefreshGrant).ConfigureAwait(false);
-                AssertCurrentTelemetry(result.HttpRequest, ApiIds.AcquireTokenSilent, forceRefresh: false);
+                AssertCurrentTelemetry(result.HttpRequest, ApiIds.AcquireTokenSilent, forceRefresh: false, cacheRefresh: "0");
                 AssertPreviousTelemetry(result.HttpRequest, expectedSilentCount: 1); // Previous_request = 2|1|||
 
                 Trace.WriteLine("Step 4. Acquire Token Silent with force_refresh = true and failure = invalid_grant");
                 result = await RunAcquireTokenSilentAsync(AcquireTokenSilentOutcome.FailInvalidGrant, forceRefresh: true).ConfigureAwait(false);
-                AssertCurrentTelemetry(result.HttpRequest, ApiIds.AcquireTokenSilent, forceRefresh: true); // Current_request = 2 | ATS_ID, 1 |
+                AssertCurrentTelemetry(result.HttpRequest, ApiIds.AcquireTokenSilent, forceRefresh: true, cacheRefresh: "3"); // Current_request = 3 | ATS_ID, 1, 3 |
                 AssertPreviousTelemetry(result.HttpRequest, expectedSilentCount: 0); // Previous_request = 2|0|||
 
                 // invalid grant error puts MSAL in a throttled state - simulate some time passing for this
@@ -131,7 +134,7 @@ namespace Microsoft.Identity.Test.Unit.TelemetryTests
                 Guid step4Correlationid = result.Correlationid;
                 Trace.WriteLine("Step 5. Acquire Token Silent with force_refresh = true and failure = interaction_required");
                 result = await RunAcquireTokenSilentAsync(AcquireTokenSilentOutcome.FailInteractionRequired, forceRefresh: true).ConfigureAwait(false);
-                AssertCurrentTelemetry(result.HttpRequest, ApiIds.AcquireTokenSilent, forceRefresh: true);// Current_request = 2 | ATS_ID, 1 |
+                AssertCurrentTelemetry(result.HttpRequest, ApiIds.AcquireTokenSilent, forceRefresh: true, cacheRefresh: "3");// Current_request = 3 | ATS_ID, 1, 3 |
                 AssertPreviousTelemetry(
                     result.HttpRequest,
                     expectedSilentCount: 0,
@@ -173,10 +176,74 @@ namespace Microsoft.Identity.Test.Unit.TelemetryTests
                     expectedCorrelationIds: new[] { step5CorrelationId, step6CorrelationId, step7CorrelationId },
                     expectedErrors: new[] { "interaction_required", "user_cancelled", "service_not_available" });
 
-                Trace.WriteLine("Step 9. Acquire Token Silent with force-refresh -> successful");
+                Trace.WriteLine("Step 9. Acquire Token Silent with force-refresh false -> successful");
                 result = await RunAcquireTokenSilentAsync(AcquireTokenSilentOutcome.SuccessViaRefreshGrant, false).ConfigureAwait(false);
-                AssertCurrentTelemetry(result.HttpRequest, ApiIds.AcquireTokenSilent, forceRefresh: false);
+                AssertCurrentTelemetry(result.HttpRequest, ApiIds.AcquireTokenSilent, forceRefresh: false, cacheRefresh: "0");
                 AssertPreviousTelemetry(result.HttpRequest, expectedSilentCount: 0);
+            }
+        }
+
+        /// <summary>
+        /// 1.  Acquire Token Interactive successfully
+        ///        Current_request = 3 |ATS_ID, 0, | , , 0, , , , 1
+        ///        Last_request = 3 | 0 | | |
+        /// 2. Acquire token silent with AT served from cache ... no calls to /token endpoint
+        ///        
+        /// 3. Acquire token silent with AT expired
+        ///         Current_request = 3 | ATS_ID, 0, 1 | , , 1, , , , 1
+        ///         Last_request = 3 | 1 | | |
+        ///         
+        /// 4. Acquire Token silent with refresh on
+        ///         Current_request = 3 | ATS_ID, 1, 2 | , , 1, , , , 1
+        ///         Last_request = 3 | 0 | | |
+        /// 
+        /// 5. Acquire Token silent with force_refresh = true 
+        ///         Current_request = 3 | ATS_ID, 1, 3 | , , 1, , , , 1
+        ///         Last_request = 3 | 0 | | |
+        ///         
+        /// </summary>
+        [TestMethod]
+        public async Task TelemetryCacheRefreshTestAsync()
+        {
+            using (_harness = CreateTestHarness())
+            {
+                _harness.HttpManager.AddInstanceDiscoveryMockHandler();
+
+                _app = PublicClientApplicationBuilder.Create(TestConstants.ClientId)
+                            .WithHttpManager(_harness.HttpManager)
+                            .WithDefaultRedirectUri()
+                            .WithLogging((lvl, msg, pii) => Trace.WriteLine($"[MSAL_LOG][{lvl}] {msg}"))
+                            .BuildConcrete();
+                var tokenCacheHelper = new TokenCacheHelper();
+                tokenCacheHelper.PopulateCache(_app.UserTokenCacheInternal.Accessor, addSecondAt: false);
+
+                Trace.WriteLine("Step 1. Acquire Token Interactive successful");
+                var result = await RunAcquireTokenInteractiveAsync(AcquireTokenInteractiveOutcome.Success).ConfigureAwait(false);
+                AssertCurrentTelemetry(result.HttpRequest, ApiIds.AcquireTokenInteractive, forceRefresh: false);
+                AssertPreviousTelemetry(result.HttpRequest, expectedSilentCount: 0); // Previous_request = 2|0|||
+
+                Trace.WriteLine("Step 2. Acquire Token Silent successful - AT served from cache");
+                result = await RunAcquireTokenSilentAsync(AcquireTokenSilentOutcome.SuccessFromCache).ConfigureAwait(false);
+                Assert.IsNull(result.HttpRequest, "No calls are made to the token endpoint");
+
+                Trace.WriteLine("Step 3. Acquire Token Silent successful - via expired token");
+                UpdateATWithRefreshOn(_app.UserTokenCacheInternal.Accessor, DateTime.UtcNow - TimeSpan.FromMinutes(1), true);
+                TokenCacheAccessRecorder cacheAccess = _app.UserTokenCache.RecordAccess();
+                result = await RunAcquireTokenSilentAsync(AcquireTokenSilentOutcome.SuccessViaCacheRefresh).ConfigureAwait(false);
+                AssertCurrentTelemetry(result.HttpRequest, ApiIds.AcquireTokenSilent, forceRefresh: false, isCacheSerialized: true, cacheRefresh: "1");
+                AssertPreviousTelemetry(result.HttpRequest, expectedSilentCount: 1); // Previous_request = 2|1|||
+
+                Trace.WriteLine("Step 4. Acquire Token Silent successful - via refresh on");
+                UpdateATWithRefreshOn(_app.UserTokenCacheInternal.Accessor, DateTime.UtcNow - TimeSpan.FromMinutes(1));
+                cacheAccess = _app.UserTokenCache.RecordAccess();
+                result = await RunAcquireTokenSilentAsync(AcquireTokenSilentOutcome.SuccessViaCacheRefresh).ConfigureAwait(false);
+                AssertCurrentTelemetry(result.HttpRequest, ApiIds.AcquireTokenSilent, forceRefresh: false, isCacheSerialized: true, cacheRefresh: "2");
+                AssertPreviousTelemetry(result.HttpRequest, expectedSilentCount: 0); // Previous_request = 2|1|||
+
+                Trace.WriteLine("Step 5. Acquire Token Silent with force_refresh = true");
+                result = await RunAcquireTokenSilentAsync(AcquireTokenSilentOutcome.SuccessViaCacheRefresh, forceRefresh: true).ConfigureAwait(false);
+                AssertCurrentTelemetry(result.HttpRequest, ApiIds.AcquireTokenSilent, forceRefresh: true, isCacheSerialized: true, cacheRefresh: "3"); // Current_request = 3 | ATS_ID, 1, 3 |
+                AssertPreviousTelemetry(result.HttpRequest, expectedSilentCount: 0); // Previous_request = 2|0|||
             }
         }
 
@@ -234,6 +301,7 @@ namespace Microsoft.Identity.Test.Unit.TelemetryTests
         {
             SuccessFromCache,
             SuccessViaRefreshGrant,
+            SuccessViaCacheRefresh,
             FailInvalidGrant,
             FailInteractionRequired
         }
@@ -264,9 +332,9 @@ namespace Microsoft.Identity.Test.Unit.TelemetryTests
             switch (outcome)
             {
                 case AcquireTokenInteractiveOutcome.Success:
-                    MsalMockHelpers.ConfigureMockWebUI(
-                        _app.ServiceBundle.PlatformProxy,
-                         AuthorizationResult.FromUri(_app.AppConfig.RedirectUri + "?code=some-code"));
+
+                    _app.ServiceBundle.ConfigureMockWebUI();
+
                     tokenRequestHandler = _harness.HttpManager.AddSuccessTokenResponseMockHandlerForPost();
                     var authResult = await _app
                         .AcquireTokenInteractive(TestConstants.s_scope)
@@ -281,8 +349,8 @@ namespace Microsoft.Identity.Test.Unit.TelemetryTests
                     ui.UpdateRedirectUri(Arg.Any<Uri>()).Returns(new Uri("http://localhost:1234"));
                     ui.AcquireAuthorizationAsync(null, null, null, default).ThrowsForAnyArgs(
                         new MsalClientException("user_cancelled"));
-                    MsalMockHelpers.ConfigureMockWebUI(_app.ServiceBundle.PlatformProxy, ui);
-                    
+                    _app.ServiceBundle.ConfigureMockWebUI(ui);
+
                     var ex = await AssertException.TaskThrowsAsync<MsalClientException>(() =>
                         _app
                         .AcquireTokenInteractive(TestConstants.s_scope)
@@ -294,9 +362,7 @@ namespace Microsoft.Identity.Test.Unit.TelemetryTests
                 case AcquireTokenInteractiveOutcome.AADUnavailableError:
                     correlationId = Guid.NewGuid();
 
-                    MsalMockHelpers.ConfigureMockWebUI(
-                       _app.ServiceBundle.PlatformProxy,
-                        AuthorizationResult.FromUri(_app.AppConfig.RedirectUri + "?code=some-code"));
+                    _app.ServiceBundle.ConfigureMockWebUI();
 
                     tokenRequestHandler = new MockHttpMessageHandler()
                     {
@@ -334,7 +400,7 @@ namespace Microsoft.Identity.Test.Unit.TelemetryTests
         }
 
         private async Task<(HttpRequestMessage HttpRequest, Guid Correlationid)> RunAcquireTokenSilentAsync(
-            AcquireTokenSilentOutcome outcome, 
+            AcquireTokenSilentOutcome outcome,
             bool forceRefresh = false)
         {
             MockHttpMessageHandler tokenRequest = null;
@@ -357,6 +423,14 @@ namespace Microsoft.Identity.Test.Unit.TelemetryTests
                 case AcquireTokenSilentOutcome.SuccessViaRefreshGrant:
                     // let's remove the AT so that they can't be used 
                     _app.UserTokenCacheInternal.Accessor.ClearAccessTokens();
+                    tokenRequest = _harness.HttpManager.AddSuccessTokenResponseMockHandlerForPost(TestConstants.AuthorityUtidTenant);
+                    authResult = await request
+                      .ExecuteAsync()
+                      .ConfigureAwait(false);
+                    correlationId = authResult.CorrelationId;
+
+                    break;
+                case AcquireTokenSilentOutcome.SuccessViaCacheRefresh:
                     tokenRequest = _harness.HttpManager.AddSuccessTokenResponseMockHandlerForPost(TestConstants.AuthorityUtidTenant);
                     authResult = await request
                       .ExecuteAsync()
@@ -393,24 +467,25 @@ namespace Microsoft.Identity.Test.Unit.TelemetryTests
                 correlationId.ToString());
 
             var ex = await AssertException.TaskThrowsAsync<MsalServiceException>(
-                () => request.WithCorrelationId(correlationId).ExecuteAsync(), 
+                () => request.WithCorrelationId(correlationId).ExecuteAsync(),
                 allowDerived: true)
                 .ConfigureAwait(false);
 
             Assert.AreEqual(
-                correlationId, 
-                Guid.Parse(ex.CorrelationId), 
+                correlationId,
+                Guid.Parse(ex.CorrelationId),
                 "Test error - Exception correlation ID does not match WithCorrelationId value");
 
             return (tokenRequest, correlationId);
         }
 
         private static void AssertCurrentTelemetry(
-            HttpRequestMessage requestMessage, 
-            ApiIds apiId, 
+            HttpRequestMessage requestMessage,
+            ApiIds apiId,
             bool forceRefresh,
             bool isCacheSerialized = false,
-            bool isLegacyCacheEnabled = true)
+            bool isLegacyCacheEnabled = true,
+            string cacheRefresh = "")
         {
             string actualCurrentTelemetry = requestMessage.Headers.GetValues(
                 TelemetryConstants.XClientCurrentTelemetry).Single();
@@ -424,11 +499,13 @@ namespace Microsoft.Identity.Test.Unit.TelemetryTests
                 ((int)apiId).ToString(CultureInfo.InvariantCulture),
                 actualTelemetryParts[1].Split(',')[0]); // current_api_id
 
-            Assert.IsTrue(actualTelemetryParts[1].EndsWith(forceRefresh ? "1" : "0")); // force_refresh flag
+            Assert.AreEqual(forceRefresh ? "1" : "0", actualTelemetryParts[1].Split(',')[1]); // force_refresh flag
 
             Assert.AreEqual(isCacheSerialized ? "1" : "0", actualTelemetryParts[2].Split(',')[2]); // is_cache_serialized
 
             Assert.AreEqual(isLegacyCacheEnabled ? "1" : "0", actualTelemetryParts[2].Split(',')[6]); // is_legacy_cache_enabled
+
+            Assert.AreEqual(cacheRefresh, actualTelemetryParts[1].Split(',')[2]); // Cache_refresh
         }
 
         private static void AssertPreviousTelemetry(
@@ -442,8 +519,8 @@ namespace Microsoft.Identity.Test.Unit.TelemetryTests
             expectedCorrelationIds = expectedCorrelationIds ?? new Guid[0];
             expectedErrors = expectedErrors ?? new string[0];
 
-            var actualHeader = ParseLastRequestHeader(requestMessage);   
-            
+            var actualHeader = ParseLastRequestHeader(requestMessage);
+
             Assert.AreEqual(expectedSilentCount, actualHeader.SilentCount);
             CoreAssert.AreEqual(actualHeader.FailedApis.Length, actualHeader.CorrelationIds.Length, actualHeader.Errors.Length);
 
@@ -456,8 +533,8 @@ namespace Microsoft.Identity.Test.Unit.TelemetryTests
                 actualHeader.CorrelationIds);
 
             CollectionAssert.AreEqual(
-                expectedErrors, 
-                actualHeader.Errors); 
+                expectedErrors,
+                actualHeader.Errors);
         }
 
         private static (int SilentCount, string[] FailedApis, string[] CorrelationIds, string[] Errors) ParseLastRequestHeader(HttpRequestMessage requestMessage)
@@ -466,7 +543,7 @@ namespace Microsoft.Identity.Test.Unit.TelemetryTests
             // where a failed_request is "api_id, correlation_id"
             string lastTelemetryHeader = requestMessage.Headers.GetValues(
                TelemetryConstants.XClientLastTelemetry).Single();
-            var lastRequestParts =  lastTelemetryHeader.Split('|');
+            var lastRequestParts = lastTelemetryHeader.Split('|');
 
             Assert.AreEqual(5, lastRequestParts.Length); //  2 | 1 | | |
             Assert.AreEqual(TelemetryConstants.HttpTelemetrySchemaVersion2, lastRequestParts[0]); // version
@@ -490,6 +567,28 @@ namespace Microsoft.Identity.Test.Unit.TelemetryTests
                 .ToArray();
 
             return (actualSuccessfullSilentCount, actualFailedApiIds, correlationIds, actualErrors);
+        }
+
+        private static MsalAccessTokenCacheItem UpdateATWithRefreshOn(
+            ITokenCacheAccessor accessor,
+            DateTimeOffset refreshOn,
+            bool expired = false)
+        {
+            MsalAccessTokenCacheItem atItem = accessor.GetAllAccessTokens().Single();
+
+            // past date on refresh on
+            atItem.RefreshOnUnixTimestamp = CoreHelpers.DateTimeToUnixTimestamp(refreshOn);
+
+            Assert.IsTrue(atItem.ExpiresOn > DateTime.UtcNow + TimeSpan.FromMinutes(10));
+
+            if (expired)
+            {
+                atItem.ExpiresOnUnixTimestamp = CoreHelpers.DateTimeToUnixTimestamp(DateTime.UtcNow - TimeSpan.FromMinutes(1));
+            }
+
+            accessor.SaveAccessToken(atItem);
+
+            return atItem;
         }
     }
 }

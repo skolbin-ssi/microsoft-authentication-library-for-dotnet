@@ -3,12 +3,10 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Data;
 using System.Diagnostics;
-using System.Drawing;
 using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Reflection;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
@@ -76,11 +74,11 @@ namespace NetCoreWinFormsWAM
                 .Create(clientId)
                 .WithAuthority(this.authorityCbx.Text)
                 .WithExperimentalFeatures(true)
-#if NETCOREAPP3_1
-                .WithWindowsBroker(this.useBrokerChk.Checked)
-#else
-                .WithBroker(this.useBrokerChk.Checked)
+#if !NET5_0
+                .WithDesktopFeatures()
 #endif
+                .WithBroker(this.useBrokerChk.Checked)
+
                 // there is no need to construct the PCA with this redirect URI, 
                 // but WAM uses it. We could enforce it.
                 .WithRedirectUri($"ms-appx-web://microsoft.aad.brokerplugin/{clientId}")                
@@ -122,7 +120,6 @@ namespace NetCoreWinFormsWAM
                 AuthenticationResult result = await RunAtsAsync(pca).ConfigureAwait(false);
 
                 await LogResultAndRefreshAccountsAsync(result).ConfigureAwait(false);
-
             }
             catch (Exception ex)
             {
@@ -157,7 +154,7 @@ namespace NetCoreWinFormsWAM
             }
 
             if (cbxAccount.SelectedItem != null &&
-                cbxAccount.SelectedItem != s_nullAccount)
+                (cbxAccount.SelectedItem as AccountModel).Account != s_nullAccount)
             {
                 var acc = (cbxAccount.SelectedItem as AccountModel).Account;
 
@@ -255,7 +252,7 @@ namespace NetCoreWinFormsWAM
             AuthenticationResult result = null;
             var scopes = GetScopes();
 
-            var builder = pca.AcquireTokenInteractive(scopes)
+            var builder = pca.AcquireTokenInteractive(scopes)                
                 .WithParentActivityOrWindow(this.Handle);
 
 
@@ -283,7 +280,7 @@ namespace NetCoreWinFormsWAM
 
 
             await Task.Delay(500).ConfigureAwait(false);
-            result = await builder.ExecuteAsync().ConfigureAwait(false);
+            result = await builder.ExecuteAsync().ConfigureAwait(false); 
 
 
             return result;
@@ -397,7 +394,6 @@ namespace NetCoreWinFormsWAM
                 {
                     Log("Exception: " + ex3);
                 }
-
             }
             catch (Exception ex2)
             {
@@ -412,11 +408,15 @@ namespace NetCoreWinFormsWAM
 
         private async void btnClearCache_Click(object sender, EventArgs e)
         {
+            Log("Clearing the cache ...");
+
             var pca = CreatePca();
             foreach (var acc in (await pca.GetAccountsAsync().ConfigureAwait(false)))
             {
                 await pca.RemoveAsync(acc).ConfigureAwait(false);
             }
+
+            Log("Done clearing the cache.");
         }
 
         private void clientIdCbx_SelectedIndexChanged(object sender, EventArgs e)
@@ -438,9 +438,11 @@ namespace NetCoreWinFormsWAM
 
         private async void btnExpire_Click(object sender, EventArgs e)
         {
+            Log("Expiring tokens.");
+
             var pca = CreatePca();
 
-            // do smth that loads the cache first
+            // do something that loads the cache first
             await pca.GetAccountsAsync().ConfigureAwait(false);
 
             string expiredValue = ((long)(DateTime.UtcNow - new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc)).TotalSeconds)
@@ -467,21 +469,29 @@ namespace NetCoreWinFormsWAM
                 .Invoke(pca.UserTokenCache, new[] { argz });
 
             await (task as Task).ConfigureAwait(false);
+
+            Log("Done expiring tokens.");
         }
 
-        private async void remoteAcc_click(object sender, EventArgs e)
+        private async void btnRemoveAcc_Click(object sender, EventArgs e)
         {
-            if (cbxAccount.SelectedIndex == 0)
+            try
             {
-                throw new InvalidOperationException("[TEST APP FAILURE] Please select an account");
+                if (cbxAccount.SelectedIndex == 0)
+                {
+                    throw new InvalidOperationException("[TEST APP FAILURE] Please select an account");
+                }
+
+                var pca = CreatePca();
+                var acc = (cbxAccount.SelectedItem as AccountModel).Account;
+
+                await pca.RemoveAsync(acc).ConfigureAwait(false);
+
+                Log("Removed account " + acc.Username);
+            } catch (Exception ex)
+            {
+                Log("Exception: " + ex);
             }
-
-            var pca = CreatePca();
-            var acc = (cbxAccount.SelectedItem as AccountModel).Account;
-
-            await pca.RemoveAsync(acc).ConfigureAwait(false);
-
-            Log("Removed account " + acc.Username);
         }
     }
 

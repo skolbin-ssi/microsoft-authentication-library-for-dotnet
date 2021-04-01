@@ -5,7 +5,7 @@ using System;
 using System.Runtime.InteropServices;
 using System.Text;
 
-namespace Microsoft.Identity.Client.PlatformsCommon.Shared
+namespace Microsoft.Identity.Client.Platforms.Features.DesktopOs
 {
     internal static class WindowsNativeMethods
     {
@@ -72,8 +72,9 @@ namespace Microsoft.Identity.Client.PlatformsCommon.Shared
         [DllImport("Netapi32.dll")]
         public static extern int NetApiBufferFree(IntPtr Buffer);
 
-        [DllImport("user32.dll")]
-        public static extern IntPtr GetForegroundWindow();
+
+        [DllImport("user32.dll", EntryPoint = "GetDesktopWindow")]
+        public static extern IntPtr GetDesktopWindow();
 
         [DllImport("kernel32.dll")]
         public static extern IntPtr GetConsoleWindow();
@@ -93,5 +94,27 @@ namespace Microsoft.Identity.Client.PlatformsCommon.Shared
             public readonly short wProcessorLevel;
             public readonly short wProcessorRevision;
         }
+    }
+
+    internal static class User32
+    {
+        private const string LibraryName = "user32.dll";
+
+        public const int UOI_FLAGS = 1;
+        public const int WSF_VISIBLE = 0x0001;
+
+        [DllImport(LibraryName, CallingConvention = CallingConvention.StdCall, SetLastError = true)]
+        public static extern IntPtr GetProcessWindowStation();
+
+        [DllImport(LibraryName, EntryPoint = "GetUserObjectInformation", CallingConvention = CallingConvention.StdCall, SetLastError = true)]
+        public static extern unsafe bool GetUserObjectInformation(IntPtr hObj, int nIndex, void* pvBuffer, uint nLength, ref uint lpnLengthNeeded);
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct USEROBJECTFLAGS
+    {
+        public int fInherit;
+        public int fReserved;
+        public int dwFlags;
     }
 }

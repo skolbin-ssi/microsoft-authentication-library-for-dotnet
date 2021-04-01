@@ -3,6 +3,7 @@
 
 using Microsoft.Identity.Client.ApiConfig.Parameters;
 using Microsoft.Identity.Client.Internal;
+using Microsoft.Identity.Client.Platforms.Features.DesktopOs;
 using Microsoft.Identity.Client.Platforms.Shared.Desktop.OsBrowser;
 using Microsoft.Identity.Client.UI;
 
@@ -10,7 +11,11 @@ namespace Microsoft.Identity.Client.Platforms.Shared.NetStdCore
 {
     internal class NetCoreWebUIFactory : IWebUIFactory
     {
-        public bool IsSystemWebViewAvailable => true;
+        public bool IsSystemWebViewAvailable => IsUserInteractive;
+
+        public bool IsUserInteractive => DesktopOsHelper.IsUserInteractive();
+
+        public bool IsEmbeddedWebViewAvailable => false; 
 
         public IWebUI CreateAuthenticationDialog(
             CoreUIParent coreUIParent, 
@@ -21,7 +26,7 @@ namespace Microsoft.Identity.Client.Platforms.Shared.NetStdCore
             {
                 throw new MsalClientException(MsalError.WebviewUnavailable, 
                    "An embedded webview is not available in the box on .NET Core 3.x " +
-                   "Please reference the package Microsoft.Indentity.Client.Desktop and call WithDesktopFeatures(). See https://aka.ms/msal-net-webview2 " +
+                   "Please reference the package Microsoft.Identity.Client.Desktop and call WithDesktopFeatures(). See https://aka.ms/msal-net-webview2 " +
                    "Or use the system webview - see https://aka.ms/msal-net-os-browser");
             }
 

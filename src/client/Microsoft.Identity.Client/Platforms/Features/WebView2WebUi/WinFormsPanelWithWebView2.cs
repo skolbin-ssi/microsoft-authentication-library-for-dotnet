@@ -11,7 +11,7 @@ using System.Threading.Tasks;
 using System.Windows.Forms;
 using Microsoft.Identity.Client.Core;
 using Microsoft.Identity.Client.Internal;
-using Microsoft.Identity.Client.Platforms.Features.Win32;
+using Microsoft.Identity.Client.Platforms.Features.DesktopOs;
 using Microsoft.Identity.Client.UI;
 using Microsoft.Identity.Client.Utils;
 using Microsoft.Web.WebView2.Core;
@@ -23,6 +23,7 @@ namespace Microsoft.Identity.Client.Platforms.Features.WebView2WebUi
     internal class WinFormsPanelWithWebView2 : Form
     {
         private const int UIWidth = 566;
+        private readonly EmbeddedWebViewOptions _embeddedWebViewOptions; 
         private readonly ICoreLogger _logger;
         private readonly Uri _startUri;
         private readonly Uri _endUri;
@@ -34,14 +35,15 @@ namespace Microsoft.Identity.Client.Platforms.Features.WebView2WebUi
 
         public WinFormsPanelWithWebView2(
          object ownerWindow,
+         EmbeddedWebViewOptions embeddedWebViewOptions,
          ICoreLogger logger,
          Uri startUri,
          Uri endUri)
         {
-            // TODO: title
-            _logger = logger;
-            _startUri = startUri;
-            _endUri = endUri;
+            _embeddedWebViewOptions = embeddedWebViewOptions ?? EmbeddedWebViewOptions.GetDefaultOptions();
+            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _startUri = startUri ?? throw new ArgumentNullException(nameof(startUri));
+            _endUri = endUri ?? throw new ArgumentNullException(nameof(endUri));
 
             if (ownerWindow == null)
             {
@@ -51,9 +53,9 @@ namespace Microsoft.Identity.Client.Platforms.Features.WebView2WebUi
             {
                 _ownerWindow = (IWin32Window)ownerWindow;
             }
-            else if (ownerWindow is IntPtr)
+            else if (ownerWindow is IntPtr ptr && ptr != IntPtr.Zero)
             {
-                _ownerWindow = new Win32Window((IntPtr)ownerWindow);
+                _ownerWindow = new Win32Window(ptr);
             }
             else
             {
@@ -62,6 +64,11 @@ namespace Microsoft.Identity.Client.Platforms.Features.WebView2WebUi
             }
 
             InitializeComponent();
+
+            _webView2.CreationProperties = new CoreWebView2CreationProperties() { 
+                    BrowserExecutableFolder = _embeddedWebViewOptions.WebView2BrowserExecutableFolder 
+            };
+
         }
 
         public AuthorizationResult DisplayDialogAndInterceptUri()
@@ -135,7 +142,7 @@ namespace Microsoft.Identity.Client.Platforms.Features.WebView2WebUi
                     : Screen.PrimaryScreen;
 
                 // Window height is set to 70% of the screen height.
-                int uiHeight = (int)(Math.Max(screen.WorkingArea.Height, 160) * 70.0 / NativeDpiHelper.ZoomPercent);
+                int uiHeight = (int)(Math.Max(screen.WorkingArea.Height, 160) * 70.0 / WindowsDpiHelper.ZoomPercent);
                 var webBrowserPanel = new Panel();
                 webBrowserPanel.SuspendLayout();
                 SuspendLayout();
@@ -253,12 +260,20 @@ namespace Microsoft.Identity.Client.Platforms.Features.WebView2WebUi
             _webView2.CoreWebView2.Settings.IsScriptEnabled = true;
             _webView2.CoreWebView2.Settings.IsZoomControlEnabled = false;
             _webView2.CoreWebView2.Settings.IsStatusBarEnabled = true;
-            _webView2.CoreWebView2.DocumentTitleChanged += CoreWebView2_DocumentTitleChanged;
+
+            if (_embeddedWebViewOptions.Title == null)
+            {
+                _webView2.CoreWebView2.DocumentTitleChanged += CoreWebView2_DocumentTitleChanged;
+            }
+            else
+            {
+                Text = _embeddedWebViewOptions.Title;
+            }
         }
 
         private void CoreWebView2_DocumentTitleChanged(object sender, object e)
         {
-            this.Text = _webView2.CoreWebView2.DocumentTitle ?? "";
+            Text = _webView2.CoreWebView2.DocumentTitle ?? "";
         }
     }
 }

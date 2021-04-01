@@ -4,6 +4,7 @@
 using System;
 using Microsoft.Identity.Client.ApiConfig.Parameters;
 using Microsoft.Identity.Client.Internal;
+using Microsoft.Identity.Client.Platforms.Features.DesktopOs;
 using Microsoft.Identity.Client.Platforms.Features.WebView2WebUi;
 using Microsoft.Identity.Client.Platforms.Shared.Desktop.OsBrowser;
 using Microsoft.Identity.Client.UI;
@@ -14,19 +15,26 @@ namespace Microsoft.Identity.Client.Desktop
     internal class MsalDesktopWebUiFactory : IWebUIFactory
     {
         private readonly bool _fallbackToLegacyWebBrowser;
-        private readonly Func<bool> _isWebView2AvailableFunc;
+        private readonly Func<string, bool> _isWebView2AvailableFunc;
 
         public MsalDesktopWebUiFactory(
             bool fallbackToLegacyWebBrowser = false,
-            Func<bool> isWebView2AvailableForTest = null)
+            Func<string, bool> isWebView2AvailableForTest = null)
         {
             _fallbackToLegacyWebBrowser = fallbackToLegacyWebBrowser;
             _isWebView2AvailableFunc = isWebView2AvailableForTest ?? IsWebView2Available;
         }
 
-        public bool IsSystemWebViewAvailable => true;
+        public bool IsSystemWebViewAvailable => IsUserInteractive;
 
-        public IWebUI CreateAuthenticationDialog(CoreUIParent coreUIParent, WebViewPreference useEmbeddedWebView, RequestContext requestContext)
+        public bool IsUserInteractive => DesktopOsHelper.IsUserInteractive();
+
+        public bool IsEmbeddedWebViewAvailable => IsUserInteractive && IsWebView2Available();
+
+        public IWebUI CreateAuthenticationDialog(
+            CoreUIParent coreUIParent, 
+            WebViewPreference useEmbeddedWebView, 
+            RequestContext requestContext)
         {
             if (useEmbeddedWebView == WebViewPreference.System)
             {
@@ -37,7 +45,7 @@ namespace Microsoft.Identity.Client.Desktop
                     coreUIParent.SystemWebViewOptions);
             }
 
-            if (_isWebView2AvailableFunc())
+            if (_isWebView2AvailableFunc(coreUIParent?.EmbeddedWebviewOptions?.WebView2BrowserExecutableFolder))
             {
                 requestContext.Logger.Info("Using WebView2 embedded browser");
                 return new WebView2WebUi(coreUIParent, requestContext);
@@ -54,13 +62,22 @@ namespace Microsoft.Identity.Client.Desktop
             throw new MsalClientException(
                 MsalError.WebView2NotInstalled,
                 "The embedded browser needs WebView2 runtime to be installed. If you are an end user of the app, please download and install the WebView2 runtime from https://go.microsoft.com/fwlink/p/?LinkId=2124703 and restart the app." +
-                " If you are an app developer, please ensure that your app installs the WebView2 runtime https://docs.microsoft.com/en-us/microsoft-edge/webview2/concepts/distribution");
+                " If you are an app developer, please ensure that your app installs the WebView2 runtime or that you provide a fixed version. See https://aka.ms/msal-net-webview2 for details");
         }
 
-        private bool IsWebView2Available()
+
+        private bool IsWebView2Available(string browserExecutableFolder = null)
         {
-            string wv2Version = CoreWebView2Environment.GetAvailableBrowserVersionString();
-            return !string.IsNullOrEmpty(wv2Version);
+            try
+            {
+
+                string wv2Version = CoreWebView2Environment.GetAvailableBrowserVersionString(browserExecutableFolder);
+                return !string.IsNullOrEmpty(wv2Version);
+            }
+            catch (WebView2RuntimeNotFoundException)
+            {
+                return false;
+            }
         }
     }
 }

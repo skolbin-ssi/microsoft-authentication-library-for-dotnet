@@ -23,11 +23,12 @@ namespace Microsoft.Identity.Client.Platforms.Features.WebView2WebUi
     internal class WinFormsPanelWithWebView2 : Form
     {
         private const int UIWidth = 566;
-        private readonly EmbeddedWebViewOptions _embeddedWebViewOptions; 
+        private readonly EmbeddedWebViewOptions _embeddedWebViewOptions;
         private readonly ICoreLogger _logger;
         private readonly Uri _startUri;
         private readonly Uri _endUri;
         private WebView2 _webView2;
+        private const string webView2UserDataFolder = "%UserProfile%/.msal/webview2/data";
 
         private AuthorizationResult _result;
 
@@ -65,8 +66,9 @@ namespace Microsoft.Identity.Client.Platforms.Features.WebView2WebUi
 
             InitializeComponent();
 
-            _webView2.CreationProperties = new CoreWebView2CreationProperties() { 
-                    BrowserExecutableFolder = _embeddedWebViewOptions.WebView2BrowserExecutableFolder 
+            _webView2.CreationProperties = new CoreWebView2CreationProperties()
+            {
+                UserDataFolder = Environment.ExpandEnvironmentVariables(webView2UserDataFolder)
             };
 
         }

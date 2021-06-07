@@ -16,7 +16,6 @@ using Microsoft.Identity.Client.Instance.Discovery;
 using Microsoft.Identity.Client.Internal;
 using Microsoft.Identity.Client.Internal.Requests;
 using Microsoft.Identity.Client.OAuth2;
-using Microsoft.Identity.Client.Region;
 using Microsoft.Identity.Client.Utils;
 
 namespace Microsoft.Identity.Client
@@ -92,7 +91,7 @@ namespace Microsoft.Identity.Client
             }
 
             Dictionary<string, string> wamAccountIds = GetWamAccountIds(requestParams, response);
-            Account account = null;
+            Account account;
             if (idToken != null)
             {
                 msalIdTokenCacheItem = new MsalIdTokenCacheItem(
@@ -104,7 +103,6 @@ namespace Microsoft.Identity.Client
                 {
                     IsAdfs = isAdfsAuthority
                 };
-
 
                 msalAccountCacheItem = new MsalAccountCacheItem(
                              instanceDiscoveryMetadata.PreferredCache,
@@ -123,9 +121,9 @@ namespace Microsoft.Identity.Client
                     username,
                     instanceDiscoveryMetadata.PreferredNetwork, 
                     wamAccountIds);
-            requestParams.RequestContext.Logger.Verbose("[SaveTokenResponseAsync] Entering token cache semaphore");
+            requestParams.RequestContext.Logger.Verbose("[SaveTokenResponseAsync] Entering token cache semaphore. ");
             await _semaphoreSlim.WaitAsync().ConfigureAwait(false);
-            requestParams.RequestContext.Logger.Verbose("[SaveTokenResponseAsync] Entered token cache semaphore");
+            requestParams.RequestContext.Logger.Verbose("[SaveTokenResponseAsync] Entered token cache semaphore. ");
 
             try
             {
@@ -145,10 +143,10 @@ namespace Microsoft.Identity.Client
                             hasStateChanged: true,
                             tokenCacheInternal.IsApplicationCache,
                             hasTokens: tokenCacheInternal.HasTokensNoLocks(),
+                            requestParams.RequestContext.UserCancellationToken,
                             suggestedCacheKey: suggestedWebCacheKey);
 
-                        Stopwatch sw = new Stopwatch();
-                        sw.Start();
+                        Stopwatch sw = Stopwatch.StartNew();
 
                         await tokenCacheInternal.OnBeforeAccessAsync(args).ConfigureAwait(false);
                         await tokenCacheInternal.OnBeforeWriteAsync(args).ConfigureAwait(false);
@@ -219,10 +217,10 @@ namespace Microsoft.Identity.Client
                             hasStateChanged: true,
                             tokenCacheInternal.IsApplicationCache,
                             tokenCacheInternal.HasTokensNoLocks(),
+                            requestParams.RequestContext.UserCancellationToken,
                             suggestedCacheKey: suggestedWebCacheKey);
 
-                        Stopwatch sw = new Stopwatch();
-                        sw.Start();
+                        Stopwatch sw = Stopwatch.StartNew();
                         await tokenCacheInternal.OnAfterAccessAsync(args).ConfigureAwait(false);
                         requestParams.RequestContext.ApiEvent.DurationInCacheInMs += sw.ElapsedMilliseconds;
                     }
@@ -236,7 +234,7 @@ namespace Microsoft.Identity.Client
             finally
             {
                 _semaphoreSlim.Release();
-                requestParams.RequestContext.Logger.Verbose("[SaveTokenResponseAsync] Released token cache semaphore");
+                requestParams.RequestContext.Logger.Verbose("[SaveTokenResponseAsync] Released token cache semaphore. ");
             }
         }
 
@@ -276,7 +274,7 @@ namespace Microsoft.Identity.Client
             string subject = idToken?.Subject;
             if (idToken?.Subject != null)
             {
-                requestParams.RequestContext.Logger.Info("Subject not present in Id token");
+                requestParams.RequestContext.Logger.Info("Subject not present in Id token. ");
             }
 
             ClientInfo clientInfo = response.ClientInfo != null ? ClientInfo.CreateFromJson(response.ClientInfo) : null;
@@ -321,7 +319,7 @@ namespace Microsoft.Identity.Client
             // no authority passed
             if (requestParams.AuthorityInfo?.CanonicalAuthority == null)
             {
-                logger.Warning("FindAccessToken: No authority provided. Skipping cache lookup ");
+                logger.Warning("FindAccessToken: No authority provided. Skipping cache lookup. ");
                 return null;
             }
 
@@ -342,8 +340,7 @@ namespace Microsoft.Identity.Client
             // no match
             if (finalList.Count == 0)
             {
-                logger.Verbose("No tokens found for matching authority, client_id, user and scopes.");
-                cacheInfoTelemetry = CacheInfoTelemetry.NoCachedAT;
+                logger.Verbose("No tokens found for matching authority, client_id, user and scopes. ");
                 return null;
             }
 
@@ -528,16 +525,20 @@ namespace Microsoft.Identity.Client
             // In case we're sharing the cache with an MSAL that does not implement env aliasing,
             // it's possible (but unlikely), that we have multiple ATs from the same alias family.
             // To overcome some of these use cases, try to filter just by preferred cache alias
-            var filteredByPreferredAlias = filteredItems.Where(
-                at => at.Environment.Equals(instanceMetadata.PreferredCache, StringComparison.OrdinalIgnoreCase));
+            var filteredByPreferredAlias = filteredItems.FilterWithLogging(
+                item => item.Environment.Equals(instanceMetadata.PreferredCache, StringComparison.OrdinalIgnoreCase),
+                requestParams.RequestContext.Logger,
+                $"Filtering by preferred environment {instanceMetadata.PreferredCache}");
 
             if (filteredByPreferredAlias.Any())
             {
                 return filteredByPreferredAlias;
             }
 
-            return filteredItems.Where(
-                item => instanceMetadata.Aliases.ContainsOrdinalIgnoreCase(item.Environment));
+            return filteredItems.FilterWithLogging(
+                item => instanceMetadata.Aliases.ContainsOrdinalIgnoreCase(item.Environment),
+                requestParams.RequestContext.Logger,
+                $"Filtering by environment");
         }
 
         private MsalAccessTokenCacheItem FilterByKeyId(MsalAccessTokenCacheItem item, AuthenticationRequestParameters authenticationRequest)
@@ -840,6 +841,7 @@ namespace Microsoft.Identity.Client
                             true,
                             tokenCacheInternal.IsApplicationCache,
                             tokenCacheInternal.HasTokensNoLocks(),
+                            requestContext.UserCancellationToken,
                             account.HomeAccountId.Identifier);
 
                         await tokenCacheInternal.OnBeforeAccessAsync(args).ConfigureAwait(false);
@@ -863,6 +865,7 @@ namespace Microsoft.Identity.Client
                             true,
                             tokenCacheInternal.IsApplicationCache,
                             hasTokens: tokenCacheInternal.HasTokensNoLocks(),
+                            requestContext.UserCancellationToken,
                             account.HomeAccountId.Identifier);
 
                         await tokenCacheInternal.OnAfterAccessAsync(afterAccessArgs).ConfigureAwait(false);

@@ -44,12 +44,17 @@ namespace UWP_standalone
 
         private IPublicClientApplication CreatePublicClient()
         {
-            return PublicClientApplicationBuilder.Create(s_clientID)
+            var pca = PublicClientApplicationBuilder.Create(s_clientID)
                 .WithAuthority(s_authority)
                 .WithExperimentalFeatures(true)
                 .WithBroker(chkUseBroker.IsChecked.Value)
                 .WithLogging((x, y, z) => Debug.WriteLine($"{x} {y}"), LogLevel.Verbose, true)
                 .Build();
+
+            SynchronizedEncryptedFileMsalCache cache = new SynchronizedEncryptedFileMsalCache();
+            cache.Initialize(pca.UserTokenCache);
+
+            return pca;
         }
 
         private async void AcquireTokenIWA_ClickAsync(object sender, RoutedEventArgs e)
@@ -91,7 +96,6 @@ namespace UWP_standalone
             var pca = CreatePublicClient();
             var tokenCacheInternal = pca.UserTokenCache as ITokenCacheInternal;
 
-
             TokenCacheNotificationArgs args =
                  new TokenCacheNotificationArgs(
                  pca.UserTokenCache as ITokenCacheInternal,
@@ -99,7 +103,8 @@ namespace UWP_standalone
                  null,
                  true,
                  false,
-                 true);
+                 true,
+                 CancellationToken.None);
 
             await tokenCacheInternal.OnBeforeAccessAsync(args).ConfigureAwait(false);
 

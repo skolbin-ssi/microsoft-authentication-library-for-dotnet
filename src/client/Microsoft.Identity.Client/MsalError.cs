@@ -758,6 +758,12 @@ namespace Microsoft.Identity.Client
         public const string TokenTypeMismatch = "token_type_mismatch";
 
         /// <summary>
+        /// <para>What happens?</para>The response from the token endpoint does not contain the token_type parameter.
+        /// <para>Mitigation</para>This happens if the identity provider (AAD, B2C, ADFS, etc.) did not include the access token type in the token response. Verify the configuration of the identity provider.
+        /// </summary>
+        public const string AccessTokenTypeMissing = "token_type_missing";
+
+        /// <summary>
         /// <para>What happens?</para>You are trying to use a feature which was marked as experimental
         /// <para>Mitigation</para>When creating the PublicClientApplication or ConfidentialClientApplication, use .WithExperimentalFeatures() option. See https://aka.ms/msal-net-experimental-features for details.
         /// </summary>
@@ -787,6 +793,11 @@ namespace Microsoft.Identity.Client
         /// </summary>
         public const string AuthorityTypeMismatch = "authority_type_mismatch";
 
+        /// <summary>
+        /// <para>What happens?</para>You specified a tenant twice - once in WithAuthority() and once using WithTenant()
+        /// <para>Mitigation</para>Specify the tenant once.
+        /// </summary>
+        public const string AuthorityTenantSpecifiedTwice = "authority_tenant_specified_twice";
 
         /// <summary>
         /// <para>What happens?</para>You have configured your own instance metadata using both an Uri and a string. Only one is supported.
@@ -951,6 +962,11 @@ namespace Microsoft.Identity.Client
         /// </summary>
         public const string WebView2NotInstalled = "webview2_runtime_not_installed";
 
+        /// <summary>
+        /// <para>What happens?</para>The embedded WebView2 browser cannot be started because a runtime component cannot be loaded.
+        /// <para>Mitigation</para> For troubleshooting details, see https://aka.ms/msal-net-webview2 .
+        /// </summary>
+        public const string WebView2LoaderNotFound = "webview2loader_not_found";
 
         /// <summary>
         /// <para>What happens?</para>You configured both Regional Authority and Authority Validation. Authority validation is not currently supported for regional authorities.
@@ -963,5 +979,11 @@ namespace Microsoft.Identity.Client
         /// An HttpListenerException occurred while listening for the system browser to complete the login.
         /// </summary>
         public const string HttpListenerError = "http_listener_error";
+
+        /// <summary>
+        /// <para>What happens?</para>Failure setting process security to enable WAM Account Picker in an elevated process.
+        /// <para>Mitigation</para>For troubleshooting details, see https://aka.ms/msal-net-wam .
+        /// </summary>
+        public const string InitializeProcessSecurityError = "initialize_process_security_error";
     }
 }

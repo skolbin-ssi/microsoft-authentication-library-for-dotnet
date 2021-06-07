@@ -12,6 +12,7 @@ using System.Security;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Identity.Client;
+using Microsoft.Identity.Client.Advanced;
 using Microsoft.Identity.Client.Cache;
 using Microsoft.Identity.Client.Instance;
 using Microsoft.Identity.Client.Instance.Discovery;
@@ -271,6 +272,45 @@ namespace Microsoft.Identity.Test.Unit.PublicApiTests
                 Assert.AreEqual(TestConstants.CreateUserIdentifier(), result.Account.HomeAccountId.Identifier);
                 Assert.AreEqual(TestConstants.DisplayableId, result.Account.Username);
                 userCacheAccess.AssertAccessCounts(0, 2);
+            }
+        }
+
+        [TestMethod]
+        public void AcquireTokenExtraHeadersTest()
+        {
+            using (var harness = CreateTestHarness())
+            {
+                harness.HttpManager.AddInstanceDiscoveryMockHandler();
+
+                PublicClientApplication app = PublicClientApplicationBuilder.Create(TestConstants.ClientId)
+                                                                            .WithAuthority(new Uri(ClientApplicationBase.DefaultAuthority), true)
+                                                                            .WithHttpManager(harness.HttpManager)
+                                                                            .WithTelemetry(new TraceTelemetryConfig())
+                                                                            .BuildConcrete();
+                app.ServiceBundle.ConfigureMockWebUI();
+                var userCacheAccess = app.UserTokenCache.RecordAccess();
+                var extraExpectedHeaders = TestConstants.ExtraHttpHeader;
+                extraExpectedHeaders.Add(Constants.CCSRoutingHintHeader, CoreHelpers.GetCCSUpnHeader(TestConstants.s_user.Username));
+                harness.HttpManager.AddSuccessTokenResponseMockHandlerForPost(TestConstants.AuthorityCommonTenant, null, null, false, null, extraExpectedHeaders);
+
+                Guid correlationId = Guid.NewGuid();
+
+                AuthenticationResult result = app
+                    .AcquireTokenInteractive(TestConstants.s_scope)
+                    .WithCorrelationId(correlationId)
+                    .WithExtraHttpHeaders(TestConstants.ExtraHttpHeader)
+                    .WithLoginHint(TestConstants.s_user.Username)
+                    .ExecuteAsync(CancellationToken.None)
+                    .Result;
+
+                Assert.IsNotNull(result);
+                Assert.IsNotNull(result.Account);
+                Assert.AreEqual(TestConstants.UniqueId, result.UniqueId);
+                Assert.AreEqual(TestConstants.CreateUserIdentifier(), result.Account.HomeAccountId.Identifier);
+                Assert.AreEqual(TestConstants.DisplayableId, result.Account.Username);
+                Assert.IsNull(userCacheAccess.LastBeforeAccessNotificationArgs.SuggestedCacheKey, "Don't suggest keys for public client");
+                Assert.IsNull(userCacheAccess.LastAfterAccessNotificationArgs.SuggestedCacheKey, "Don't suggest keys for public client");
+                userCacheAccess.AssertAccessCounts(0, 1);
             }
         }
 
@@ -687,6 +727,18 @@ namespace Microsoft.Identity.Test.Unit.PublicApiTests
             Assert.AreEqual(TestConstants.B2CEnvironment, userToFind.Environment);
             Assert.AreEqual(TestConstants.Utid, userToFind.HomeAccountId.TenantId);
             Assert.AreEqual(TestConstants.B2CEditProfileHomeAccountObjectId, userToFind.HomeAccountId.ObjectId);
+
+            accounts = PopulateB2CTokenCacheAsync(TestConstants.B2CProfileWithDot, app).Result;
+
+            Assert.IsNotNull(accounts);
+            // one account in the cache for edit profile user flow
+
+            userToFind = accounts.First();
+            Assert.IsNull(userToFind.Username);
+            Assert.AreEqual(TestConstants.B2CProfileWithDotHomeAccountIdentifer, userToFind.HomeAccountId.Identifier);
+            Assert.AreEqual(TestConstants.B2CEnvironment, userToFind.Environment);
+            Assert.AreEqual(TestConstants.Utid, userToFind.HomeAccountId.TenantId);
+            Assert.AreEqual(TestConstants.B2CProfileWithDotHomeAccountObjectId, userToFind.HomeAccountId.ObjectId);
         }
 
         [TestMethod]
@@ -1169,6 +1221,11 @@ namespace Microsoft.Identity.Test.Unit.PublicApiTests
             TokenCacheHelper.AddRefreshTokenToCache(app.UserTokenCacheInternal.Accessor, TestConstants.B2CEditProfileHomeAccountObjectId,
                 TestConstants.Utid, TestConstants.ClientId, TestConstants.B2CEnvironment);
             TokenCacheHelper.AddAccountToCache(app.UserTokenCacheInternal.Accessor, TestConstants.B2CEditProfileHomeAccountObjectId,
+                TestConstants.Utid, TestConstants.B2CEnvironment);
+
+            TokenCacheHelper.AddRefreshTokenToCache(app.UserTokenCacheInternal.Accessor, TestConstants.B2CProfileWithDotHomeAccountObjectId,
+                TestConstants.Utid, TestConstants.ClientId, TestConstants.B2CEnvironment);
+            TokenCacheHelper.AddAccountToCache(app.UserTokenCacheInternal.Accessor, TestConstants.B2CProfileWithDotHomeAccountObjectId,
                 TestConstants.Utid, TestConstants.B2CEnvironment);
 
             return app.GetAccountsAsync(userFlow);

@@ -52,20 +52,33 @@ namespace Microsoft.Identity.Test.Unit.CacheTests
                 Secret = "access_token_secret",
                 TenantId = "the_tenant_id",
                 RawClientInfo = string.Empty,
-                UserAssertionHash = "assertion hash",
+                UserAssertionHash = "assertion_hash",
                 TokenType = StorageJsonValues.TokenTypeBearer
             };
         }
 
-        private MsalRefreshTokenCacheItem CreateRefreshTokenItem()
+        private MsalRefreshTokenCacheItem CreateRefreshTokenItem(bool isFrt = false)
         {
+            if (isFrt)
+            {
+                return new MsalRefreshTokenCacheItem
+                {
+                    ClientId = TestConstants.ClientId,
+                    Environment = "env",
+                    HomeAccountId = TestConstants.HomeAccountId,
+                    Secret = "access_token_secret",
+                    RawClientInfo = string.Empty
+                };
+            }
+
             return new MsalRefreshTokenCacheItem
             {
                 ClientId = TestConstants.ClientId,
                 Environment = "env",
                 HomeAccountId = TestConstants.HomeAccountId,
                 Secret = "access_token_secret",
-                RawClientInfo = string.Empty, 
+                RawClientInfo = string.Empty,
+                UserAssertionHash = "assertion_hash"
             };
         }
 
@@ -138,7 +151,7 @@ namespace Microsoft.Identity.Test.Unit.CacheTests
             }
 
             // Create an FRT
-            var frt = CreateRefreshTokenItem();
+            var frt = CreateRefreshTokenItem(true);
             frt.FamilyId = "1";
             accessor.SaveRefreshToken(frt);
 
@@ -481,7 +494,7 @@ namespace Microsoft.Identity.Test.Unit.CacheTests
             string jsonContent = File.ReadAllText(jsonFilePath);
             byte[] cache = Encoding.UTF8.GetBytes(jsonContent);
 
-            var tokenCache = new TokenCache(null, true);
+            var tokenCache = new TokenCache(TestCommon.CreateDefaultServiceBundle(), true);
             tokenCache.SetBeforeAccess(notificationArgs =>
             {
                 notificationArgs.TokenCache.DeserializeMsalV3(cache);
@@ -624,23 +637,7 @@ namespace Microsoft.Identity.Test.Unit.CacheTests
         }
 
         #endregion // JSON SERIALIZATION TESTS
-
-        [TestMethod]
-        [Ignore("Waiting on python to update target to be space-delimited strings instead of array")]
-        [DeploymentItem(@"Resources\cachecompat_python.bin")]
-        public void TestPythonCacheSerializationInterop()
-        {
-            var accessor = new InMemoryTokenCacheAccessor(Substitute.For<ICoreLogger>());
-            var s = new TokenCacheJsonSerializer(accessor);
-            string pythonBinFilePath = ResourceHelper.GetTestResourceRelativePath("cachecompat_python.bin");
-            byte[] bytes = File.ReadAllBytes(pythonBinFilePath);
-            s.Deserialize(bytes, false);
-
-            Assert.AreEqual(0, accessor.GetAllAccessTokens().Count());
-            Assert.AreEqual(0, accessor.GetAllRefreshTokens().Count());
-            Assert.AreEqual(0, accessor.GetAllIdTokens().Count());
-            Assert.AreEqual(0, accessor.GetAllAccounts().Count());
-        }
+       
 
         [TestMethod]
         [DeploymentItem(@"Resources\cachecompat_dotnet_dictionary.bin")]
@@ -679,7 +676,8 @@ namespace Microsoft.Identity.Test.Unit.CacheTests
                 Environment = "login.windows.net",
                 HomeAccountId = "13dd2c19-84cd-416a-ae7d-49573e425619.26039cce-489d-4002-8293-5b0c5134eacb",
                 RawClientInfo = string.Empty,
-                ClientId = "b945c513-3946-4ecd-b179-6499803a2167"
+                ClientId = "b945c513-3946-4ecd-b179-6499803a2167",
+                UserAssertionHash = string.Empty
             };
             AssertRefreshTokenCacheItemsAreEqual(expectedRefreshTokenItem, accessor.GetAllRefreshTokens().First());
 
@@ -854,7 +852,14 @@ namespace Microsoft.Identity.Test.Unit.CacheTests
                 Assert.AreEqual(expected.FamilyId, actual.FamilyId);
             }
 
-
+            if (string.IsNullOrEmpty(expected.UserAssertionHash))
+            {
+                Assert.IsTrue(string.IsNullOrEmpty(actual.UserAssertionHash));
+            }
+            else
+            {
+                Assert.AreEqual(expected.UserAssertionHash, actual.UserAssertionHash);
+            }
         }
 
         private void AssertIdTokenCacheItemsAreEqual(MsalIdTokenCacheItem expected, MsalIdTokenCacheItem actual)

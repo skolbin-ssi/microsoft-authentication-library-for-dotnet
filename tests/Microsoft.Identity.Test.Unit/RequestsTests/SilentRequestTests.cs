@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
-using System.Linq;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
@@ -19,11 +18,8 @@ using Microsoft.Identity.Test.Common.Core.Helpers;
 using Microsoft.Identity.Test.Common.Core.Mocks;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Microsoft.Identity.Client.OAuth2;
-using System.Text;
-using NSubstitute.Routing.Handlers;
 using Microsoft.Identity.Client.Internal.Broker;
 using NSubstitute;
-using NSubstitute.ExceptionExtensions;
 using Microsoft.Identity.Client.Internal;
 using Microsoft.Identity.Client.Internal.Requests.Silent;
 
@@ -58,7 +54,7 @@ namespace Microsoft.Identity.Test.Unit.RequestsTests
         }
 
         [TestMethod]
-        public async Task ExpiredTokenRefreshFlowTestAsync()
+        public void ExpiredTokenRefreshFlowTest()
         {
             using (var harness = new MockHttpTestHarness(TestConstants.AuthorityHomeTenant))
             {
@@ -76,7 +72,7 @@ namespace Microsoft.Identity.Test.Unit.RequestsTests
                 };
 
                 // set access tokens as expired
-                foreach (var accessItem in (await harness.Cache.GetAllAccessTokensAsync(true).ConfigureAwait(false)))
+                foreach (var accessItem in harness.Cache.Accessor.GetAllAccessTokens())
                 {
                     accessItem.ExpiresOnUnixTimestamp =
                         ((long)(DateTime.UtcNow - new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc)).TotalSeconds)
@@ -265,9 +261,9 @@ namespace Microsoft.Identity.Test.Unit.RequestsTests
 
                 var requestContext = new RequestContext(ServiceBundle, Guid.NewGuid());
 
-                var authority = Microsoft.Identity.Client.Instance.Authority.CreateAuthorityForRequest(
-                    requestContext.ServiceBundle.Config.AuthorityInfo,
-                    commonParameters.AuthorityOverride);
+                var authority = Microsoft.Identity.Client.Instance.Authority.CreateAuthorityForRequestAsync(
+                    requestContext,
+                    commonParameters.AuthorityOverride).Result;
 
                 var parameters = new AuthenticationRequestParameters(
                     ServiceBundle,

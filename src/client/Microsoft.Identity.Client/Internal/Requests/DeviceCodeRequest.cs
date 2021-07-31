@@ -41,7 +41,7 @@ namespace Microsoft.Identity.Client.Internal.Requests
             client.AddBodyParameter(OAuth2Parameter.Scope, deviceCodeScopes.AsSingleString());
             client.AddBodyParameter(OAuth2Parameter.Claims, AuthenticationRequestParameters.ClaimsAndClientCapabilities);
 
-            var builder = new UriBuilder(AuthenticationRequestParameters.Endpoints.DeviceCodeEndpoint);
+            var builder = new UriBuilder(AuthenticationRequestParameters.Authority.GetDeviceCodeEndpoint());
             builder.AppendQueryParameters(AuthenticationRequestParameters.ExtraQueryParameters);
 
             var response = await client.ExecuteRequestAsync<DeviceCodeResponse>(
@@ -73,10 +73,12 @@ namespace Microsoft.Identity.Client.Internal.Requests
 
                 try
                 {
-                    return await SendTokenRequestAsync(
-                                   AuthenticationRequestParameters.Endpoints.TokenEndpoint,
+                    var tokenResponse = await SendTokenRequestAsync(
+                                   AuthenticationRequestParameters.Authority.GetTokenEndpoint(),
                                    GetBodyParameters(deviceCodeResult), cancellationToken)
                                .ConfigureAwait(false);
+                    Metrics.IncrementTotalAccessTokensFromIdP();
+                    return tokenResponse;
                 }
                 catch (MsalServiceException ex)
                 {
@@ -107,7 +109,7 @@ namespace Microsoft.Identity.Client.Internal.Requests
             return dict;
         }
 
-        protected override KeyValuePair<string, string>? GetCCSHeader(IDictionary<string, string> additionalBodyParameters)
+        protected override KeyValuePair<string, string>? GetCcsHeader(IDictionary<string, string> additionalBodyParameters)
         {
             return null;
         }

@@ -1,6 +1,7 @@
 ﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+using System;
 using System.Threading;
 
 namespace Microsoft.Identity.Client
@@ -13,6 +14,31 @@ namespace Microsoft.Identity.Client
     /// </summary>
     public sealed partial class TokenCacheNotificationArgs
     {
+        /// <summary>
+        /// This constructor is for test purposes only. It allows apps to unit test their MSAL token cache implementation code.
+        /// </summary>
+        public TokenCacheNotificationArgs(
+            ITokenCacheSerializer tokenCache, 
+            string clientId, 
+            IAccount account, 
+            bool hasStateChanged, 
+            bool isApplicationCache, 
+            string suggestedCacheKey, 
+            bool hasTokens,
+            DateTimeOffset? suggestedCacheExpiry,
+            CancellationToken cancellationToken)
+        {
+            TokenCache = tokenCache;
+            ClientId = clientId;
+            Account = account;
+            HasStateChanged = hasStateChanged;
+            IsApplicationCache = isApplicationCache;
+            SuggestedCacheKey = suggestedCacheKey;
+            HasTokens = hasTokens;
+            CancellationToken = cancellationToken;
+            SuggestedCacheExpiry = suggestedCacheExpiry;
+        }
+
         internal TokenCacheNotificationArgs(
             ITokenCacheSerializer tokenCacheSerializer,
             string clientId,
@@ -21,7 +47,8 @@ namespace Microsoft.Identity.Client
             bool isAppCache, 
             bool hasTokens,
             CancellationToken cancellationToken,
-            string suggestedCacheKey = null)
+            string suggestedCacheKey = null,
+            DateTimeOffset? suggestedCacheExpiry = null)
         {
             TokenCache = tokenCacheSerializer;
             ClientId = clientId;
@@ -31,6 +58,7 @@ namespace Microsoft.Identity.Client
             HasTokens = hasTokens;
             SuggestedCacheKey = suggestedCacheKey;
             CancellationToken = cancellationToken;
+            SuggestedCacheExpiry = suggestedCacheExpiry;
         }
 
         /// <summary>
@@ -72,10 +100,10 @@ namespace Microsoft.Identity.Client
         /// The value is: 
         /// 
         /// <list type="bullet">
-        /// <item>the homeAccountId for AcquireTokenSilent, GetAccount(homeAccountId), RemoveAccount and when writing tokens on confidential client calls</item>
-        /// <item>clientID + "_AppTokenCache" for AcquireTokenForClient</item>
-        /// <item>clientID_tenantID + "_AppTokenCache" for AcquireTokenForClient when tenant specific authority</item>
-        /// <item>the hash of the original token for AcquireTokenOnBehalfOf</item>
+        /// <item><description>the homeAccountId for AcquireTokenSilent, GetAccount(homeAccountId), RemoveAccount and when writing tokens on confidential client calls</description></item>
+        /// <item><description>clientID + "_AppTokenCache" for AcquireTokenForClient</description></item>
+        /// <item><description>clientID_tenantID + "_AppTokenCache" for AcquireTokenForClient when tenant specific authority</description></item>
+        /// <item><description>the hash of the original token for AcquireTokenOnBehalfOf</description></item>
         /// </list>
         /// </summary>
         public string SuggestedCacheKey { get; }
@@ -94,5 +122,14 @@ namespace Microsoft.Identity.Client
         /// along to the custom token cache implementation.
         /// </summary>
         public CancellationToken CancellationToken { get; }
+
+        /// <Summary>
+        /// Suggested value of the expiry, to help determining the cache eviction time. 
+        /// This value is <b>only</b> set on the <code>OnAfterAccess</code> delegate, on a cache write
+        /// operation (that is when <code>args.HasStateChanged</code> is <code>true</code>) and when the cache write 
+        /// is triggered from the <code>AcquireTokenForClient</code> method. In all other cases it's <code>null</code>, as there is a refresh token, and therefore the
+        /// access tokens are refreshable.
+        /// </Summary> 
+        public DateTimeOffset? SuggestedCacheExpiry { get; private set; }
     }
 }

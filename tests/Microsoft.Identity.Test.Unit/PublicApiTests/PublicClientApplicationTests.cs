@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
-using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Security;
@@ -19,9 +18,7 @@ using Microsoft.Identity.Client.Instance.Discovery;
 using Microsoft.Identity.Client.Internal;
 using Microsoft.Identity.Client.Internal.Broker;
 using Microsoft.Identity.Client.OAuth2;
-using Microsoft.Identity.Client.Platforms.Features.DesktopOs;
 using Microsoft.Identity.Client.PlatformsCommon.Interfaces;
-using Microsoft.Identity.Client.TelemetryCore;
 using Microsoft.Identity.Client.TelemetryCore.Internal;
 using Microsoft.Identity.Client.TelemetryCore.Internal.Constants;
 using Microsoft.Identity.Client.TelemetryCore.Internal.Events;
@@ -290,7 +287,7 @@ namespace Microsoft.Identity.Test.Unit.PublicApiTests
                 app.ServiceBundle.ConfigureMockWebUI();
                 var userCacheAccess = app.UserTokenCache.RecordAccess();
                 var extraExpectedHeaders = TestConstants.ExtraHttpHeader;
-                extraExpectedHeaders.Add(Constants.CCSRoutingHintHeader, CoreHelpers.GetCCSUpnHeader(TestConstants.s_user.Username));
+                extraExpectedHeaders.Add(Constants.CcsRoutingHintHeader, CoreHelpers.GetCcsUpnHint(TestConstants.s_user.Username));
                 harness.HttpManager.AddSuccessTokenResponseMockHandlerForPost(TestConstants.AuthorityCommonTenant, null, null, false, null, extraExpectedHeaders);
 
                 Guid correlationId = Guid.NewGuid();
@@ -847,8 +844,8 @@ namespace Microsoft.Identity.Test.Unit.PublicApiTests
                 .WithTelemetry(new TraceTelemetryConfig())
                 .BuildConcrete();
 
-            var authoriy = Authority.CreateAuthorityWithTenant(app.ServiceBundle.Config.AuthorityInfo, null);
-            Assert.AreEqual(ClientApplicationBase.DefaultAuthority, authoriy.AuthorityInfo.CanonicalAuthority);
+            var authority = Authority.CreateAuthorityWithTenant(app.ServiceBundle.Config.AuthorityInfo, null);
+            Assert.AreEqual(ClientApplicationBase.DefaultAuthority, authority.AuthorityInfo.CanonicalAuthority);
         }
 
         [TestMethod]
@@ -906,6 +903,8 @@ namespace Microsoft.Identity.Test.Unit.PublicApiTests
                 // Act
                 var accounts = await pca.GetAccountsAsync().ConfigureAwait(false);
                 var account = accounts.Single(a => a.HomeAccountId.TenantId == tenant1);
+                var tenantProfiles = account.GetTenantProfiles();
+                
                 AuthenticationResult response = await
                     pca.AcquireTokenSilent(new[] { "User.Read" }, account)
                     .WithAuthority(tenantedAuthority1)
@@ -914,6 +913,10 @@ namespace Microsoft.Identity.Test.Unit.PublicApiTests
 
                 // Assert
                 Assert.AreEqual(tenant1, response.TenantId);
+                AssertTenantProfiles(tenantProfiles, tenant1, tenant2);
+                AssertTenantProfiles(response.Account.GetTenantProfiles(), tenant1, tenant2);
+                Assert.AreEqual(tenant1, response.ClaimsPrincipal.FindFirst("tid").Value);
+                
 
                 // Act
                 accounts = await pca.GetAccountsAsync().ConfigureAwait(false);
@@ -926,7 +929,28 @@ namespace Microsoft.Identity.Test.Unit.PublicApiTests
 
                 // Assert
                 Assert.AreEqual(tenant2, response.TenantId);
+                Assert.AreEqual(tenant2, response.ClaimsPrincipal.FindFirst("tid").Value);
             }
+        }
+
+        private void AssertTenantProfiles(IEnumerable<TenantProfile> tenantProfiles, string tenant1, string tenant2)
+        {
+            var tenantProfile1 = tenantProfiles.Single(tp => tp.TenantId == tenant1);
+            var tenantProfile2 = tenantProfiles.Single(tp => tp.TenantId == tenant2);
+
+            Assert.AreEqual(2, tenantProfiles.Count());
+
+            Assert.AreEqual(tenant1, tenantProfile1.TenantId);
+            Assert.AreEqual(tenant2, tenantProfile2.TenantId);
+
+            Assert.IsTrue(tenantProfile1.IsHomeTenant);
+            Assert.IsFalse(tenantProfile2.IsHomeTenant);
+
+            Assert.IsNotNull(tenantProfile1.ClaimsPrincipal);
+            Assert.IsTrue(tenantProfile1.ClaimsPrincipal.Claims.Count() > 0);
+
+            Assert.IsNotNull(tenantProfile2.ClaimsPrincipal);
+            Assert.IsTrue(tenantProfile2.ClaimsPrincipal.Claims.Count() > 0);
         }
 
         /// <summary>
@@ -962,6 +986,7 @@ namespace Microsoft.Identity.Test.Unit.PublicApiTests
 
                 // Assert
                 Assert.AreEqual(tenant1, response.TenantId);
+                AssertTenantProfiles(account.GetTenantProfiles(), tenant1, tenant2);
 
                 // Arrange
                 PublicClientApplication pca2 = CreatePcaFromFileWithAuthority(httpManager, tenantedAuthority2);

@@ -72,7 +72,7 @@ namespace Microsoft.Identity.Test.Unit
 
                 // make sure that all cache entities are stored with "preferred_cache" environment
                 // (it is taken from metadata in instance discovery response)
-                await ValidateCacheEntitiesEnvironmentAsync(app.UserTokenCacheInternal, TestConstants.ProductionPrefCacheEnvironment).ConfigureAwait(false);
+                ValidateCacheEntitiesEnvironment(app.UserTokenCacheInternal, TestConstants.ProductionPrefCacheEnvironment);
 
                 // silent request targeting at, should return at from cache for any environment alias
                 foreach (var envAlias in TestConstants.s_prodEnvAliases)
@@ -147,28 +147,28 @@ namespace Microsoft.Identity.Test.Unit
             }
         }
 
-        private async Task ValidateCacheEntitiesEnvironmentAsync(ITokenCacheInternal cache, string expectedEnvironment)
+        private void ValidateCacheEntitiesEnvironment(ITokenCacheInternal cache, string expectedEnvironment)
         {
             ICoreLogger logger = Substitute.For<ICoreLogger>();
-            IEnumerable<Client.Cache.Items.MsalAccessTokenCacheItem> accessTokens = await cache.GetAllAccessTokensAsync(true).ConfigureAwait(false);
+            IEnumerable<Client.Cache.Items.MsalAccessTokenCacheItem> accessTokens = cache.Accessor.GetAllAccessTokens();
             foreach (Client.Cache.Items.MsalAccessTokenCacheItem at in accessTokens)
             {
                 Assert.AreEqual(expectedEnvironment, at.Environment);
             }
 
-            IEnumerable<Client.Cache.Items.MsalRefreshTokenCacheItem> refreshTokens = await cache.GetAllRefreshTokensAsync(true).ConfigureAwait(false);
+            IEnumerable<Client.Cache.Items.MsalRefreshTokenCacheItem> refreshTokens = cache.Accessor.GetAllRefreshTokens();
             foreach (Client.Cache.Items.MsalRefreshTokenCacheItem rt in refreshTokens)
             {
                 Assert.AreEqual(expectedEnvironment, rt.Environment);
             }
 
-            IEnumerable<Client.Cache.Items.MsalIdTokenCacheItem> idTokens = await cache.GetAllIdTokensAsync(true).ConfigureAwait(false);
+            IEnumerable<Client.Cache.Items.MsalIdTokenCacheItem> idTokens = cache.Accessor.GetAllIdTokens();
             foreach (Client.Cache.Items.MsalIdTokenCacheItem id in idTokens)
             {
                 Assert.AreEqual(expectedEnvironment, id.Environment);
             }
 
-            IEnumerable<Client.Cache.Items.MsalAccountCacheItem> accounts = await cache.GetAllAccountsAsync().ConfigureAwait(false);
+            IEnumerable<Client.Cache.Items.MsalAccountCacheItem> accounts = cache.Accessor.GetAllAccounts();
             foreach (Client.Cache.Items.MsalAccountCacheItem account in accounts)
             {
                 Assert.AreEqual(expectedEnvironment, account.Environment);
@@ -180,6 +180,35 @@ namespace Microsoft.Identity.Test.Unit
             foreach (KeyValuePair<AdalTokenCacheKey, AdalResultWrapper> kvp in adalCache)
             {
                 Assert.AreEqual(expectedEnvironment, new Uri(kvp.Key.Authority).Host);
+            }
+        }
+
+        [TestMethod]
+        public void AuthorityNotIncludedInAliasesTestAsync()
+        {
+            //Make sure MSAL is able to create an entry for instance discovery when the configured environment is not present in the 
+            //instance discovery metadata. This is for non-public cloud scenarios. See https://github.com/AzureAD/microsoft-authentication-library-for-dotnet/issues/2701
+
+            using (var harness = base.CreateTestHarness())
+            {
+                PublicClientApplication app = PublicClientApplicationBuilder.Create(TestConstants.ClientId)
+                                                                            .WithAuthority(new Uri(TestConstants.AuthorityCommonPpeAuthority), true)
+                                                                            .WithHttpManager(harness.HttpManager)
+                                                                            .WithTelemetry(new TraceTelemetryConfig())
+                                                                            .BuildConcrete();
+                app.ServiceBundle.ConfigureMockWebUI();
+
+                //Adding one instance discovery response to ensure the cache is hit for the subsiquent requests.
+                //If MSAL tries to do an additional request this test will fail.
+                harness.HttpManager.AddInstanceDiscoveryMockHandler();
+                harness.HttpManager.AddSuccessTokenResponseMockHandlerForPost(TestConstants.AuthorityCommonPpeAuthority);
+
+                AuthenticationResult result = app
+                    .AcquireTokenInteractive(TestConstants.s_scope)
+                    .ExecuteAsync(CancellationToken.None)
+                    .Result;
+
+                Assert.IsNotNull(result);
             }
         }
     }

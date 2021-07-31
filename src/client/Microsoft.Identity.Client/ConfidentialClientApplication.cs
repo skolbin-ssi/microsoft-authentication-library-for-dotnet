@@ -123,6 +123,12 @@ namespace Microsoft.Identity.Client
             IEnumerable<string> scopes,
             UserAssertion userAssertion)
         {
+            if (userAssertion == null)
+            {
+                ServiceBundle.ApplicationLogger.Error("User assertion for OBO request should not be null");
+                throw new MsalClientException(MsalError.UserAssertionNullError);
+            }
+
             return AcquireTokenOnBehalfOfParameterBuilder.Create(
                 ClientExecutorFactory.CreateConfidentialClientExecutor(this),
                 scopes,
@@ -186,14 +192,12 @@ namespace Microsoft.Identity.Client
         // multi-tenant apps that do not serialize their cache.
         internal InMemoryPartitionedCacheSerializer InMemoryPartitionedCacheSerializer { get; }
 
-
-        internal override AuthenticationRequestParameters CreateRequestParameters(
+        internal override async Task<AuthenticationRequestParameters> CreateRequestParametersAsync(
             AcquireTokenCommonParameters commonParameters,
             RequestContext requestContext,
             ITokenCacheInternal cache)
         {
-            AuthenticationRequestParameters requestParams = base.CreateRequestParameters(commonParameters, requestContext, cache);
-            requestParams.ClientCredential = ServiceBundle.Config.ClientCredential;
+            AuthenticationRequestParameters requestParams = await base.CreateRequestParametersAsync(commonParameters, requestContext, cache).ConfigureAwait(false);
             return requestParams;
         }
 

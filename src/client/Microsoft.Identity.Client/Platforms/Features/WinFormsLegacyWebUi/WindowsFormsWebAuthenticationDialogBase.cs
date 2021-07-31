@@ -94,7 +94,7 @@ namespace Microsoft.Identity.Client.Platforms.Features.WinFormsLegacyWebUi
 
         /// <summary>
         /// </summary>
-        protected virtual void WebBrowserNavigatingHandler(object sender, WebBrowserNavigatingEventArgs e)
+        protected virtual void WebBrowserBeforeNavigateHandler(object sender, WebBrowserBeforeNavigateEventArgs e)
         {
             if (DialogResult == DialogResult.OK)
             {
@@ -117,16 +117,25 @@ namespace Microsoft.Identity.Client.Platforms.Features.WinFormsLegacyWebUi
                 e.Cancel = true;
             }
 
+            if (string.IsNullOrEmpty(e.Url))
+            {
+                RequestContext.Logger.Verbose("[Legacy WebView] URL in BeforeNavigate is null or empty.");
+                e.Cancel = true;
+                return;
+            }
+
+            Uri url = new Uri(e.Url);
+
             // we cancel further processing, if we reached final URL.
             // Security issue: we prohibit navigation with auth code
-            // if redirect URI is URN, then we prohibit navigation, to prevent random browser popup.
-            e.Cancel = CheckForClosingUrl(e.Url);
+            // if redirect URI is URN, then we prohibit navigation, to prevent random browser pop-up.
+            e.Cancel = CheckForClosingUrl(url, e.PostData);
 
-            // check if the url scheme is of type browser-install://
+            // check if the URL scheme is of type browser-install://
             // this means we need to launch external browser
-            if (e.Url.Scheme.Equals("browser", StringComparison.OrdinalIgnoreCase))
+            if (url.Scheme.Equals("browser", StringComparison.OrdinalIgnoreCase))
             {
-                Process.Start(e.Url.AbsoluteUri.Replace("browser://", "https://"));
+                Process.Start(url.AbsoluteUri.Replace("browser://", "https://"));
                 e.Cancel = true;
             }
 
@@ -134,7 +143,7 @@ namespace Microsoft.Identity.Client.Platforms.Features.WinFormsLegacyWebUi
             {
                 string urlDecode = CoreHelpers.UrlDecode(e.Url.ToString());
                 RequestContext.Logger.VerbosePii(
-                    string.Format(CultureInfo.InvariantCulture, "Navigating to '{0}'.", urlDecode),
+                    string.Format(CultureInfo.InvariantCulture, "[Legacy WebView] Navigating to '{0}'.", urlDecode),
                     string.Empty);
             }
         }
@@ -149,7 +158,7 @@ namespace Microsoft.Identity.Client.Platforms.Features.WinFormsLegacyWebUi
 
             string urlDecode = CoreHelpers.UrlDecode(e.Url.ToString());
             RequestContext.Logger.VerbosePii(
-                string.Format(CultureInfo.InvariantCulture, "Navigated to '{0}'.", urlDecode),
+                string.Format(CultureInfo.InvariantCulture, "[Legacy WebView] Navigated to '{0}'.", urlDecode),
                 string.Empty);
         }
 
@@ -188,15 +197,15 @@ namespace Microsoft.Identity.Client.Platforms.Features.WinFormsLegacyWebUi
             OnNavigationCanceled(e.StatusCode);
         }
 
-        private bool CheckForClosingUrl(Uri url)
+        private bool CheckForClosingUrl(Uri url, byte[] postData = null)
         {
             bool readyToClose = false;
 
             if (url.Authority.Equals(_desiredCallbackUri.Authority, StringComparison.OrdinalIgnoreCase) &&
                 url.AbsolutePath.Equals(_desiredCallbackUri.AbsolutePath))
             {
-                RequestContext.Logger.Info("Redirect Uri was reached. Stopping webview navigation...");
-                Result = AuthorizationResult.FromUri(url.OriginalString);
+                RequestContext.Logger.Info("[Legacy WebView] Redirect URI was reached. Stopping WebView navigation...");
+                Result = AuthorizationResult.FromPostData(postData);
                 readyToClose = true;
             }
 
@@ -204,7 +213,7 @@ namespace Microsoft.Identity.Client.Platforms.Features.WinFormsLegacyWebUi
                 !url.AbsoluteUri.Equals("about:blank", StringComparison.OrdinalIgnoreCase) && !url.Scheme.Equals("javascript", StringComparison.OrdinalIgnoreCase))
             {
                 RequestContext.Logger.Error(string.Format(CultureInfo.InvariantCulture,
-                    "Redirection to non-HTTPS scheme ({0}) found! Webview will fail...", url.Scheme));
+                    "[Legacy WebView] Redirection to non-HTTPS scheme ({0}) found! WebView will fail...", url.Scheme));
                 Result = AuthorizationResult.FromStatus(
                     AuthorizationStatus.ErrorHttp,
                     MsalError.NonHttpsRedirectNotSupported,
@@ -233,14 +242,14 @@ namespace Microsoft.Identity.Client.Platforms.Features.WinFormsLegacyWebUi
                 }
 
                 RequestContext.Logger.Verbose(string.Format(CultureInfo.InvariantCulture,
-                    "WebBrowser state: IsBusy: {0}, ReadyState: {1}, Created: {2}, Disposing: {3}, IsDisposed: {4}, IsOffline: {5}",
+                    "[Legacy WebView] WebBrowser state: IsBusy: {0}, ReadyState: {1}, Created: {2}, Disposing: {3}, IsDisposed: {4}, IsOffline: {5}",
                     _webBrowser.IsBusy, _webBrowser.ReadyState, _webBrowser.Created,
                     _webBrowser.Disposing, _webBrowser.IsDisposed, _webBrowser.IsOffline));
 
                 _webBrowser.Stop();
 
                 RequestContext.Logger.Verbose(string.Format(CultureInfo.InvariantCulture,
-                    "WebBrowser state (after Stop): IsBusy: {0}, ReadyState: {1}, Created: {2}, Disposing: {3}, IsDisposed: {4}, IsOffline: {5}",
+                    "[Legacy WebView] WebBrowser state (after Stop): IsBusy: {0}, ReadyState: {1}, Created: {2}, Disposing: {3}, IsDisposed: {4}, IsOffline: {5}",
                     _webBrowser.IsBusy, _webBrowser.ReadyState, _webBrowser.Created,
                     _webBrowser.Disposing, _webBrowser.IsDisposed, _webBrowser.IsOffline));
             });
@@ -262,7 +271,7 @@ namespace Microsoft.Identity.Client.Platforms.Features.WinFormsLegacyWebUi
             // The WebBrowser event handlers must not throw exceptions.
             // If they do then they may be swallowed by the native
             // browser com control.
-            _webBrowser.Navigating += WebBrowserNavigatingHandler;
+            _webBrowser.BeforeNavigate += WebBrowserBeforeNavigateHandler;
             _webBrowser.Navigated += WebBrowserNavigatedHandler;
             _webBrowser.NavigateError += WebBrowserNavigateErrorHandler;
 
@@ -285,7 +294,7 @@ namespace Microsoft.Identity.Client.Platforms.Features.WinFormsLegacyWebUi
         /// <param name="action"></param>
         protected void InvokeHandlingOwnerWindow(Action action)
         {
-            // We only support WindowsForms (since our dialog is winforms based)
+            // We only support Windows Forms (since our dialog is Windows Forms based)
             if (ownerWindow != null && ownerWindow is Control winFormsControl)
             {
                 winFormsControl.Invoke(action);
@@ -381,7 +390,7 @@ namespace Microsoft.Identity.Client.Platforms.Features.WinFormsLegacyWebUi
             string messageUnknown = string.Format(CultureInfo.InvariantCulture, formatUnknown, statusCode);
             return new MsalClientException(MsalError.AuthenticationUiFailedError, messageUnknown);
         }
-     
+
         /// <summary>
         /// </summary>
         internal static class NativeMethods

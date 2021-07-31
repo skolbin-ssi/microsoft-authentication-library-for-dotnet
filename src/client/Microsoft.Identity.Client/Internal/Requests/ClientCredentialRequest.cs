@@ -5,9 +5,9 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Identity.Client.ApiConfig.Parameters;
+using Microsoft.Identity.Client.Cache;
 using Microsoft.Identity.Client.Cache.Items;
 using Microsoft.Identity.Client.OAuth2;
-using Microsoft.Identity.Client.Cache;
 using Microsoft.Identity.Client.TelemetryCore.Internal.Events;
 using Microsoft.Identity.Client.Utils;
 using System;
@@ -49,8 +49,10 @@ namespace Microsoft.Identity.Client.Internal.Requests
                 {
                     AuthenticationRequestParameters.RequestContext.ApiEvent.IsAccessTokenCacheHit = true;
 
+                    Metrics.IncrementTotalAccessTokensFromCache();
                     return new AuthenticationResult(
                         cachedAccessTokenItem,
+                        null,
                         null,
                         AuthenticationRequestParameters.AuthenticationScheme,
                         AuthenticationRequestParameters.RequestContext.CorrelationId,
@@ -82,7 +84,7 @@ namespace Microsoft.Identity.Client.Internal.Requests
             }
             catch (MsalServiceException e)
             {
-                return HandleTokenRefreshError(e, cachedAccessTokenItem);
+                return await HandleTokenRefreshErrorAsync(e, cachedAccessTokenItem).ConfigureAwait(false);
             }
         }
 
@@ -98,7 +100,7 @@ namespace Microsoft.Identity.Client.Internal.Requests
             apiEvent.IsConfidentialClient = true;
         }
 
-        protected override SortedSet<string> GetOverridenScopes(ISet<string> inputScopes)
+        protected override SortedSet<string> GetOverriddenScopes(ISet<string> inputScopes)
         {           
             // Client credentials should not add the reserved scopes
             // "openid", "profile" and "offline_access" 
@@ -116,7 +118,7 @@ namespace Microsoft.Identity.Client.Internal.Requests
             return dict;
         }
 
-        protected override KeyValuePair<string, string>? GetCCSHeader(IDictionary<string, string> additionalBodyParameters)
+        protected override KeyValuePair<string, string>? GetCcsHeader(IDictionary<string, string> additionalBodyParameters)
         {
             return null;
         }

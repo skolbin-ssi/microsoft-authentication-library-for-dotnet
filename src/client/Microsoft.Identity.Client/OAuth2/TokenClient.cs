@@ -53,7 +53,7 @@ namespace Microsoft.Identity.Client.OAuth2
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
-                string tokenEndpoint = tokenEndpointOverride ?? _requestParams.Endpoints.TokenEndpoint;
+                string tokenEndpoint = tokenEndpointOverride ?? _requestParams.Authority.GetTokenEndpoint();
                 string scopes = !string.IsNullOrEmpty(scopeOverride) ? scopeOverride : GetDefaultScopes(_requestParams.Scope);
 
                 AddBodyParamsAndHeaders(additionalBodyParameters, scopes);
@@ -122,20 +122,15 @@ namespace Microsoft.Identity.Client.OAuth2
             _oAuth2Client.AddBodyParameter(OAuth2Parameter.ClientInfo, "1");
 
 
-            if (_requestParams.ClientCredential != null)
+            if (_serviceBundle.Config.ClientCredential != null)
             {
-                Dictionary<string, string> ccBodyParameters = ClientCredentialHelper.CreateClientCredentialBodyParameters(
+                _serviceBundle.Config.ClientCredential.AddConfidentialClientParameters(
+                    _oAuth2Client,
                     _requestParams.RequestContext.Logger,
-                    _serviceBundle.PlatformProxy.CryptographyManager,
-                    _requestParams.ClientCredential,
+                    _serviceBundle.PlatformProxy.CryptographyManager,                    
                     _requestParams.AppConfig.ClientId,
-                    _requestParams.Endpoints,
-                    _requestParams.SendX5C);
-
-                foreach (var entry in ccBodyParameters)
-                {
-                    _oAuth2Client.AddBodyParameter(entry.Key, entry.Value);
-                }
+                    _requestParams.Authority,
+                    _requestParams.SendX5C);           
             }
 
             _oAuth2Client.AddBodyParameter(OAuth2Parameter.Scope, scopes);

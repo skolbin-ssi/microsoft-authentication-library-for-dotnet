@@ -3,7 +3,6 @@
 
 #if !ANDROID && !iOS && !WINDOWS_APP 
 using System;
-using System.IO;
 using System.Net;
 using System.Net.Http;
 using System.Threading;
@@ -129,46 +128,6 @@ namespace Microsoft.Identity.Test.Unit
         }
 
         [TestMethod]
-        [Ignore] //  https://github.com/AzureAD/microsoft-authentication-library-for-dotnet/issues/2512
-        [Description("Tokens between non-regional and regional are interchangable.")]
-        public async Task TokensAreInterchangable_NonRegional_To_Regional_Async()
-        {
-            using (var httpManager = new MockHttpManager())
-            {
-                httpManager.AddInstanceDiscoveryMockHandler();
-                httpManager.AddMockHandler(CreateTokenResponseHttpHandler(false));
-
-                IConfidentialClientApplication appWithRegion = CreateCca(
-                    httpManager,
-                    ConfidentialClientApplication.AttemptRegionDiscovery);
-                InMemoryTokenCache memoryTokenCache = new InMemoryTokenCache();
-                memoryTokenCache.Bind(appWithRegion.AppTokenCache);
-
-                IConfidentialClientApplication appWithoutRegion = CreateCca(
-                    httpManager,
-                    null);
-                memoryTokenCache.Bind(appWithoutRegion.AppTokenCache);
-
-                AuthenticationResult result = await appWithoutRegion
-                    .AcquireTokenForClient(TestConstants.s_scope)
-                    .ExecuteAsync(CancellationToken.None)
-                    .ConfigureAwait(false);
-                Assert.IsTrue(result.AuthenticationResultMetadata.TokenSource == TokenSource.IdentityProvider);
-
-                httpManager.AddRegionDiscoveryMockHandler("uscentral");
-
-                // when switching to non-region, token is found in the cache
-                result = await appWithRegion
-                    .AcquireTokenForClient(TestConstants.s_scope)
-                    .ExecuteAsync(CancellationToken.None)
-                    .ConfigureAwait(false);
-
-                Assert.IsTrue(result.AuthenticationResultMetadata.TokenSource == TokenSource.Cache);
-            }
-        }
-
-
-        [TestMethod]
         [Description("Test when region is received from environment variable")]
         public async Task FetchRegionFromEnvironmentAsync()
         {
@@ -234,6 +193,25 @@ namespace Microsoft.Identity.Test.Unit
                     Assert.Fail("Fallback to global failed.");
                 }
             }
+        }
+
+        [TestMethod]
+        public void WithAzureRegionThrowsOnNullArg()
+        {
+            AssertException.Throws<ArgumentNullException>(
+                () => ConfidentialClientApplicationBuilder
+                             .Create(TestConstants.ClientId)
+                             .WithAzureRegion(null)
+                             .WithClientSecret(TestConstants.ClientSecret)
+                             .Build());
+
+            AssertException.Throws<ArgumentNullException>(
+               () => ConfidentialClientApplicationBuilder
+                            .Create(TestConstants.ClientId)
+                            .WithAzureRegion(string.Empty)
+                            .WithClientSecret(TestConstants.ClientSecret)
+                            .Build());
+
         }
 
         [TestMethod]
@@ -310,10 +288,69 @@ namespace Microsoft.Identity.Test.Unit
             {
                 Environment.SetEnvironmentVariable("REGION_NAME", null);
             }
-           
+
         }
 
-       
+        [DataTestMethod]
+        [DataRow("login.partner.microsoftonline.cn", "login.partner.microsoftonline.cn")]
+        [DataRow("login.chinacloudapi.cn", "login.partner.microsoftonline.cn")]
+        [DataRow("login.microsoftonline.us", "login.microsoftonline.us")]
+        [DataRow("login.usgovcloudapi.net", "login.microsoftonline.us")]
+        [DataRow("login-us.microsoftonline.com", "login-us.microsoftonline.com")]
+        [DataRow("login.windows.net", "r.login.microsoftonline.com")]
+        [DataRow("login.microsoft.com", "r.login.microsoftonline.com")]
+        [DataRow("sts.windows.net", "r.login.microsoftonline.com")]
+        [DataRow("login.microsoftonline.com", "r.login.microsoftonline.com")]
+        public async Task PublicAndSovereignCloud_UsesPreferredNetwork_AndNoDiscovery_Async(string inputEnv, string expectedEnv)
+        {
+            try
+            {
+                const string region = "eastus";
+                Environment.SetEnvironmentVariable("REGION_NAME", region);
+
+                using (var harness = new MockHttpAndServiceBundle())
+                {
+                    var tokenHttpCallHandler = new MockHttpMessageHandler()
+                    {
+                        ExpectedUrl = $"https://eastus.{expectedEnv}/17b189bc-2b81-4ec5-aa51-3e628cbc931b/oauth2/v2.0/token",
+                        ExpectedMethod = HttpMethod.Post,
+                        ResponseMessage = CreateResponse(true)
+                    };
+                    harness.HttpManager.AddMockHandler(tokenHttpCallHandler);
+
+                    var app = ConfidentialClientApplicationBuilder
+                                     .Create(TestConstants.ClientId)
+                                     .WithAuthority($"https://{inputEnv}/common", true)
+                                     .WithHttpManager(harness.HttpManager)
+                                     .WithAzureRegion(ConfidentialClientApplication.AttemptRegionDiscovery)
+                                     .WithClientSecret(TestConstants.ClientSecret)
+                                     .Build();
+
+                    AuthenticationResult result = await app
+                        .AcquireTokenForClient(TestConstants.s_scope)
+                        .WithAuthority($"https://{inputEnv}/17b189bc-2b81-4ec5-aa51-3e628cbc931b")
+                        .ExecuteAsync()
+                        .ConfigureAwait(false);
+
+                    Assert.AreEqual("eastus", result.ApiEvent.RegionUsed);
+                    Assert.AreEqual(TokenSource.IdentityProvider, result.AuthenticationResultMetadata.TokenSource);
+
+                    result = await app
+                       .AcquireTokenForClient(TestConstants.s_scope)
+                       .WithAuthority($"https://{inputEnv}/17b189bc-2b81-4ec5-aa51-3e628cbc931b")
+                       .ExecuteAsync()
+                       .ConfigureAwait(false);
+
+                    Assert.AreEqual("eastus", result.ApiEvent.RegionUsed);
+                    Assert.AreEqual(TokenSource.Cache, result.AuthenticationResultMetadata.TokenSource);
+                }
+            }
+            finally
+            {
+                Environment.SetEnvironmentVariable("REGION_NAME", null);
+            }
+        }
+
         private static async Task RunPpeTestAsync(bool validateAuthority, bool authorityIsValid)
         {
             using (var harness = new MockHttpAndServiceBundle())
@@ -344,7 +381,7 @@ namespace Microsoft.Identity.Test.Unit
                     ResponseMessage = CreateResponse(true)
                 };
 
-              
+
                 if (authorityIsValid || !validateAuthority) // no calls because authority validation will fail
                 {
                     harness.HttpManager.AddMockHandler(discoveryHandler);
@@ -352,7 +389,7 @@ namespace Microsoft.Identity.Test.Unit
                 }
                 else
                 {
-                    harness.HttpManager.AddMockHandler(discoveryHandler);                    
+                    harness.HttpManager.AddMockHandler(discoveryHandler);
                 }
 
                 var app = ConfidentialClientApplicationBuilder
@@ -363,7 +400,7 @@ namespace Microsoft.Identity.Test.Unit
                                  .WithClientSecret(TestConstants.ClientSecret)
                                  .Build();
 
-               if (!authorityIsValid && validateAuthority)
+                if (!authorityIsValid && validateAuthority)
                 {
                     var ex = await AssertException.TaskThrowsAsync<MsalServiceException>(() => app
                    .AcquireTokenForClient(TestConstants.s_scope)
@@ -400,8 +437,6 @@ namespace Microsoft.Identity.Test.Unit
                 }
             }
         }
-
-     
 
         [TestMethod]
         [Description("Test with a user configured region.")]
@@ -496,7 +531,7 @@ namespace Microsoft.Identity.Test.Unit
             return new MockHttpMessageHandler()
             {
                 ExpectedUrl = expectRegional ?
-                    $"https://{TestConstants.Region}.login.microsoft.com/common/oauth2/v2.0/token" :
+                    $"https://{TestConstants.Region}.r.login.microsoftonline.com/common/oauth2/v2.0/token" :
                     "https://login.microsoftonline.com/common/oauth2/v2.0/token",
                 ExpectedMethod = HttpMethod.Post,
                 ResponseMessage = CreateResponse(true)

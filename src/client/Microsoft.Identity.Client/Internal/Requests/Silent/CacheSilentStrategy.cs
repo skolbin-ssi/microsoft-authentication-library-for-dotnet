@@ -8,7 +8,6 @@ using System.Threading.Tasks;
 using Microsoft.Identity.Client.ApiConfig.Parameters;
 using Microsoft.Identity.Client.Cache;
 using Microsoft.Identity.Client.Cache.Items;
-using Microsoft.Identity.Client.Instance;
 using Microsoft.Identity.Client.OAuth2;
 
 namespace Microsoft.Identity.Client.Internal.Requests.Silent
@@ -52,6 +51,7 @@ namespace Microsoft.Identity.Client.Internal.Requests.Silent
                     logger.Info("Returning access token found in cache. RefreshOn exists ? "
                         + cachedAccessTokenItem.RefreshOn.HasValue);
                     AuthenticationRequestParameters.RequestContext.ApiEvent.IsAccessTokenCacheHit = true;
+                    Metrics.IncrementTotalAccessTokensFromCache();
                     return await CreateAuthenticationResultAsync(cachedAccessTokenItem).ConfigureAwait(false);
                 }
                 else if (cachedAccessTokenItem == null)
@@ -124,7 +124,7 @@ namespace Microsoft.Identity.Client.Internal.Requests.Silent
                 MsalRefreshTokenCacheItem appRefreshToken = await FindRefreshTokenOrFailAsync()
                     .ConfigureAwait(false);
 
-                msalTokenResponse = await RefreshAccessTokenAsync(appRefreshToken, cancellationToken)
+                msalTokenResponse = await SilentRequestHelper.RefreshAccessTokenAsync(appRefreshToken, _silentRequest, AuthenticationRequestParameters, cancellationToken)
                     .ConfigureAwait(false);
             }
             return await _silentRequest.CacheTokenResponseAndCreateAuthenticationResultAsync(msalTokenResponse).ConfigureAwait(false);
@@ -133,9 +133,12 @@ namespace Microsoft.Identity.Client.Internal.Requests.Silent
         private async Task<AuthenticationResult> CreateAuthenticationResultAsync(MsalAccessTokenCacheItem cachedAccessTokenItem)
         {
             var msalIdTokenItem = await CacheManager.GetIdTokenCacheItemAsync(cachedAccessTokenItem.GetIdTokenItemKey()).ConfigureAwait(false);
+            var tenantProfiles = await CacheManager.GetTenantProfilesAsync(cachedAccessTokenItem.HomeAccountId).ConfigureAwait(false);
+
             return new AuthenticationResult(
                 cachedAccessTokenItem,
                 msalIdTokenItem,
+                tenantProfiles?.Values,
                 AuthenticationRequestParameters.AuthenticationScheme,
                 AuthenticationRequestParameters.RequestContext.CorrelationId,
                 TokenSource.Cache,
@@ -188,7 +191,7 @@ namespace Microsoft.Identity.Client.Internal.Requests.Silent
             {
                 try
                 {
-                    MsalTokenResponse frtTokenResponse = await RefreshAccessTokenAsync(familyRefreshToken, cancellationToken)
+                    MsalTokenResponse frtTokenResponse = await SilentRequestHelper.RefreshAccessTokenAsync(familyRefreshToken, _silentRequest, AuthenticationRequestParameters, cancellationToken)
                         .ConfigureAwait(false);
 
                     logger.Verbose("[FOCI] FRT refresh succeeded. ");
@@ -221,24 +224,6 @@ namespace Microsoft.Identity.Client.Internal.Requests.Silent
             return null;
         }
 
-        private async Task<MsalTokenResponse> RefreshAccessTokenAsync(MsalRefreshTokenCacheItem msalRefreshTokenItem, CancellationToken cancellationToken)
-        {
-            AuthenticationRequestParameters.RequestContext.Logger.Verbose("Refreshing access token...");
-            await AuthenticationRequestParameters.AuthorityManager.RunInstanceDiscoveryAndValidationAsync().ConfigureAwait(false);
-
-            var msalTokenResponse = await _silentRequest.SendTokenRequestAsync(GetBodyParameters(msalRefreshTokenItem.Secret), cancellationToken)
-                                    .ConfigureAwait(false);
-
-            if (msalTokenResponse.RefreshToken == null)
-            {
-                msalTokenResponse.RefreshToken = msalRefreshTokenItem.Secret;
-                AuthenticationRequestParameters.RequestContext.Logger.Info(
-                    "Refresh token was missing from the token refresh response, so the refresh token in the request is returned instead. ");
-            }
-
-            return msalTokenResponse;
-        }
-
         private async Task<MsalRefreshTokenCacheItem> FindRefreshTokenOrFailAsync()
         {
             var msalRefreshTokenItem = await CacheManager.FindRefreshTokenAsync().ConfigureAwait(false);
@@ -254,17 +239,6 @@ namespace Microsoft.Identity.Client.Internal.Requests.Silent
             }
 
             return msalRefreshTokenItem;
-        }
-
-        private Dictionary<string, string> GetBodyParameters(string refreshTokenSecret)
-        {
-            var dict = new Dictionary<string, string>
-            {
-                [OAuth2Parameter.GrantType] = OAuth2GrantType.RefreshToken,
-                [OAuth2Parameter.RefreshToken] = refreshTokenSecret
-            };
-
-            return dict;
-        }       
+        }      
     }
 }

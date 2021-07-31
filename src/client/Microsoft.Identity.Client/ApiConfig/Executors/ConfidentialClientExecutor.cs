@@ -19,7 +19,7 @@ namespace Microsoft.Identity.Client.ApiConfig.Executors
         private readonly ConfidentialClientApplication _confidentialClientApplication;
 
         public ConfidentialClientExecutor(IServiceBundle serviceBundle, ConfidentialClientApplication confidentialClientApplication)
-            : base(serviceBundle, confidentialClientApplication)
+            : base(serviceBundle)
         {
             ConfidentialClientApplication.GuardMobileFrameworks();
 
@@ -33,10 +33,10 @@ namespace Microsoft.Identity.Client.ApiConfig.Executors
         {
             var requestContext = CreateRequestContextAndLogVersionInfo(commonParameters.CorrelationId, cancellationToken);
 
-            var requestParams = _confidentialClientApplication.CreateRequestParameters(
+            var requestParams = await _confidentialClientApplication.CreateRequestParametersAsync(
                 commonParameters,
                 requestContext,
-                _confidentialClientApplication.UserTokenCacheInternal);
+                _confidentialClientApplication.UserTokenCacheInternal).ConfigureAwait(false);
             requestParams.SendX5C = authorizationCodeParameters.SendX5C;
 
             var handler = new ConfidentialAuthCodeRequest(
@@ -54,11 +54,10 @@ namespace Microsoft.Identity.Client.ApiConfig.Executors
         {
             var requestContext = CreateRequestContextAndLogVersionInfo(commonParameters.CorrelationId, cancellationToken);
 
-            var requestParams = _confidentialClientApplication.CreateRequestParameters(
+            var requestParams = await _confidentialClientApplication.CreateRequestParametersAsync(
                 commonParameters,
                 requestContext,
-                _confidentialClientApplication.AppTokenCacheInternal);
-
+                _confidentialClientApplication.AppTokenCacheInternal).ConfigureAwait(false);
        
             requestParams.SendX5C = clientParameters.SendX5C;
             
@@ -77,10 +76,10 @@ namespace Microsoft.Identity.Client.ApiConfig.Executors
         {
             var requestContext = CreateRequestContextAndLogVersionInfo(commonParameters.CorrelationId, cancellationToken);
 
-            var requestParams = _confidentialClientApplication.CreateRequestParameters(
+            var requestParams = await _confidentialClientApplication.CreateRequestParametersAsync(
                 commonParameters,
                 requestContext,
-                _confidentialClientApplication.UserTokenCacheInternal);
+                _confidentialClientApplication.UserTokenCacheInternal).ConfigureAwait(false);
 
             requestParams.SendX5C = onBehalfOfParameters.SendX5C;
             requestParams.UserAssertion = onBehalfOfParameters.UserAssertion;
@@ -100,13 +99,14 @@ namespace Microsoft.Identity.Client.ApiConfig.Executors
         {
             var requestContext = CreateRequestContextAndLogVersionInfo(commonParameters.CorrelationId, cancellationToken);
 
-            var requestParameters = _confidentialClientApplication.CreateRequestParameters(
+            var requestParameters = await _confidentialClientApplication.CreateRequestParametersAsync(
                 commonParameters,
                 requestContext,
-                _confidentialClientApplication.UserTokenCacheInternal);
+                _confidentialClientApplication.UserTokenCacheInternal).ConfigureAwait(false);
 
             requestParameters.Account = authorizationRequestUrlParameters.Account;
             requestParameters.LoginHint = authorizationRequestUrlParameters.LoginHint;
+            requestParameters.CcsRoutingHint = authorizationRequestUrlParameters.CcsRoutingHint;
 
             if (!string.IsNullOrWhiteSpace(authorizationRequestUrlParameters.RedirectUri))
             {

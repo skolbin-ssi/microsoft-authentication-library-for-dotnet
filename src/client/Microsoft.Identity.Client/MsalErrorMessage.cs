@@ -165,7 +165,7 @@ namespace Microsoft.Identity.Client
 
         public const string NonHttpsRedirectNotSupported = "Non-HTTPS URL redirect is not supported in webview. ";
 
-        public const string IDTokenMustHaveTwoParts = "ID Token must contain at least 2 parts. ";
+        public const string IDTokenMustHaveTwoParts = "ID Token must have a valid JWT format. ";
         public const string FailedToParseIDToken = "Failed to parse the returned id token. ";
 
         public const string InvalidAuthorityOpenId = "invalid authority while getting the open id config endpoint. ";
@@ -391,5 +391,7 @@ namespace Microsoft.Identity.Client
                 CultureInfo.InvariantCulture,
                 "Failure setting process security to enable WAM Account Picker in an elevated process ({0}). For troubleshooting details, see https://aka.ms/msal-net-wam .",
                 errorCode);
+
+        public static string CcsRoutingHintMissing = "Either the userObjectIdentifier or tenantIdenifier are missing. Both are needed to create the ccs routing hint. See https://aka.ms/msal-net/ccsRouting. ";
     }
 }

@@ -1,7 +1,6 @@
 ﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -10,12 +9,14 @@ using Microsoft.Identity.Client.Cache;
 using Microsoft.Identity.Client.Cache.Items;
 using Microsoft.Identity.Client.OAuth2;
 using Microsoft.Identity.Client.TelemetryCore.Internal.Events;
+using Microsoft.Identity.Client.Utils;
 
 namespace Microsoft.Identity.Client.Internal.Requests
 {
     internal class OnBehalfOfRequest : RequestBase
     {
         private readonly AcquireTokenOnBehalfOfParameters _onBehalfOfParameters;
+        private string _ccsRoutingHint;
 
         public OnBehalfOfRequest(
             IServiceBundle serviceBundle,
@@ -40,13 +41,14 @@ namespace Microsoft.Identity.Client.Internal.Requests
             var logger = AuthenticationRequestParameters.RequestContext.Logger;
 
             CacheInfoTelemetry cacheInfoTelemetry;
-            if (!_onBehalfOfParameters.ForceRefresh)
+            if (!_onBehalfOfParameters.ForceRefresh && string.IsNullOrEmpty(AuthenticationRequestParameters.Claims))
             {
                 // look for access token in the cache first.
                 // no access token is found, then it means token does not exist
-                // or new assertion has been passed. We should not use Refresh Token
-                // for the user because the new incoming token may have updated claims
-                // like MFA etc.
+                // or new assertion has been passed. 
+                // Look for a refresh token, if refresh token is found perform refresh token flow.
+                // If a refresh token is not found, then it means refresh token does not exist or new assertion has been passed.
+                // Fetch new access token for OBO
                 using (logger.LogBlockDuration("[OBO Request] Looking in the cache for an access token"))
                 {
                     msalAccessTokenItem = await CacheManager.FindAccessTokenAsync().ConfigureAwait(false);
@@ -55,14 +57,18 @@ namespace Microsoft.Identity.Client.Internal.Requests
                 if (msalAccessTokenItem != null && !msalAccessTokenItem.NeedsRefresh())
                 {
                     var msalIdTokenItem = await CacheManager.GetIdTokenCacheItemAsync(msalAccessTokenItem.GetIdTokenItemKey()).ConfigureAwait(false);
+                    var tenantProfiles = await CacheManager.GetTenantProfilesAsync(msalAccessTokenItem.HomeAccountId).ConfigureAwait(false); 
+
                     logger.Info(
                         "[OBO Request] Found a valid access token in the cache. ID token also found? " + (msalIdTokenItem != null));
 
                     AuthenticationRequestParameters.RequestContext.ApiEvent.IsAccessTokenCacheHit = true;
 
+                    Metrics.IncrementTotalAccessTokensFromCache();
                     return new AuthenticationResult(
                         msalAccessTokenItem,
                         msalIdTokenItem,
+                        tenantProfiles?.Values,
                         AuthenticationRequestParameters.AuthenticationScheme,
                         AuthenticationRequestParameters.RequestContext.CorrelationId,
                         TokenSource.Cache,
@@ -86,16 +92,35 @@ namespace Microsoft.Identity.Client.Internal.Requests
             // No AT in the cache or AT needs to be refreshed
             try
             {
-                using (logger.LogBlockDuration("[OBO request] Fetching OBO token from ESTS"))
-                {
-                    var result = await FetchNewAccessTokenAsync(cancellationToken).ConfigureAwait(false);
-                    return result;
-                }
+                return await RefreshRtOrFetchNewAccessTokenAsync(cancellationToken).ConfigureAwait(false);
             }
             catch (MsalServiceException e)
             {
-                return HandleTokenRefreshError(e, msalAccessTokenItem);
+                return await HandleTokenRefreshErrorAsync(e, msalAccessTokenItem).ConfigureAwait(false);
             }
+        }
+
+        private async Task<AuthenticationResult> RefreshRtOrFetchNewAccessTokenAsync(CancellationToken cancellationToken)
+        {
+            // Look for a refresh token
+            MsalRefreshTokenCacheItem appRefreshToken = await CacheManager.FindRefreshTokenAsync().ConfigureAwait(false);
+
+            // If a refresh token is not found, fetch a new access token
+            if (appRefreshToken != null)
+            {
+                var clientInfo = ClientInfo.CreateFromJson(appRefreshToken.RawClientInfo);
+                _ccsRoutingHint = CoreHelpers.GetCcsClientInfoHint(clientInfo.UniqueObjectIdentifier,
+                                                                                  clientInfo.UniqueTenantIdentifier);
+
+                var msalTokenResponse = await SilentRequestHelper.RefreshAccessTokenAsync(appRefreshToken, this, AuthenticationRequestParameters, cancellationToken)
+                .ConfigureAwait(false);
+
+                return await CacheTokenResponseAndCreateAuthenticationResultAsync(msalTokenResponse).ConfigureAwait(false);
+            }
+
+            AuthenticationRequestParameters.RequestContext.Logger.Info("[OBO request] No Refresh Token was found in the cache. Fetching OBO token from ESTS");
+
+            return await FetchNewAccessTokenAsync(cancellationToken).ConfigureAwait(false);
         }
 
         private async Task<AuthenticationResult> FetchNewAccessTokenAsync(CancellationToken cancellationToken)
@@ -127,9 +152,14 @@ namespace Microsoft.Identity.Client.Internal.Requests
             return dict;
         }
 
-        protected override KeyValuePair<string, string>? GetCCSHeader(IDictionary<string, string> additionalBodyParameters)
+        protected override KeyValuePair<string, string>? GetCcsHeader(IDictionary<string, string> additionalBodyParameters)
         {
-            return null;
+            if (string.IsNullOrEmpty(_ccsRoutingHint))
+            {
+                return null;
+            }
+
+            return new KeyValuePair<string, string>(Constants.CcsRoutingHintHeader, _ccsRoutingHint) as KeyValuePair<string, string>?;
         }
     }
 }

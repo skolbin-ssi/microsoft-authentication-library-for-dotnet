@@ -15,6 +15,8 @@
     <TargetFrameworks Condition="$([MSBuild]::IsOsPlatform('Windows'))">$(TargetFrameworkNetDesktop45);$(TargetFrameworkNetDesktop461);$(TargetFrameworkNetStandard);$(TargetFrameworkNetCore);$(TargetFrameworkUap);$(TargetFrameworkIos);$(TargetFrameworkAndroid9);$(TargetFrameworkAndroid10);$(TargetFrameworkMac);$(TargetFrameworkNet5Win)</TargetFrameworks>
     <TargetFrameworks Condition="$([MSBuild]::IsOsPlatform('OSX'))">$(TargetFrameworkNetStandard);$(TargetFrameworkNetCore);$(TargetFrameworkIos);$(TargetFrameworkAndroid9);$(TargetFrameworkAndroid10);$(TargetFrameworkMac)</TargetFrameworks>
     <TargetFrameworks Condition="$([MSBuild]::IsOsPlatform('Linux')) Or '$(NetCoreOnly)' !='' ">$(TargetFrameworkNetStandard);$(TargetFrameworkNetCore);</TargetFrameworks>
+    
+    <PlatformTarget>AnyCPU</PlatformTarget>
   </PropertyGroup>
 
   <PropertyGroup Label="NuGet and AssemblyInfo metadata">
@@ -32,7 +34,7 @@
     <Authors>Microsoft</Authors>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://go.microsoft.com/fwlink/?linkid=844761</PackageProjectUrl>
-    <PackageReleaseNotes>The changelog is available at https://github.com/AzureAD/microsoft-authentication-library-for-dotnet/blob/master/changelog.txt and the roadmap at https://github.com/AzureAD/microsoft-authentication-library-for-dotnet/wiki#roadmap </PackageReleaseNotes>
+    <PackageReleaseNotes>The changelog is available at https://github.com/AzureAD/microsoft-authentication-library-for-dotnet/blob/master/changelog.txt. The roadmap at https://github.com/AzureAD/microsoft-authentication-library-for-dotnet/wiki#roadmap. To provide feedback, fill-in the survey at https://ncv.microsoft.com/JrXkdySi0m</PackageReleaseNotes>
     <PackageRequireLicenseAcceptance>true</PackageRequireLicenseAcceptance>
     <Description>
       This package contains the binaries of the Microsoft Authentication Library for .NET (MSAL.NET).
@@ -47,10 +49,13 @@
     <!-- Build symbol package (.snupkg) to distribute the PDB containing Source Link -->
     <IncludeSymbols>true</IncludeSymbols>
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
-    <EmbedUntrackedSources>true</EmbedUntrackedSources>
     <DisableExtraReferences>true</DisableExtraReferences>
     <!-- for https://github.com/xamarin/xamarin-macios/issues/7249 -->
     <IsPackable>true</IsPackable>
+  </PropertyGroup>
+
+  <PropertyGroup  Label="For CI build" Condition="'$(TF_BUILD)' == 'true'">
+    <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
   </PropertyGroup>
 
   <PropertyGroup>
@@ -59,7 +64,6 @@
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <NoWarn>$(NoWarn);CS8002;NU5131;</NoWarn>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-
   </PropertyGroup>
 
   <Import Project="../../../build/platform_and_feature_flags.props" />
@@ -139,6 +143,7 @@
     <PackageReference Include="System.Runtime.Serialization.Json" Version="4.3.0" />
     <PackageReference Include="System.Xml.XDocument" Version="4.3.0" />
     <PackageReference Include="System.Security.Cryptography.X509Certificates" Version="4.3.0" />
+    <PackageReference Include="System.Security.Claims" Version="4.3.0" />
     <PackageReference Include="System.Dynamic.Runtime" Version="4.3.0" />
     <PackageReference Include="Microsoft.CSharp" Version="4.5.0" />
     <PackageReference Include="System.Runtime.Serialization.Formatters" Version="4.3.0" />
@@ -165,7 +170,7 @@
     <Compile Include="$(PathToMsalSources)\Platforms\Features\DesktopOs\**\*.cs" />
     <Compile Include="$(PathToMsalSources)\Platforms\Features\WinFormsLegacyWebUi\**\*.cs" />
 
-    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.705.50" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.864.35" />
   </ItemGroup>
 
   <ItemGroup Condition=" '$(TargetFramework)' == '$(TargetFrameworkNetDesktop461)' ">
@@ -278,4 +283,6 @@
       <DependentUpon>Splash.resx</DependentUpon>
     </None>
   </ItemGroup>
+
+
 </Project>

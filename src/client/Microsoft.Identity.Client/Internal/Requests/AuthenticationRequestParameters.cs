@@ -86,7 +86,7 @@ namespace Microsoft.Identity.Client.Internal.Requests
         public Authority Authority => AuthorityManager.Authority;
 
         public AuthorityInfo AuthorityInfo => AuthorityManager.Authority.AuthorityInfo;
-        public AuthorityEndpoints Endpoints => AuthorityManager.GetEndpoints(LoginHint);
+        
         public AuthorityInfo AuthorityOverride => _commonParameters.AuthorityOverride;
 
         #endregion
@@ -122,7 +122,6 @@ namespace Microsoft.Identity.Client.Internal.Requests
         #region TODO REMOVE FROM HERE AND USE FROM SPECIFIC REQUEST PARAMETERS
         // TODO: ideally, these can come from the particular request instance and not be in RequestBase since it's not valid for all requests.
 
-        public ClientCredentialWrapper ClientCredential { get; set; }
 
         // TODO: ideally, this can come from the particular request instance and not be in RequestBase since it's not valid for all requests.
         public bool SendX5C { get; set; }
@@ -148,6 +147,7 @@ namespace Microsoft.Identity.Client.Internal.Requests
         public IDictionary<string, string> ExtraHttpHeaders => _commonParameters.ExtraHttpHeaders;
 
         public bool IsClientCredentialRequest => ApiId == ApiEvent.ApiIds.AcquireTokenForClient;
+
         public bool IsConfidentialClient
         {
             get
@@ -155,11 +155,13 @@ namespace Microsoft.Identity.Client.Internal.Requests
 #if ANDROID || iOS || WINDOWS_APP || MAC
                 return false;
 #else
-                return ClientCredential != null;
+                return _serviceBundle.Config.ClientCredential != null;
 #endif
             }
         }
         public UserAssertion UserAssertion { get; set; }
+
+        public KeyValuePair<string, string>? CcsRoutingHint { get; set; }
 
         #endregion
 

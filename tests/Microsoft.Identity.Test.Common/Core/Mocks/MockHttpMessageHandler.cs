@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Threading;
@@ -22,6 +23,7 @@ namespace Microsoft.Identity.Test.Common.Core.Mocks
         public IDictionary<string, string> ExpectedQueryParams { get; set; }
         public IDictionary<string, string> ExpectedPostData { get; set; }
         public IDictionary<string, string> ExpectedRequestHeaders { get; set; }
+        public IList<string> UnexpectedRequestHeaders { get; set; }
 
         public HttpMethod ExpectedMethod { get; set; }
         
@@ -32,6 +34,8 @@ namespace Microsoft.Identity.Test.Common.Core.Mocks
         /// Once the http message is executed, this property holds the request message
         /// </summary>
         public HttpRequestMessage ActualRequestMessage { get; private set; }
+
+        public Dictionary<string, string> ActualRequestPostData { get; private set; }
 
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
@@ -80,21 +84,24 @@ namespace Microsoft.Identity.Test.Common.Core.Mocks
                 }
             }
 
-            if (ExpectedPostData != null)
+            if (request.Method != HttpMethod.Get && request.Content != null)
             {
                 string postData = request.Content.ReadAsStringAsync().Result;
-                Dictionary<string, string> requestPostDataPairs = CoreHelpers.ParseKeyValueList(postData, '&', true, null);
+                ActualRequestPostData = CoreHelpers.ParseKeyValueList(postData, '&', true, null);
+            }
 
+            if (ExpectedPostData != null)
+            {
                 foreach (string key in ExpectedPostData.Keys)
                 {
-                    Assert.IsTrue(requestPostDataPairs.ContainsKey(key));
+                    Assert.IsTrue(ActualRequestPostData.ContainsKey(key));
                     if (key.Equals(OAuth2Parameter.Scope, StringComparison.OrdinalIgnoreCase))
                     {
-                        CoreAssert.AreScopesEqual(ExpectedPostData[key], requestPostDataPairs[key]);
+                        CoreAssert.AreScopesEqual(ExpectedPostData[key], ActualRequestPostData[key]);
                     }
                     else
                     {
-                        Assert.AreEqual(ExpectedPostData[key], requestPostDataPairs[key]);
+                        Assert.AreEqual(ExpectedPostData[key], ActualRequestPostData[key]);
                     }
                 }
             }       
@@ -108,6 +115,16 @@ namespace Microsoft.Identity.Test.Common.Core.Mocks
                             string.Equals(h.Key, kvp.Key, StringComparison.OrdinalIgnoreCase) &&
                             string.Equals(h.Value.AsSingleString(), kvp.Value, StringComparison.OrdinalIgnoreCase))
                         , $"Expecting a request header {kvp.Key}: {kvp.Value} but did not find in the actual request: {request}");
+                }
+            }
+
+            if (UnexpectedRequestHeaders != null)
+            {
+                foreach (var item in UnexpectedRequestHeaders)
+                {
+                    Assert.IsTrue(
+                        !request.Headers.Any(h => string.Equals(h.Key, item, StringComparison.OrdinalIgnoreCase))
+                        , $"Not expecting a request header with key={item} but it was found in the actual request: {request}");
                 }
             }
 

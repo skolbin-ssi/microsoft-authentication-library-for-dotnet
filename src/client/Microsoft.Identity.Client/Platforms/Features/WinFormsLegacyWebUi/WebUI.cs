@@ -2,13 +2,13 @@
 // Licensed under the MIT License.
 
 using System;
-using System.Net.NetworkInformation;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Identity.Client.Http;
 using Microsoft.Identity.Client.Internal;
 using Microsoft.Identity.Client.Platforms.Features.DesktopOs;
 using Microsoft.Identity.Client.UI;
+using Microsoft.Identity.Client.Utils;
 
 namespace Microsoft.Identity.Client.Platforms.Features.WinFormsLegacyWebUi
 {
@@ -29,6 +29,10 @@ namespace Microsoft.Identity.Client.Platforms.Features.WinFormsLegacyWebUi
         {
             AuthorizationResult authorizationResult = null;
 
+            var authUriBuilder = new UriBuilder(authorizationUri);
+            authUriBuilder.AppendOrReplaceQueryParameter("response_mode", "form_post");
+            authorizationUri = authUriBuilder.Uri;
+
             var sendAuthorizeRequest = new Action(() =>
             {
                 authorizationResult = Authenticate(authorizationUri, redirectUri);
@@ -44,7 +48,7 @@ namespace Microsoft.Identity.Client.Platforms.Features.WinFormsLegacyWebUi
                 catch (Exception e)
                 {
                     // Need to catch the exception here and put on the TCS which is the task we are waiting on so that
-                    // the exception comming out of Authenticate is correctly thrown.
+                    // the exception coming out of Authenticate is correctly thrown.
                     ((TaskCompletionSource<object>)tcs).TrySetException(e);
                 }
             });

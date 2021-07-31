@@ -8,15 +8,17 @@ using System.Threading.Tasks;
 using Microsoft.Identity.Client.Cache;
 using Microsoft.Identity.Client.Cache.Items;
 using Microsoft.Identity.Client.Cache.Keys;
+using Microsoft.Identity.Client.Instance.Discovery;
 using Microsoft.Identity.Client.Internal;
 using Microsoft.Identity.Client.Internal.Requests;
 using Microsoft.Identity.Client.OAuth2;
+using Microsoft.Identity.Client.Utils;
 
 namespace Microsoft.Identity.Client
 {
     internal interface ITokenCacheInternal : ITokenCache, ITokenCacheSerializer
     {
-        SemaphoreSlim Semaphore { get; }
+        OptionalSemaphoreSlim Semaphore { get; }
         ILegacyCachePersistence LegacyPersistence { get; }
         ITokenCacheAccessor Accessor { get; }
 
@@ -38,13 +40,8 @@ namespace Microsoft.Identity.Client
             AuthenticationRequestParameters requestParams,
             string familyId = null);
 
-        #endregion
+        Task<IDictionary<string, TenantProfile>> GetTenantProfilesAsync(AuthenticationRequestParameters requestParameters, string homeAccountId);
 
-        #region For test
-        Task<IEnumerable<MsalAccessTokenCacheItem>> GetAllAccessTokensAsync(bool filterByClientId);
-        Task<IEnumerable<MsalRefreshTokenCacheItem>> GetAllRefreshTokensAsync(bool filterByClientId);
-        Task<IEnumerable<MsalIdTokenCacheItem>> GetAllIdTokensAsync(bool filterByClientId);
-        Task<IEnumerable<MsalAccountCacheItem>> GetAllAccountsAsync();
         #endregion
 
         void RemoveMsalAccountWithNoLocks(IAccount account, RequestContext requestContext);
@@ -76,7 +73,7 @@ namespace Microsoft.Identity.Client
 
         /// <summary>
         /// MSAL adds serialziation for UWP and also for ConfidentialClient app token cache. 
-        /// If the app developer provides their own serialization, this flags is true
+        /// If the app developer provides their own serialization, this flags is false
         /// </summary>
         bool UsesDefaultSerialization { get; }
 

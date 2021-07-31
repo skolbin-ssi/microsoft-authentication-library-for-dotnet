@@ -43,38 +43,70 @@ namespace Microsoft.Identity.Client.UI
                    MsalErrorMessage.AuthorizationServerInvalidResponse);
             }
 
-            Dictionary<string, string> uriParams = CoreHelpers.ParseKeyValueList(resultData.Substring(1), '&',
-                true, null);
+            Dictionary<string, string> uriParams = CoreHelpers.ParseKeyValueList(
+                resultData.Substring(1), '&', true, null);
 
-            if (uriParams.ContainsKey(TokenResponseClaim.Error))
+            return FromParsedValues(uriParams, webAuthenticationResult);
+        }
+
+        public static AuthorizationResult FromPostData(byte[] postData)
+        {
+            if (postData == null)
+            {
+                return FromStatus(AuthorizationStatus.UnknownError,
+                   MsalError.AuthenticationFailed,
+                   MsalErrorMessage.AuthorizationServerInvalidResponse);
+            }
+#if !UAP10_0 && !NETSTANDARD1_3
+            var post = System.Text.Encoding.Default.GetString(postData).TrimEnd('\0');
+#else
+            var post = System.Text.Encoding.UTF8.GetString(postData).TrimEnd('\0');
+#endif
+
+            Dictionary<string, string> uriParams = CoreHelpers.ParseKeyValueList(
+                post, '&', true, null);
+
+            return FromParsedValues(uriParams);
+        }
+
+        private static AuthorizationResult FromParsedValues(Dictionary<string, string> parameters, string url = null)
+        {
+            if (parameters.ContainsKey(TokenResponseClaim.Error))
             {
                 return FromStatus(AuthorizationStatus.ProtocolError,
-                    uriParams[TokenResponseClaim.Error],
-                    uriParams.ContainsKey(TokenResponseClaim.ErrorDescription)
-                            ? uriParams[TokenResponseClaim.ErrorDescription]
+                    parameters[TokenResponseClaim.Error],
+                    parameters.ContainsKey(TokenResponseClaim.ErrorDescription)
+                            ? parameters[TokenResponseClaim.ErrorDescription]
                         : null);
             }
 
-            var result = new AuthorizationResult();
-            result.Status = AuthorizationStatus.Success;
-
-            if (uriParams.ContainsKey(OAuth2Parameter.State))
+            var authResult = new AuthorizationResult
             {
-                result.State = uriParams[OAuth2Parameter.State];
+                Status = AuthorizationStatus.Success
+            };
+
+            if (parameters.ContainsKey(OAuth2Parameter.State))
+            {
+                authResult.State = parameters[OAuth2Parameter.State];
             }
 
-            if (uriParams.ContainsKey(TokenResponseClaim.CloudInstanceHost))
+            if (parameters.ContainsKey(TokenResponseClaim.CloudInstanceHost))
             {
-                result.CloudInstanceHost = uriParams[TokenResponseClaim.CloudInstanceHost];
+                authResult.CloudInstanceHost = parameters[TokenResponseClaim.CloudInstanceHost];
             }
 
-            if (uriParams.ContainsKey(TokenResponseClaim.Code))
+            if (parameters.ContainsKey(TokenResponseClaim.ClientInfo))
             {
-                result.Code = uriParams[TokenResponseClaim.Code];
+                authResult.ClientInfo = parameters[TokenResponseClaim.ClientInfo];
             }
-            else if (webAuthenticationResult.StartsWith("msauth://", StringComparison.OrdinalIgnoreCase))
+
+            if (parameters.ContainsKey(TokenResponseClaim.Code))
             {
-                result.Code = webAuthenticationResult;
+                authResult.Code = parameters[TokenResponseClaim.Code];
+            }
+            else if (!string.IsNullOrEmpty(url) && url.StartsWith("msauth://", StringComparison.OrdinalIgnoreCase))
+            {
+                authResult.Code = url;
             }
             else
             {
@@ -84,7 +116,7 @@ namespace Microsoft.Identity.Client.UI
                    MsalErrorMessage.AuthorizationServerInvalidResponse);
             }
 
-            return result;
+            return authResult;
         }
 
         internal static AuthorizationResult FromStatus(AuthorizationStatus status)
@@ -137,6 +169,8 @@ namespace Microsoft.Identity.Client.UI
 
         [JsonProperty]
         public string CloudInstanceHost { get; set; }
+
+        public string ClientInfo { get; set; }
 
         /// <summary>
         /// A string that is added to each Authorization Request and is expected to be sent back along with the

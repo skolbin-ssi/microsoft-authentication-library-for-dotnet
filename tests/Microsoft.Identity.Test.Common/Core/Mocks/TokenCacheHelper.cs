@@ -3,6 +3,7 @@
 
 using System;
 using System.Threading;
+using System.Collections.Generic;
 using Microsoft.Identity.Client;
 using Microsoft.Identity.Client.Cache;
 using Microsoft.Identity.Client.Cache.Items;
@@ -11,6 +12,7 @@ using Microsoft.Identity.Client.Internal.Logger;
 using Microsoft.Identity.Client.PlatformsCommon.Factories;
 using Microsoft.Identity.Client.PlatformsCommon.Shared;
 using Microsoft.Identity.Client.Utils;
+using Microsoft.Identity.Test.Common.Core.Helpers;
 using Microsoft.Identity.Test.Unit;
 
 namespace Microsoft.Identity.Test.Common.Core.Mocks
@@ -249,6 +251,50 @@ namespace Microsoft.Identity.Test.Common.Core.Mocks
                 null);
 
             accessor.SaveAccount(accountCacheItem);
+        }
+
+        public static void ExpireAccessTokens(ITokenCacheInternal tokenCache)
+        {
+            var allAccessTokens = tokenCache.Accessor.GetAllAccessTokens();
+
+            foreach (MsalAccessTokenCacheItem atItem in allAccessTokens)
+            {
+                ExpireAndSaveAccessToken(tokenCache, atItem);
+            }
+        }
+
+        public static void ExpireAndSaveAccessToken(ITokenCacheInternal tokenCache, MsalAccessTokenCacheItem atItem)
+        {
+            atItem.ExpiresOnUnixTimestamp = CoreHelpers.DateTimeToUnixTimestamp(DateTimeOffset.UtcNow);
+            tokenCache.AddAccessTokenCacheItem(atItem);
+        }
+
+        public static void UpdateUserAssertions(ConfidentialClientApplication app)
+        {
+            TokenCacheHelper.UpdateAccessTokenUserAssertions(app.UserTokenCacheInternal);
+            TokenCacheHelper.UpdateRefreshTokenUserAssertions(app.UserTokenCacheInternal);
+        }
+
+        public static void UpdateAccessTokenUserAssertions(ITokenCacheInternal tokenCache, string assertion = "SomeAssertion")
+        {
+            var allAccessTokens = tokenCache.Accessor.GetAllAccessTokens();
+
+            foreach (var atItem in allAccessTokens)
+            {
+                atItem.UserAssertionHash = assertion;
+                tokenCache.AddAccessTokenCacheItem(atItem);
+            }
+        }
+
+        public static void  UpdateRefreshTokenUserAssertions(ITokenCacheInternal tokenCache, string assertion = "SomeAssertion")
+        {
+            var rtItems = tokenCache.Accessor.GetAllRefreshTokens();            
+
+            foreach (var rtItem in rtItems)
+            {
+                rtItem.UserAssertionHash = assertion;
+                tokenCache.AddRefreshTokenCacheItem(rtItem);
+            }
         }
     }
 }

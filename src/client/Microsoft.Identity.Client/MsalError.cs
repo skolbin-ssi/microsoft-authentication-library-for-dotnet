@@ -33,12 +33,12 @@ namespace Microsoft.Identity.Client
         /// <para>Mitigation:</para> If your application is a <see cref="IPublicClientApplication"/> call <c>AcquireTokenInteractive</c> so
         /// that the user of your application signs-in and accepts consent.
         /// <list type="bullet">
-        /// <item>
+        /// <item><description>
         /// If it's a web app you should have previously called IConfidentialClientApplication.AcquireTokenByAuthorizationCode
         /// as described in https://aka.ms/msal-net-authorization-code. You need to make sure that you have requested the right scopes. For details
         /// See https://github.com/Azure-Samples/ms-identity-aspnetcore-webapp-tutorial
-        /// </item>
-        /// <item>This error should not happen in web APIs</item>
+        /// </description></item>
+        /// <item><description>This error should not happen in web APIs</description></item>
         /// </list>
         /// </summary>
         public const string NoTokensFoundError = "no_tokens_found";
@@ -51,6 +51,14 @@ namespace Microsoft.Identity.Client
         /// Pass a different account, or otherwise call <see cref="IPublicClientApplication.AcquireTokenInteractive(System.Collections.Generic.IEnumerable{string})"/>
         /// </summary>
         public const string UserNullError = "user_null";
+
+        /// <summary>
+        /// This error code comes back from <see cref="IConfidentialClientApplication.AcquireTokenOnBehalfOf(System.Collections.Generic.IEnumerable{string}, UserAssertion)"/> 
+        /// calls when a null user assertion is passed as the <c>UserAssertion</c> parameter. 
+        /// <para>Mitigation</para>
+        /// Pass a valid value for user assertion
+        /// </summary>
+        public const string UserAssertionNullError = "user_assertion_null";
 
 
         /// <summary>
@@ -303,6 +311,11 @@ namespace Microsoft.Identity.Client
         /// The user does not exist or has entered the wrong password
         /// </summary>
         public const string ParsingWsTrustResponseFailed = "parsing_wstrust_response_failed";
+
+        /// <summary>
+        /// This can occur if there is an configuration issue in the ADFS environment where this is authenticating. See https://aka.ms/msal-net-iwa-troubleshooting for more details
+        /// </summary>
+        public const string IntegratedWindowsAuthenticationFailed = "integrated_windows_authentication_failed";
 
         /// <summary>
         /// <para>What happens</para>

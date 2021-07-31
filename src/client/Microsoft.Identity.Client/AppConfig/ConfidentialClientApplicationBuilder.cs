@@ -51,6 +51,8 @@ namespace Microsoft.Identity.Client
                 builder = builder.WithAzureRegion(options.AzureRegion);
             }
 
+            builder = builder.WithCacheSynchronization(options.EnableCacheSynchronization);
+
             return builder;
         }
 
@@ -145,7 +147,7 @@ namespace Microsoft.Identity.Client
         /// Sets the application client assertion. See https://aka.ms/msal-net-client-assertion.
         /// This will create an assertion that will be held within the client application's memory for the duration of the client.
         /// You can use <see cref="WithClientAssertion(Func{string})"/> to set a delegate that will be executed for each authentication request. 
-        /// This will allow you to update the client asserion used by the client application once the assertion expires.
+        /// This will allow you to update the client assertion used by the client application once the assertion expires.
         /// </summary>
         /// <param name="signedClientAssertion">The client assertion used to prove the identity of the application to Azure AD. This is a Base-64 encoded JWT.</param>
         /// <returns></returns>
@@ -209,6 +211,24 @@ namespace Microsoft.Identity.Client
             }
 
             Config.AzureRegion = azureRegion;
+
+            return this;
+        }
+
+
+        /// <summary>
+        /// When set to <c>true</c>, MSAL will lock cache access at the <see cref="ConfidentialClientApplication"/> level, i.e.
+        /// the block of code between BeforeAccessAsync and AfterAccessAsync callbacks will be synchronized. 
+        /// Apps can set this flag to <c>false</c> to enable an optimistic cache locking strategy, which may result in better performance, especially 
+        /// when ConfidentialClientApplication objects are reused.
+        /// </summary>
+        /// <remarks>
+        /// True by default, but subject to change.
+        /// Not recommended for apps that call RemoveAsync
+        /// </remarks>
+        public ConfidentialClientApplicationBuilder WithCacheSynchronization(bool enableCacheSynchronization)
+        {          
+            Config.CacheSynchronizationEnabled = enableCacheSynchronization;
 
             return this;
         }

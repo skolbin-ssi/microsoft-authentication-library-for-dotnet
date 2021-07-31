@@ -94,8 +94,7 @@ namespace Microsoft.Identity.Test.Unit.PublicApiTests
             Assert.IsNotNull(app.ClientCredential);
             Assert.IsNotNull(app.ClientCredential.Secret);
             Assert.AreEqual(TestConstants.ClientSecret, app.ClientCredential.Secret);
-            Assert.IsNull(app.ClientCredential.Certificate);
-            Assert.IsNull(app.ClientCredential.CachedAssertion);
+            Assert.IsNull(app.ClientCredential.Certificate);            
 
             app = ConfidentialClientApplicationBuilder
                 .Create(TestConstants.ClientId)
@@ -169,7 +168,7 @@ namespace Microsoft.Identity.Test.Unit.PublicApiTests
             {
                 httpManager.AddInstanceDiscoveryMockHandler();
 
-                ConfidentialClientApplication app = 
+                ConfidentialClientApplication app =
                     ConfidentialClientApplicationBuilder.Create(TestConstants.ClientId)
                                                               .WithClientSecret(TestConstants.ClientSecret)
                                                               .WithHttpManager(httpManager)
@@ -190,7 +189,7 @@ namespace Microsoft.Identity.Test.Unit.PublicApiTests
                 result = await app.AcquireTokenForClient(TestConstants.s_scope.ToArray())
                     .WithAuthority(TestConstants.AuthorityUtid2Tenant)
                     .ExecuteAsync(CancellationToken.None).ConfigureAwait(false);
-                
+
                 Assert.IsNotNull(app.AppTokenCacheInternal.Accessor.GetAllAccessTokens().Single(at => at.TenantId == TestConstants.Utid2));
                 Assert.AreEqual(2, app.InMemoryPartitionedCacheSerializer.CachePartition.Count);
                 Assert.IsTrue(app.InMemoryPartitionedCacheSerializer.CachePartition.Keys.Any(k => k.Contains(TestConstants.Utid)));
@@ -203,7 +202,7 @@ namespace Microsoft.Identity.Test.Unit.PublicApiTests
         public async Task ClientCreds_DefaultSerialization_Async()
         {
             using (var httpManager = new MockHttpManager())
-            {                
+            {
                 httpManager.AddInstanceDiscoveryMockHandler();
 
                 ConfidentialClientApplication app =
@@ -447,7 +446,7 @@ namespace Microsoft.Identity.Test.Unit.PublicApiTests
                 httpManager.AddInstanceDiscoveryMockHandler();
 
                 var cert = new X509Certificate2(ResourceHelper.GetTestResourceRelativePath("valid.crtfile"));
-                var app = CreateConfidentialClient(httpManager, cert, 3);
+                var app = CreateConfidentialClient(httpManager, cert, 1);
                 var appCacheAccess = app.AppTokenCache.RecordAccess();
                 var userCacheAccess = app.UserTokenCache.RecordAccess();
 
@@ -465,39 +464,6 @@ namespace Microsoft.Identity.Test.Unit.PublicApiTests
                 // check app token cache count to be 1
                 Assert.AreEqual(1, app.AppTokenCacheInternal.Accessor.GetAllAccessTokens().Count());
                 Assert.AreEqual(0, app.AppTokenCacheInternal.Accessor.GetAllRefreshTokens().Count()); // no RTs are returned
-
-                // assert client credential
-
-                Assert.IsNotNull(app.ClientCredential.CachedAssertion);
-                Assert.AreNotEqual(0, app.ClientCredential.ValidTo);
-
-                // save client assertion.
-                string cachedAssertion = app.ClientCredential.CachedAssertion;
-                long cacheValidTo = app.ClientCredential.ValidTo;
-
-                result = await app
-                    .AcquireTokenForClient(TestConstants.s_scopeForAnotherResource.ToArray())
-                    .ExecuteAsync(CancellationToken.None)
-                    .ConfigureAwait(false);
-
-                appCacheAccess.AssertAccessCounts(2, 2);
-                userCacheAccess.AssertAccessCounts(0, 0);
-
-                Assert.IsNotNull(result);
-                Assert.AreEqual(cacheValidTo, app.ClientCredential.ValidTo);
-                Assert.AreEqual(cachedAssertion, app.ClientCredential.CachedAssertion);
-
-                // validate the send x5c forces a refresh of the cached client assertion
-                await app
-                      .AcquireTokenForClient(TestConstants.s_scope.ToArray())
-                      .WithSendX5C(true)
-                      .WithForceRefresh(true)
-                      .ExecuteAsync(CancellationToken.None)
-                      .ConfigureAwait(false);
-                Assert.AreNotEqual(cachedAssertion, app.ClientCredential.CachedAssertion);
-
-                appCacheAccess.AssertAccessCounts(2, 3);
-                userCacheAccess.AssertAccessCounts(0, 0);
             }
         }
 
@@ -536,7 +502,9 @@ namespace Microsoft.Identity.Test.Unit.PublicApiTests
                 httpManager.AddInstanceDiscoveryMockHandler();
 
                 var cert = new X509Certificate2(ResourceHelper.GetTestResourceRelativePath("valid.crtfile"));
-                var app = CreateConfidentialClient(httpManager, cert, 1, CredentialType.CertificateAndClaims);
+                var app = CreateConfidentialClient(httpManager, cert, 0, CredentialType.CertificateAndClaims);
+                var tokenHttpHandler = httpManager.AddMockHandlerSuccessfulClientCredentialTokenResponseMessage();
+
                 var appCacheAccess = app.AppTokenCache.RecordAccess();
                 var userCacheAccess = app.UserTokenCache.RecordAccess();
 
@@ -555,17 +523,13 @@ namespace Microsoft.Identity.Test.Unit.PublicApiTests
                 Assert.AreEqual(1, app.AppTokenCacheInternal.Accessor.GetAllAccessTokens().Count());
                 Assert.AreEqual(0, app.AppTokenCacheInternal.Accessor.GetAllRefreshTokens().Count()); // no RTs are returned
 
+
+                var actualAssertion = tokenHttpHandler.ActualRequestPostData["client_assertion"];
+
                 // assert client credential
 
-                Assert.IsNotNull(app.ClientCredential.CachedAssertion);
-                Assert.AreNotEqual(0, app.ClientCredential.ValidTo);
-
-                // save client assertion.
-                string cachedAssertion = app.ClientCredential.CachedAssertion;
-                long cacheValidTo = app.ClientCredential.ValidTo;
-
                 var handler = new JwtSecurityTokenHandler();
-                var jsonToken = handler.ReadJwtToken(((ConfidentialClientApplication)app).ClientCredential.CachedAssertion);
+                var jsonToken = handler.ReadJwtToken(actualAssertion);
                 var claims = jsonToken.Claims;
                 //checked if additional claim is in signed assertion
                 var audclaim = TestConstants.s_clientAssertionClaims.Where(x => x.Key == "aud").FirstOrDefault();
@@ -689,6 +653,122 @@ namespace Microsoft.Identity.Test.Unit.PublicApiTests
                     "offline_access openid profile r1/scope1 r1/scope2".Split(' '),
                     qp["scope"].Split(' '));
             }
+        }
+
+        [TestMethod]
+        public async Task GetAuthorizationRequestUrl_IgnoreLoginHint_UseCcsRoutingHint_TestAsync()
+        {
+            using (var httpManager = new MockHttpManager())
+            {
+                ConfidentialClientApplication app = CreateCca(httpManager);
+
+                var uri = await app
+                    .GetAuthorizationRequestUrl(TestConstants.s_scope)
+                    .WithLoginHint(TestConstants.DisplayableId)
+                    .WithCcsRoutingHint("oid", "tid")
+                    .ExecuteAsync(CancellationToken.None)
+                    .ConfigureAwait(false);
+
+                AssertCcsHint(uri, "oid:oid@tid");
+            }
+        }
+
+        [TestMethod]
+        public async Task GetAuthorizationRequestUrl_UseCcsRoutingHint_TestAsync()
+        {
+            using (var httpManager = new MockHttpManager())
+            {
+                ConfidentialClientApplication app = CreateCca(httpManager);
+
+                var uri = await app
+                    .GetAuthorizationRequestUrl(TestConstants.s_scope)
+                    .WithCcsRoutingHint("oid", "tid")
+                    .ExecuteAsync(CancellationToken.None)
+                    .ConfigureAwait(false);
+
+                AssertCcsHint(uri, "oid:oid@tid");
+            }
+        }
+
+        [TestMethod]
+        public async Task GetAuthorizationRequestUrl_WithLoginHint_UseLoginHintForCcsRoutingHint_TestAsync()
+        {
+            using (var httpManager = new MockHttpManager())
+            {
+                ConfidentialClientApplication app = CreateCca(httpManager);
+
+                var uri = await app
+                    .GetAuthorizationRequestUrl(TestConstants.s_scope)
+                    .WithLoginHint(TestConstants.DisplayableId)
+                    .ExecuteAsync(CancellationToken.None)
+                    .ConfigureAwait(false);
+
+                AssertCcsHint(uri, $"upn:{TestConstants.DisplayableId}");
+            }
+        }
+
+        [TestMethod]
+        public async Task GetAuthorizationRequestUrl_NoHint_NoCcsRoutingHint_TestAsync()
+        {
+            using (var httpManager = new MockHttpManager())
+            {
+                ConfidentialClientApplication app = CreateCca(httpManager);
+
+                var uri = await app
+                    .GetAuthorizationRequestUrl(TestConstants.s_scope)
+                    .ExecuteAsync(CancellationToken.None)
+                    .ConfigureAwait(false);
+
+                Assert.IsNotNull(uri);
+                Dictionary<string, string> qp = CoreHelpers.ParseKeyValueList(uri.Query.Substring(1), '&', true, null);
+                Assert.IsFalse(qp.ContainsKey(Constants.CcsRoutingHintHeader));
+            }
+        }
+
+        [TestMethod]
+        public async Task DoNotUseNullCcsRoutingHint_TestAsync()
+        {
+            using (var httpManager = new MockHttpManager())
+            {
+                ConfidentialClientApplication app = CreateCca(httpManager);
+
+                var uri = await app
+                    .GetAuthorizationRequestUrl(TestConstants.s_scope)
+                    .WithCcsRoutingHint("", "")
+                    .ExecuteAsync(CancellationToken.None)
+                    .ConfigureAwait(false);
+
+                AssertCcsHint(uri, "");
+            }
+        }
+
+        private static void AssertCcsHint(Uri uri, string ccsHint)
+        {
+            Assert.IsNotNull(uri);
+            Dictionary<string, string> qp = CoreHelpers.ParseKeyValueList(uri.Query.Substring(1), '&', true, null);
+
+            if (!string.IsNullOrEmpty(ccsHint))
+            {
+                Assert.IsTrue(qp.ContainsKey(Constants.CcsRoutingHintHeader));
+                Assert.AreEqual(ccsHint, qp[Constants.CcsRoutingHintHeader]);
+            }
+            else
+            {
+                Assert.IsTrue(!qp.ContainsKey(Constants.CcsRoutingHintHeader));
+            }
+        }
+
+        private static ConfidentialClientApplication CreateCca(MockHttpManager httpManager)
+        {
+            httpManager.AddInstanceDiscoveryMockHandler();
+
+            var app = ConfidentialClientApplicationBuilder.Create(TestConstants.ClientId)
+                                                          .WithAuthority(new Uri(ClientApplicationBase.DefaultAuthority), true)
+                                                          .WithRedirectUri(TestConstants.RedirectUri)
+                                                          .WithClientSecret(TestConstants.ClientSecret)
+                                                          .WithHttpManager(httpManager)
+                                                          .BuildConcrete();
+            return app;
         }
 
         [TestMethod]
@@ -890,7 +970,7 @@ namespace Microsoft.Identity.Test.Unit.PublicApiTests
                     .ExecuteAsync(CancellationToken.None)
                     .ConfigureAwait(false);
 
-                var accessTokens = await app.AppTokenCacheInternal.GetAllAccessTokensAsync(true).ConfigureAwait(false);
+                var accessTokens = app.AppTokenCacheInternal.Accessor.GetAllAccessTokens();
                 var accessTokenInCache = accessTokens
                                          .Where(item => ScopeHelper.ScopeContains(item.ScopeSet, TestConstants.s_scope))
                                          .ToList().FirstOrDefault();
@@ -938,7 +1018,7 @@ namespace Microsoft.Identity.Test.Unit.PublicApiTests
                 Assert.AreEqual(TokenRetrievedFromNetCall, result.AccessToken);
 
                 // make sure token in Cache was updated
-                var accessTokens = await app.AppTokenCacheInternal.GetAllAccessTokensAsync(true).ConfigureAwait(false);
+                var accessTokens = app.AppTokenCacheInternal.Accessor.GetAllAccessTokens();
                 var accessTokenInCache = accessTokens
                                          .Where(item => ScopeHelper.ScopeContains(item.ScopeSet, TestConstants.s_scope))
                                          .ToList().FirstOrDefault();
@@ -1036,6 +1116,44 @@ namespace Microsoft.Identity.Test.Unit.PublicApiTests
         }
 
         [TestMethod]
+        // Regression test for https://github.com/AzureAD/microsoft-authentication-library-for-dotnet/issues/1193
+        public async Task GetAuthorizationRequestUrl_ReturnsUri_Async()
+        {
+            string[] s_userReadScope = { "User.Read" };
+
+            var cca = ConfidentialClientApplicationBuilder
+                   .Create(TestConstants.ClientId)
+                   .WithClientSecret("secret")
+                   .WithRedirectUri(TestConstants.RedirectUri)
+                   .Build();
+
+            var uri1 = await cca.GetAuthorizationRequestUrl(s_userReadScope).ExecuteAsync(CancellationToken.None).ConfigureAwait(false);
+            var uri2 = await cca.GetAuthorizationRequestUrl(s_userReadScope).ExecuteAsync().ConfigureAwait(false);
+
+            Assert.AreEqual(uri1.Host, uri2.Host);
+            Assert.AreEqual(uri1.LocalPath, uri2.LocalPath);
+
+            var uriParams1 = uri1.ParseQueryString();
+            var uriParams2 = uri2.ParseQueryString();
+
+            CollectionAssert.AreEquivalent(
+                "offline_access openid profile User.Read".Split(' '),
+                uriParams1["scope"].Split(' '));
+            CollectionAssert.AreEquivalent(
+                "offline_access openid profile User.Read".Split(' '),
+                uriParams2["scope"].Split(' '));
+            CoreAssert.AreEqual("code", uriParams1["response_type"], uriParams2["response_type"]);
+            CoreAssert.AreEqual(TestConstants.ClientId, uriParams1["client_id"], uriParams2["client_id"]);
+            CoreAssert.AreEqual(TestConstants.RedirectUri, uriParams1["redirect_uri"], uriParams2["redirect_uri"]);
+            CoreAssert.AreEqual("select_account", uriParams1["prompt"], uriParams2["prompt"]);
+
+            Assert.AreEqual(uriParams1["x-client-CPU"], uriParams2["x-client-CPU"]);
+            Assert.AreEqual(uriParams1["x-client-OS"], uriParams2["x-client-OS"]);
+            Assert.AreEqual(uriParams1["x-client-Ver"], uriParams2["x-client-Ver"]);
+            Assert.AreEqual(uriParams1["x-client-SKU"], uriParams2["x-client-SKU"]);
+        }
+
+        [TestMethod]
         public void EnsurePublicApiSurfaceExistsOnInterface()
         {
             IConfidentialClientApplication app = ConfidentialClientApplicationBuilder.Create(TestConstants.ClientId)
@@ -1078,6 +1196,63 @@ namespace Microsoft.Identity.Test.Unit.PublicApiTests
             var byRefreshTokenBuilder = ((IByRefreshToken)app).AcquireTokenByRefreshToken(TestConstants.s_scope, "refreshtoken")
                                                               .WithRefreshToken("refreshtoken");
             PublicClientApplicationTests.CheckBuilderCommonMethods(byRefreshTokenBuilder);
+        }
+
+        [TestMethod]
+        public async Task ConfidentialClientSuggestedExpiryAsync()
+        {
+            using (var httpManager = new MockHttpManager())
+            {
+                httpManager.AddInstanceDiscoveryMockHandler();
+
+                var app = ConfidentialClientApplicationBuilder.Create(TestConstants.ClientId)
+                                                              .WithAuthority(new Uri(ClientApplicationBase.DefaultAuthority), true)
+                                                              .WithRedirectUri(TestConstants.RedirectUri)
+                                                              .WithClientSecret(TestConstants.ClientSecret)
+                                                              .WithHttpManager(httpManager)
+                                                              .BuildConcrete();
+
+                string expectedTimeDiff = "32800";
+                string shortExpectedTimeDiff = "30800";
+
+                //Since the timeDiff is calculated using the DateTimeOffset.Now, there may be a slight variation of a few seconds depending on test environment.
+                int allowedTimeVariation = 15;
+
+                httpManager.AddMockHandlerSuccessfulClientCredentialTokenResponseMessage(TestConstants.DefaultAccessToken, expectedTimeDiff);
+
+                TokenCacheHelper.PopulateDefaultAppTokenCache(app);
+                app.AppTokenCache.SetAfterAccess((args) => 
+                {
+                    if (args.HasStateChanged == true)
+                    {
+                        Assert.IsNotNull(args.SuggestedCacheExpiry);
+                        var timeDiff = args.SuggestedCacheExpiry.Value.ToUnixTimeSeconds() - DateTimeOffset.Now.ToUnixTimeSeconds();
+
+                        CoreAssert.AreEqual(
+                            CoreHelpers.UnixTimestampStringToDateTime(expectedTimeDiff),
+                            CoreHelpers.UnixTimestampStringToDateTime(timeDiff.ToString()),
+                            TimeSpan.FromSeconds(allowedTimeVariation));
+                    }
+                });
+
+                //Token cache will have one token with expiry of 1000
+                var result = await app.AcquireTokenForClient(TestConstants.s_scope.ToArray()).ExecuteAsync(CancellationToken.None).ConfigureAwait(false);
+                Assert.IsNotNull(result);
+                Assert.IsNotNull(TestConstants.DefaultAccessToken, result.AccessToken);
+
+                //Using a shorter expiry should not change the SuggestedCacheExpiry. Should be 2 tokens in cache
+                httpManager.AddMockHandlerSuccessfulClientCredentialTokenResponseMessage(TestConstants.DefaultAccessToken, shortExpectedTimeDiff);
+                result = await app.AcquireTokenForClient(new[] { "scope1.scope1" }).ExecuteAsync(CancellationToken.None).ConfigureAwait(false);
+                Assert.IsNotNull(result);
+                Assert.IsNotNull(TestConstants.DefaultAccessToken, result.AccessToken);
+
+                //Using longer cache expiry should update the SuggestedCacheExpiry with 3 tokens in cache
+                expectedTimeDiff = "40000";
+                httpManager.AddMockHandlerSuccessfulClientCredentialTokenResponseMessage(TestConstants.DefaultAccessToken, expectedTimeDiff);
+                result = await app.AcquireTokenForClient(new[] { "scope2.scope2" }).ExecuteAsync(CancellationToken.None).ConfigureAwait(false);
+                Assert.IsNotNull(result);
+                Assert.IsNotNull(TestConstants.DefaultAccessToken, result.AccessToken);
+            }
         }
 
         private void BeforeCacheAccess(TokenCacheNotificationArgs args)

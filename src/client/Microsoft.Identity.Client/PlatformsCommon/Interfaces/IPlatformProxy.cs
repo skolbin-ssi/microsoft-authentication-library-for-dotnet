@@ -71,7 +71,7 @@ namespace Microsoft.Identity.Client.PlatformsCommon.Interfaces
 
         bool LegacyCacheRequiresSerialization { get; }
 
-        ITokenCacheAccessor CreateTokenCacheAccessor(InternalMemoryTokenCacheOptions tokenCacheAccessorOptions, bool isApplicationTokenCache = false);
+        ITokenCacheAccessor CreateTokenCacheAccessor(CacheOptions accessorOptions, bool isApplicationTokenCache = false);
 
         ICacheSerializationProvider CreateTokenCacheBlobStorage();
 
@@ -83,12 +83,6 @@ namespace Microsoft.Identity.Client.PlatformsCommon.Interfaces
 
         IPoPCryptoProvider GetDefaultPoPCryptoProvider();
 
-        // MATS related data
-        string GetDevicePlatformTelemetryId();
-        string GetDeviceNetworkState();
-        int GetMatsOsPlatformCode();
-        string GetMatsOsPlatform();
-
         IFeatureFlags GetFeatureFlags();
 
         void /* for test */ SetFeatureFlags(IFeatureFlags featureFlags);
@@ -96,7 +90,7 @@ namespace Microsoft.Identity.Client.PlatformsCommon.Interfaces
         /// <summary>
         /// Go to a URL using the OS default browser. 
         /// </summary>
-        Task StartDefaultOsBrowserAsync(string url);
+        Task StartDefaultOsBrowserAsync(string url, bool IsBrokerConfigured);
 
         IBroker CreateBroker(ApplicationConfiguration appConfig, CoreUIParent uiParent);
 

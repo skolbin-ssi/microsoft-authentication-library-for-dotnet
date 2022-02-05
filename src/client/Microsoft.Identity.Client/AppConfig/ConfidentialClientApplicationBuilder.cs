@@ -2,12 +2,13 @@
 // Licensed under the MIT License.
 
 using System;
-using System.Linq;
 using System.Collections.Generic;
+using System.Linq;
 using System.Security.Cryptography.X509Certificates;
-using Microsoft.Identity.Client.Internal;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Identity.Client.Internal;
+using Microsoft.Identity.Client.Internal.ClientCredential;
 
 namespace Microsoft.Identity.Client
 {
@@ -74,16 +75,38 @@ namespace Microsoft.Identity.Client
             ConfidentialClientApplication.GuardMobileFrameworks();
 
             var config = new ApplicationConfiguration();
-            return new ConfidentialClientApplicationBuilder(config).WithClientId(clientId);
+            return new ConfidentialClientApplicationBuilder(config)
+                .WithClientId(clientId)
+                .WithCacheSynchronization(false);
         }
 
         /// <summary>
-        /// Sets the certificate associated with the application
+        /// Sets the certificate associated with the application.
         /// </summary>
         /// <param name="certificate">The X509 certificate used as credentials to prove the identity of the application to Azure AD.</param>
-        /// <param name="sendX5C">To send X5C with every request or not.</param>
+        /// <remarks>
+        /// You should use certificates with a private key size of at least 2048 bytes. Future versions of this library might reject certificates with smaller keys.
+        /// Does not send the certificate (as x5c parameter) with the request by default.
+        /// </remarks>
+        public ConfidentialClientApplicationBuilder WithCertificate(X509Certificate2 certificate)
+        {
+            return WithCertificate(certificate, false);
+        }
+
+        /// <summary>
+        /// Sets the certificate associated with the application.
+        /// Applicable to first-party applications only, this method also allows to specify 
+        /// if the <see href="https://datatracker.ietf.org/doc/html/rfc7517#section-4.7">x5c claim</see> should be sent to Azure AD.
+        /// Sending the x5c enables application developers to achieve easy certificate roll-over in Azure AD:
+        /// this method will send the certificate chain to Azure AD along with the token request,
+        /// so that Azure AD can use it to validate the subject name based on a trusted issuer policy.
+        /// This saves the application admin from the need to explicitly manage the certificate rollover
+        /// (either via portal or PowerShell/CLI operation). For details see https://aka.ms/msal-net-sni
+        /// </summary>
+        /// <param name="certificate">The X509 certificate used as credentials to prove the identity of the application to Azure AD.</param>
+        /// <param name="sendX5C">To send X5C with every request or not. The default is <c>false</c></param>
         /// <remarks>You should use certificates with a private key size of at least 2048 bytes. Future versions of this library might reject certificates with smaller keys. </remarks>
-        public ConfidentialClientApplicationBuilder WithCertificate(X509Certificate2 certificate, bool sendX5C = false)
+        public ConfidentialClientApplicationBuilder WithCertificate(X509Certificate2 certificate, bool sendX5C)
         {
             if (certificate == null)
             {
@@ -95,10 +118,26 @@ namespace Microsoft.Identity.Client
                 throw new MsalClientException(MsalError.CertWithoutPrivateKey, MsalErrorMessage.CertMustHavePrivateKey(nameof(certificate)));
             }
 
-            Config.ClientCredentialCertificate = certificate;
-            Config.ConfidentialClientCredentialCount++;
+            Config.ClientCredential = new CertificateClientCredential(certificate);
             Config.SendX5C = sendX5C;
             return this;
+        }
+
+        /// <summary>
+        /// Sets the certificate associated with the application along with the specific claims to sign.
+        /// By default, this will merge the <paramref name="claimsToSign"/> with the default required set of claims needed for authentication.
+        /// If <paramref name="mergeWithDefaultClaims"/> is set to false, you will need to provide the required default claims. See https://aka.ms/msal-net-client-assertion
+        /// </summary>
+        /// <param name="certificate">The X509 certificate used as credentials to prove the identity of the application to Azure AD.</param>
+        /// <param name="claimsToSign">The claims to be signed by the provided certificate.</param>
+        /// <param name="mergeWithDefaultClaims">Determines whether or not to merge <paramref name="claimsToSign"/> with the default claims required for authentication.</param>
+        /// <remarks>
+        /// You should use certificates with a private key size of at least 2048 bytes. Future versions of this library might reject certificates with smaller keys.
+        /// Does not send the certificate (as x5c parameter) with the request by default.
+        /// </remarks>
+        public ConfidentialClientApplicationBuilder WithClientClaims(X509Certificate2 certificate, IDictionary<string, string> claimsToSign, bool mergeWithDefaultClaims)
+        {
+            return WithClientClaims(certificate, claimsToSign, mergeWithDefaultClaims, false);
         }
 
         /// <summary>
@@ -123,10 +162,7 @@ namespace Microsoft.Identity.Client
                 throw new ArgumentNullException(nameof(claimsToSign));
             }
 
-            Config.ClientCredentialCertificate = certificate;
-            Config.ClaimsToSign = claimsToSign;
-            Config.MergeWithDefaultClaims = mergeWithDefaultClaims;
-            Config.ConfidentialClientCredentialCount++;
+            Config.ClientCredential = new CertificateAndClaimsClientCredential(certificate, claimsToSign, mergeWithDefaultClaims);
             Config.SendX5C = sendX5C;
             return this;
         }
@@ -138,14 +174,13 @@ namespace Microsoft.Identity.Client
         /// of the application (the client) requesting the tokens</param>
         /// <returns></returns>
         public ConfidentialClientApplicationBuilder WithClientSecret(string clientSecret)
-        {
+        {            
             if (string.IsNullOrWhiteSpace(clientSecret))
             {
                 throw new ArgumentNullException(nameof(clientSecret));
             }
 
-            Config.ClientSecret = clientSecret;
-            Config.ConfidentialClientCredentialCount++;
+            Config.ClientCredential = new SecretStringClientCredential(clientSecret);
             return this;
         }
 
@@ -164,8 +199,7 @@ namespace Microsoft.Identity.Client
                 throw new ArgumentNullException(nameof(signedClientAssertion));
             }
 
-            Config.SignedClientAssertion = signedClientAssertion;
-            Config.ConfidentialClientCredentialCount++;
+            Config.ClientCredential = new SignedAssertionClientCredential(signedClientAssertion);            
             return this;
         }
 
@@ -184,13 +218,11 @@ namespace Microsoft.Identity.Client
             }
 
             Func<CancellationToken, Task<string>> clientAssertionAsyncDelegate = (_) =>
-            {                
+            {
                 return Task.FromResult(clientAssertionDelegate());
             };
 
-
-            Config.SignedClientAssertionDelegate = clientAssertionAsyncDelegate;
-            Config.ConfidentialClientCredentialCount++;
+            Config.ClientCredential = new SignedAssertionDelegateClientCredential(clientAssertionAsyncDelegate);
             return this;
         }
 
@@ -203,14 +235,12 @@ namespace Microsoft.Identity.Client
         /// <remarks> Callers can use this mechanism to cache their assertions </remarks>
         public ConfidentialClientApplicationBuilder WithClientAssertion(Func<CancellationToken, Task<string>> clientAssertionAsyncDelegate)
         {
-            
             if (clientAssertionAsyncDelegate == null)
             {
                 throw new ArgumentNullException(nameof(clientAssertionAsyncDelegate));
             }
 
-            Config.SignedClientAssertionDelegate = clientAssertionAsyncDelegate;
-            Config.ConfidentialClientCredentialCount++;
+            Config.ClientCredential = new SignedAssertionDelegateClientCredential(clientAssertionAsyncDelegate);
             return this;
         }
 
@@ -255,13 +285,12 @@ namespace Microsoft.Identity.Client
         /// when ConfidentialClientApplication objects are reused.
         /// </summary>
         /// <remarks>
-        /// True by default, but subject to change.
+        /// False by default.
         /// Not recommended for apps that call RemoveAsync
         /// </remarks>
         public ConfidentialClientApplicationBuilder WithCacheSynchronization(bool enableCacheSynchronization)
-        {          
+        {
             Config.CacheSynchronizationEnabled = enableCacheSynchronization;
-
             return this;
         }
 
@@ -276,8 +305,6 @@ namespace Microsoft.Identity.Client
         {
             base.Validate();
 
-            Config.ClientCredential = new ClientCredentialWrapper(Config);
-
             if (string.IsNullOrWhiteSpace(Config.RedirectUri))
             {
                 Config.RedirectUri = Constants.DefaultConfidentialClientRedirectUri;
@@ -286,7 +313,12 @@ namespace Microsoft.Identity.Client
             if (!Uri.TryCreate(Config.RedirectUri, UriKind.Absolute, out Uri uriResult))
             {
                 throw new InvalidOperationException(MsalErrorMessage.InvalidRedirectUriReceived(Config.RedirectUri));
-            }           
+            }
+
+            if (!string.IsNullOrEmpty(Config.AzureRegion) && (Config.CustomInstanceDiscoveryMetadata != null || Config.CustomInstanceDiscoveryMetadataUri != null))
+            {
+                throw new MsalClientException(MsalError.RegionDiscoveryWithCustomInstanceMetadata, MsalErrorMessage.RegionDiscoveryWithCustomInstanceMetadata);
+            }
         }
 
         /// <summary>

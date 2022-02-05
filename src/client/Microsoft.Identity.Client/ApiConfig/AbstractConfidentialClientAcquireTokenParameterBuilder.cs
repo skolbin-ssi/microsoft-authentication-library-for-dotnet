@@ -3,13 +3,11 @@
 
 using System;
 using System.ComponentModel;
-using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Identity.Client.ApiConfig.Executors;
 using Microsoft.Identity.Client.AppConfig;
 using Microsoft.Identity.Client.AuthScheme.PoP;
-using Microsoft.Identity.Client.TelemetryCore.Internal.Events;
 
 namespace Microsoft.Identity.Client
 {
@@ -41,6 +39,25 @@ namespace Microsoft.Identity.Client
             return ExecuteInternalAsync(cancellationToken);
         }
 
+        /// <summary>
+        /// Validates the parameters of the AcquireToken operation.        
+        /// </summary>
+        /// <exception cref="MsalClientException"></exception>
+        protected override void Validate()
+        {            
+            // Confidential client must have a credential
+            if (ServiceBundle?.Config.ClientCredential == null &&
+                CommonParameters.OnBeforeTokenRequestHandler == null) 
+            {
+                throw new MsalClientException(
+                    MsalError.ClientCredentialAuthenticationTypeMustBeDefined,
+                    MsalErrorMessage.ClientCredentialAuthenticationTypeMustBeDefined);
+            }
+
+            base.Validate();
+        }
+
+
         internal IConfidentialClientApplicationExecutor ConfidentialClientApplicationExecutor { get; }
 
         /// <summary>
@@ -64,7 +81,6 @@ namespace Microsoft.Identity.Client
 
             CommonParameters.PopAuthenticationConfiguration = popAuthenticationConfiguration ?? throw new ArgumentNullException(nameof(popAuthenticationConfiguration));
 
-            CommonParameters.AddApiTelemetryFeature(ApiTelemetryFeature.WithPoPScheme);
             CommonParameters.AuthenticationScheme = new PoPAuthenticationScheme(CommonParameters.PopAuthenticationConfiguration, ServiceBundle);
 
             return this as T;

@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 using System;
+using System.ComponentModel;
 
 namespace Microsoft.Identity.Client
 {
@@ -90,6 +91,7 @@ namespace Microsoft.Identity.Client
         /// This error code comes back from <see cref="ClientApplicationBase.AcquireTokenSilent(System.Collections.Generic.IEnumerable{string}, IAccount)"/> calls when
         /// the user cache had not been set in the application constructor. This should never happen in MSAL.NET 3.x as the cache is created by the application
         /// </summary>
+        [EditorBrowsable(EditorBrowsableState.Never)]
         [Obsolete("This error code is not in use")]
         public const string TokenCacheNullError = "token_cache_null";
 
@@ -526,9 +528,10 @@ namespace Microsoft.Identity.Client
 
         /// <summary>
         /// Non HTTPS redirects are not supported
-        /// <para>What happens?</para>This error happens when you have registered a non-HTTPS redirect URI for the
-        /// public client application other than <c>urn:ietf:wg:oauth:2.0:oob</c>
-        /// <para>Mitigation [App registration and development]</para>Register in the application a Reply URL starting with "https://"
+        /// <para>What happens?</para>This error happens when the authorization flow, which collects user credentials, gets redirected 
+        /// to an page that is not supported, for example if the redirect occurs over http. 
+        /// This error does not trigger for the final redirect, which can be http://localhost, but for intermediary redirects.
+        /// <para>Mitigation</para>This usually happens when using a federated directory which is not setup correctly. 
         /// </summary>
         public const string NonHttpsRedirectNotSupported = "non_https_redirect_failed";
 
@@ -538,6 +541,7 @@ namespace Microsoft.Identity.Client
         /// or retry later
         /// </summary>
         [Obsolete("MSAL no longer throws this error - it will allow the HttpClient exceptions to propagate. App developers may write their own logic for detecting access to the network issues, for example by using Xamarin.Essentials. ")]
+        [EditorBrowsable(EditorBrowsableState.Never)]
         public const string NetworkNotAvailableError = "network_not_available";
 
         /// <summary>
@@ -993,12 +997,19 @@ namespace Microsoft.Identity.Client
         /// <para>Mitigation</para> For troubleshooting details, see https://aka.ms/msal-net-webview2 .
         /// </summary>
         public const string WebView2LoaderNotFound = "webview2loader_not_found";
+
         /// <summary>
         /// <para>What happens?</para>You configured both Regional Authority and Authority Validation. Authority validation is not currently supported for regional authorities.
         /// <para>Mitigation</para>Set the validateAuthority flag to false to use Azure Regional authority. Do not disable authority validation if you read the authority from an untrusted source, 
         /// for example from the WWWAuthenticate header of an HTTP request that resulted in a 401 response. 
         ///  </summary>
         public const string RegionalAuthorityValidation = "regional_authority_validation";
+
+        /// <summary>
+        /// <para>What happens?</para>You have configured both Region Discovery and Custom Instance Metadata. Custom metadata supersedes region discovery.
+        /// <para>Mitigation</para>Configure either Region Discovery or Custom Instance Discovery Metadata.
+        /// </summary>
+        public const string RegionDiscoveryWithCustomInstanceMetadata = "region_discovery_with_custom_instance_metadata";
 
         /// <summary>
         /// An HttpListenerException occurred while listening for the system browser to complete the login.
@@ -1012,10 +1023,32 @@ namespace Microsoft.Identity.Client
         public const string InitializeProcessSecurityError = "initialize_process_security_error";
 
         /// <summary>
-        /// <para>What happens?</para>You configured MSAL cache serialization at the same time with a static internal cache via <see cref="AbstractApplicationBuilder{T}.WithInternalMemoryTokenCacheOptions(InternalMemoryTokenCacheOptions)"/>
+        /// <para>What happens?</para>You configured MSAL cache serialization at the same time with a static internal cache via <see cref="AbstractApplicationBuilder{T}.WithCacheOptions(CacheOptions)"/>
         /// These are mutually exclusive.
         /// <para>Mitigation</para> Use only one option. Web site and web API scenarios should rely on external cache serialization, as internal cache serialization cannot scale. See https://aka.ms/msal-net-cca-token-cache-serialization
         /// </summary>
         public const string StaticCacheWithExternalSerialization = "static_cache_with_external_serialization";
+
+
+        /// <summary>
+        /// <para>What happens?</para>You configured WithTenant at the request level, but the application is using a non-AAD authority
+        /// These are mutually exclusive.
+        /// <para>Mitigation</para> WithTenantId can only be used in conjunction with AAD authorities
+        /// </summary>
+        public const string TenantOverrideNonAad = "tenant_override_non_aad";
+
+        /// <summary>
+        /// <para>What happens?</para>You configured WithAuthority at the request level, and also WithAzureRegion. This is not supported when the environment changes from application to request.
+        /// <para>Mitigation</para> Use WithTenantId at the request level instead.
+        /// </summary>
+        public const string RegionalAndAuthorityOverride = "authority_override_regional";
+
+        /// <summary>
+        /// <para>What happens?</para>The token cache does not contain a token with an OBO cache key that
+        /// matches the <c>longRunningProcessSessionKey</c> passed into <see cref="ILongRunningWebApi.AcquireTokenInLongRunningProcess"/>.
+        /// <para>Mitigation</para> Call <see cref="ILongRunningWebApi.InitiateLongRunningProcessInWebApi"/> with this <c>longRunningProcessSessionKey</c> 
+        /// first or call <see cref="ILongRunningWebApi.AcquireTokenInLongRunningProcess"/> with an already used <c>longRunningProcessSessionKey</c>.
+        /// </summary>
+        public const string OboCacheKeyNotInCacheError = "obo_cache_key_not_in_cache_error";
     }
 }

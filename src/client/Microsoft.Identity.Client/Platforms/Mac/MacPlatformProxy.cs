@@ -109,30 +109,9 @@ namespace Microsoft.Identity.Client.Platforms.Mac
         protected override ICryptographyManager InternalGetCryptographyManager() => new MacCryptographyManager();
         protected override IPlatformLogger InternalGetPlatformLogger() => new ConsolePlatformLogger();
 
-        public override string GetDeviceNetworkState()
-        {
-            // TODO(mats):
-            return string.Empty;
-        }
-
-        public override string GetDevicePlatformTelemetryId()
-        {
-            // TODO(mats):
-            return string.Empty;
-        }
-
-        public override string GetMatsOsPlatform()
-        {
-            return MatsConverter.AsString(OsPlatform.Mac);
-        }
-
-        public override int GetMatsOsPlatformCode()
-        {
-            return MatsConverter.AsInt(OsPlatform.Mac);
-        }
         protected override IFeatureFlags CreateFeatureFlags() => new MacFeatureFlags();
 
-        public override Task StartDefaultOsBrowserAsync(string url)
+        public override Task StartDefaultOsBrowserAsync(string url, bool isBrokerConfigured)
         {
             Process.Start("open", url);
             return Task.FromResult(0);

@@ -8,6 +8,7 @@ using System.Security.Cryptography.X509Certificates;
 using System.Security.Permissions;
 using Microsoft.Identity.Client;
 using Microsoft.Identity.Client.Internal;
+using Microsoft.Identity.Client.Internal.ClientCredential;
 using Microsoft.Identity.Test.Common;
 using Microsoft.Identity.Test.Common.Core.Helpers;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -61,7 +62,7 @@ namespace Microsoft.Identity.Test.Unit.AppConfigTests
         {
             options.ClientSecret = "cats";
             var app = ConfidentialClientApplicationBuilder.CreateWithApplicationOptions(options).Build();
-            var authorityInfo = ((ConfidentialClientApplication)app).ServiceBundle.Config.AuthorityInfo;
+            var authorityInfo = ((ConfidentialClientApplication)app).ServiceBundle.Config.Authority.AuthorityInfo;
             Assert.AreEqual("https://login.microsoftonline.com/the_tenant_id/", authorityInfo.CanonicalAuthority);
         }
 
@@ -82,8 +83,8 @@ namespace Microsoft.Identity.Test.Unit.AppConfigTests
             var app = ConfidentialClientApplicationBuilder.CreateWithApplicationOptions(options)
                                                           .WithCertificate(cert)
                                                           .Build();
-            var authorityInfo = ((ConfidentialClientApplication)app).ServiceBundle.Config.AuthorityInfo;
-            Assert.AreEqual("https://login.microsoftonline.com/the_tenant_id/", authorityInfo.CanonicalAuthority);
+            var authority = ((ConfidentialClientApplication)app).ServiceBundle.Config.Authority;
+            Assert.AreEqual("https://login.microsoftonline.com/the_tenant_id/", authority.AuthorityInfo.CanonicalAuthority);
         }
 
         [TestMethod]
@@ -95,15 +96,16 @@ namespace Microsoft.Identity.Test.Unit.AppConfigTests
         }
 
         [TestMethod]
-        public void CacheSynchronizationWithDefault()
+        public void CacheSynchronizationWithDefaultCCA()
         {
+            //Validate CacheSynchronizationEnabled when app is created from ApplicaitonOptions for CCA
             var options = new ConfidentialClientApplicationOptions()
             {
                 ClientSecret = "secret",
                 ClientId = TestConstants.ClientId,
             };
             var app = ConfidentialClientApplicationBuilder.CreateWithApplicationOptions(options).Build();
-            Assert.IsTrue((app.AppConfig as ApplicationConfiguration).CacheSynchronizationEnabled);
+            Assert.IsFalse((app.AppConfig as ApplicationConfiguration).CacheSynchronizationEnabled);
 
             options = new ConfidentialClientApplicationOptions
             {
@@ -122,13 +124,29 @@ namespace Microsoft.Identity.Test.Unit.AppConfigTests
             };
             app = ConfidentialClientApplicationBuilder.CreateWithApplicationOptions(options).Build();
             Assert.AreEqual(true, (app.AppConfig as ApplicationConfiguration).CacheSynchronizationEnabled);
+
+            //Validate CacheSynchronizationEnabled is false by default when app is created from ConfidentialClientApplicationBuilder
+            app = ConfidentialClientApplicationBuilder.Create(Guid.NewGuid().ToString()).WithClientSecret(TestConstants.ClientSecret).BuildConcrete();
+            Assert.IsFalse((app.AppConfig as ApplicationConfiguration).CacheSynchronizationEnabled);
+
+            //Validate CacheSynchronizationEnabled when app is created from ApplicaitonOptions for PCA
+            var options2 = new PublicClientApplicationOptions()
+            {
+                ClientId = TestConstants.ClientId
+            };
+            var app2 = PublicClientApplicationBuilder.CreateWithApplicationOptions(options2).Build();
+            Assert.IsTrue((app2.AppConfig as ApplicationConfiguration).CacheSynchronizationEnabled);
+
+            //Validate CacheSynchronizationEnabled is true by default when app is created from PublicClientApplicationBuilder
+            app2 = PublicClientApplicationBuilder.Create(Guid.NewGuid().ToString()).BuildConcrete();
+            Assert.IsTrue((app2.AppConfig as ApplicationConfiguration).CacheSynchronizationEnabled);
         }
 
         [DataTestMethod]
         [DataRow(false, false, false)]
         [DataRow(true, true, true)]
         [DataRow(true, false, false)]
-        [DataRow(false, true, true)]        
+        [DataRow(false, true, true)]
         public void CacheSynchronizationNoDefault(bool optionFlag, bool builderFlag, bool result)
         {
             var options = new ConfidentialClientApplicationOptions
@@ -344,12 +362,34 @@ namespace Microsoft.Identity.Test.Unit.AppConfigTests
                       .Create(TestConstants.ClientId).WithCertificate(cert).Build();
 
                 Assert.Fail();
-            } 
+            }
             catch (MsalClientException e)
             {
                 Assert.IsNotNull(e);
                 Assert.AreEqual(MsalError.CertWithoutPrivateKey, e.ErrorCode);
             }
+        }
+
+        [TestMethod]
+        [DeploymentItem(@"Resources\testCert.crtfile")]
+        public void TestConstructor_WithCertificate_SendX5C()
+        {
+            var cert = new X509Certificate2(
+                ResourceHelper.GetTestResourceRelativePath("testCert.crtfile"), "passw0rd!");
+
+            var app = ConfidentialClientApplicationBuilder
+                      .Create(TestConstants.ClientId)
+                      .WithCertificate(cert)
+                      .Build();
+
+            Assert.IsFalse((app.AppConfig as ApplicationConfiguration).SendX5C);
+
+            app = ConfidentialClientApplicationBuilder
+                  .Create(TestConstants.ClientId)
+                  .WithCertificate(cert, true)
+                  .Build();
+
+            Assert.IsTrue((app.AppConfig as ApplicationConfiguration).SendX5C);
         }
 
         [TestMethod]
@@ -403,11 +443,12 @@ namespace Microsoft.Identity.Test.Unit.AppConfigTests
             if (isLegacyCacheCompatibilityEnabled.HasValue)
             {
                 builder.WithLegacyCacheCompatibility(isLegacyCacheCompatibilityEnabled.Value);
-            } else
+            }
+            else
             {
                 isLegacyCacheCompatibilityEnabled = true;
             }
-                      
+
             var cca = builder.Build();
 
             Assert.AreEqual(isLegacyCacheCompatibilityEnabled, cca.AppConfig.LegacyCacheCompatibilityEnabled);
@@ -420,7 +461,7 @@ namespace Microsoft.Identity.Test.Unit.AppConfigTests
         public void TestConstructor_WithLegacyCacheCompatibility_WithOptions(bool? isLegacyCacheCompatibilityEnabled)
         {
             var options = CreateConfidentialClientApplicationOptions();
-            
+
             if (isLegacyCacheCompatibilityEnabled.HasValue)
             {
                 options.LegacyCacheCompatibilityEnabled = isLegacyCacheCompatibilityEnabled.Value;

@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Threading.Tasks;
 
 namespace Microsoft.Identity.Client
@@ -36,8 +37,7 @@ namespace Microsoft.Identity.Client
         /// <param name="scopes">Scopes requested to access a protected API</param>
         /// <param name="authorizationCode">The authorization code received from the service authorization endpoint.</param>
         /// <returns>A builder enabling you to add optional parameters before executing the token request</returns>
-        /// <remarks>You can set optional parameters by chaining the builder with:
-        /// <see cref="AbstractAcquireTokenParameterBuilder{T}.WithAuthority(string, bool)"/>,
+        /// <remarks>You can set optional parameters by chaining the builder with, for example 
         /// <see cref="AbstractAcquireTokenParameterBuilder{T}.WithExtraQueryParameters(Dictionary{string, string})"/>,
         /// </remarks>
         AcquireTokenByAuthorizationCodeParameterBuilder AcquireTokenByAuthorizationCode(
@@ -60,8 +60,8 @@ namespace Microsoft.Identity.Client
         AcquireTokenForClientParameterBuilder AcquireTokenForClient(IEnumerable<string> scopes);
 
         /// <summary>
-        /// [V3 API] Acquires an access token for this application (usually a Web API) from the authority configured in the application,
-        /// in order to access another downstream protected Web API on behalf of a user using the OAuth 2.0 On-Behalf-Of flow.
+        /// [V3 API] Acquires an access token for this application (usually a web API) from the authority configured in the application,
+        /// in order to access another downstream protected web API on behalf of a user using the OAuth 2.0 On-Behalf-Of flow.
         /// See https://aka.ms/msal-net-on-behalf-of.
         /// This confidential client application was itself called with a token which will be provided in the
         /// <paramref name="userAssertion">userAssertion</paramref> parameter.
@@ -93,6 +93,7 @@ namespace Microsoft.Identity.Client
 
         /// <inheritdoc/>
         [Obsolete("Use GetAccountAsync in web apps and web APIs, and use a token cache serializer for better security and performance. See https://aka.ms/msal-net-cca-token-cache-serialization.")]
+        [EditorBrowsable(EditorBrowsableState.Never)]
         new Task<IEnumerable<IAccount>> GetAccountsAsync();
     }
 }

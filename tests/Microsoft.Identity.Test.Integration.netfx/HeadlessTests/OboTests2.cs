@@ -27,6 +27,7 @@ using Microsoft.Identity.Test.Common.Core.Helpers;
 using Microsoft.Identity.Test.Common.Core.Mocks;
 using Microsoft.Identity.Test.Integration.Infrastructure;
 using Microsoft.Identity.Test.Integration.net45.Infrastructure;
+using Microsoft.Identity.Test.Integration.NetFx.Infrastructure;
 using Microsoft.Identity.Test.LabInfrastructure;
 using Microsoft.Identity.Test.Unit;
 using Microsoft.IdentityModel.JsonWebTokens;
@@ -43,7 +44,7 @@ namespace Microsoft.Identity.Test.Integration.HeadlessTests
         private static readonly string[] s_publicCloudOBOServiceScope = { "api://23c64cd8-21e4-41dd-9756-ab9e2c23f58c/access_as_user" };
         private static readonly string[] s_arlingtonOBOServiceScope = { "https://arlmsidlab1.us/IDLABS_APP_Confidential_Client/user_impersonation" };
 
-        //TODO: acquire scenario specific client ids from the lab resonse
+        //TODO: acquire scenario specific client ids from the lab response
         private const string PublicCloudPublicClientIDOBO = "be9b0186-7dfd-448a-a944-f771029105bf";
         private const string PublicCloudConfidentialClientIDOBO = "23c64cd8-21e4-41dd-9756-ab9e2c23f58c";
         private const string ArlingtonConfidentialClientIDOBO = "c0555d2d-02f2-4838-802e-3463422e571d";
@@ -63,8 +64,10 @@ namespace Microsoft.Identity.Test.Integration.HeadlessTests
         [TestMethod]
         public async Task ClientCreds_ServicePrincipal_OBO_PPE_Async()
         {
-            //An explination of the OBO for service principal scenario can be found here https://aadwiki.windows-int.net/index.php?title=App_OBO_aka._Service_Principal_OBO
-            X509Certificate2 cert = GetCertificate();
+            //An explanation of the OBO for service principal scenario can be found here https://aadwiki.windows-int.net/index.php?title=App_OBO_aka._Service_Principal_OBO
+            var settings = ConfidentialAppSettings.GetSettings(Cloud.Public);
+            var cert = settings.GetCertificate(); 
+
             IReadOnlyList<string> scopes = new List<string>() { OBOServicePpeClientID + "/.default" };
             IReadOnlyList<string> scopes2 = new List<string>() { OBOServiceDownStreamApiPpeClientID + "/.default" };
 
@@ -90,7 +93,6 @@ namespace Microsoft.Identity.Test.Integration.HeadlessTests
             var userCacheRecorder = _confidentialApp.UserTokenCache.RecordAccess();
 
             authenticationResult = await _confidentialApp.AcquireTokenOnBehalfOf(scopes2, userAssertion)
-                                                         .WithAuthority(PPEAuthenticationAuthority)
                                                          .ExecuteAsync().ConfigureAwait(false);
 
             Assert.IsNotNull(authenticationResult);
@@ -98,7 +100,6 @@ namespace Microsoft.Identity.Test.Integration.HeadlessTests
             Assert.AreEqual(TokenSource.IdentityProvider, authenticationResult.AuthenticationResultMetadata.TokenSource);
 
             authenticationResult = await _confidentialApp.AcquireTokenOnBehalfOf(scopes2, userAssertion)
-                                                         .WithAuthority(PPEAuthenticationAuthority)
                                                          .ExecuteAsync().ConfigureAwait(false);
 
             Assert.IsNotNull(authenticationResult);
@@ -109,20 +110,6 @@ namespace Microsoft.Identity.Test.Integration.HeadlessTests
             Assert.AreEqual(TokenSource.Cache, authenticationResult.AuthenticationResultMetadata.TokenSource);
         }
 
-        private static X509Certificate2 GetCertificate(bool useRSACert = false)
-        {
-            X509Certificate2 cert = CertificateHelper.FindCertificateByThumbprint(useRSACert ?
-                TestConstants.RSATestCertThumbprint :
-                TestConstants.AutomationTestThumbprint);
-            if (cert == null)
-            {
-                throw new InvalidOperationException(
-                    "Test setup error - cannot find a certificate in the My store for KeyVault. This is available for Microsoft employees only.");
-            }
-
-            return cert;
-        }
-
         [TestInitialize]
         public void TestInitialize()
         {
@@ -131,8 +118,6 @@ namespace Microsoft.Identity.Test.Integration.HeadlessTests
             if (_keyVault == null)
             {
                 _keyVault = new KeyVaultSecretsProvider();
-                // s_publicCloudCcaSecret = _keyVault.GetSecret(TestConstants.MsalCCAKeyVaultUri).Value;
-                // s_arlingtonCCASecret = _keyVault.GetSecret(TestConstants.MsalArlingtonCCAKeyVaultUri).Value;
             }
         }
 
@@ -193,11 +178,9 @@ namespace Microsoft.Identity.Test.Integration.HeadlessTests
                                                                  .WithHttpClientFactory(factory)
                                                                  .Build();
 
-            var builder = msalPublicClient.AcquireTokenByUsernamePassword(oboScope, user.Upn, securePassword);
-
-            builder.WithAuthority(authority);
-
-            var authResult = await builder.ExecuteAsync().ConfigureAwait(false);
+            var authResult = await msalPublicClient.AcquireTokenByUsernamePassword(oboScope, user.Upn, securePassword)
+                .ExecuteAsync()
+                .ConfigureAwait(false);
 
             var confidentialApp = ConfidentialClientApplicationBuilder
                 .Create(confidentialClientID)
@@ -218,6 +201,7 @@ namespace Microsoft.Identity.Test.Integration.HeadlessTests
 
             MsalAssert.AssertAuthResult(authResult, user);
             Assert.AreEqual(atHash, userCacheRecorder.LastAfterAccessNotificationArgs.SuggestedCacheKey);
+            Assert.AreEqual(TokenSource.IdentityProvider, authResult.AuthenticationResultMetadata.TokenSource);
 
             //Run OBO again. Should get token from cache
             authResult = await confidentialApp.AcquireTokenOnBehalfOf(s_scopes, userAssertion)
@@ -236,7 +220,7 @@ namespace Microsoft.Identity.Test.Integration.HeadlessTests
             //Expire access tokens
             TokenCacheHelper.ExpireAllAccessTokens(confidentialApp.UserTokenCacheInternal);
 
-            //Run OBO again. Should do token refresh since the AT is expired
+            //Run OBO again. Should do OBO flow since the AT is expired and RTs aren't cached for normal OBO flow
             authResult = await confidentialApp.AcquireTokenOnBehalfOf(s_scopes, userAssertion)
                 .ExecuteAsync(CancellationToken.None)
                 .ConfigureAwait(false);
@@ -248,7 +232,7 @@ namespace Microsoft.Identity.Test.Integration.HeadlessTests
             Assert.IsTrue(userCacheRecorder.LastAfterAccessNotificationArgs.HasTokens);
             Assert.AreEqual(atHash, userCacheRecorder.LastAfterAccessNotificationArgs.SuggestedCacheKey);
             Assert.AreEqual(TokenSource.IdentityProvider, authResult.AuthenticationResultMetadata.TokenSource);
-            AssertLastHttpContent("refresh_token");
+            AssertLastHttpContent("on_behalf_of");
 
             //creating second app with no refresh tokens
             var atItems = confidentialApp.UserTokenCacheInternal.Accessor.GetAllAccessTokens();
@@ -336,19 +320,19 @@ namespace Microsoft.Identity.Test.Integration.HeadlessTests
 
             var msalPublicClient = PublicClientApplicationBuilder.Create(publicClientID)
                                                                  .WithAuthority(authority)
-                                                                 .WithRedirectUri(TestConstants.RedirectUri)
+                                                                 .WithRedirectUri(TestConstants.RedirectUri)                                                                 
                                                                  .WithTestLogging()
                                                                  .Build();
 
-            var builder = msalPublicClient.AcquireTokenByUsernamePassword(oboScope, user.Upn, securePassword);
+            var authResult = await msalPublicClient.AcquireTokenByUsernamePassword(oboScope, user.Upn, securePassword)
+                .ExecuteAsync()
+                .ConfigureAwait(false);
 
-            builder.WithAuthority(authority);
-
-            var authResult = await builder.ExecuteAsync().ConfigureAwait(false);
-
+            var ccaAuthority = new Uri(oboHost + authResult.TenantId);
             var confidentialApp = ConfidentialClientApplicationBuilder
                 .Create(confidentialClientID)
-                .WithAuthority(new Uri(oboHost + authResult.TenantId), true)
+                .WithAuthority(ccaAuthority, true)
+                .WithAzureRegion(TestConstants.Region) // should be ignored by OBO
                 .WithClientSecret(secret)
                 .WithTestLogging()
                 .Build();
@@ -365,6 +349,10 @@ namespace Microsoft.Identity.Test.Integration.HeadlessTests
 
             MsalAssert.AssertAuthResult(authResult, user);
             Assert.AreEqual(atHash, userCacheRecorder.LastAfterAccessNotificationArgs.SuggestedCacheKey);
+            Assert.AreEqual(
+                ccaAuthority.ToString() + "/oauth2/v2.0/token",
+                authResult.AuthenticationResultMetadata.TokenEndpoint,
+                "OBO does not obey region");
 
 #pragma warning disable CS0618 // Type or member is obsolete
             await confidentialApp.GetAccountsAsync().ConfigureAwait(false);

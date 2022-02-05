@@ -1,13 +1,11 @@
 ﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Identity.Client.ApiConfig.Parameters;
 using Microsoft.Identity.Client.Http;
-using Microsoft.Identity.Client.TelemetryCore.Internal.Events;
 using Microsoft.Identity.Client.OAuth2;
 
 namespace Microsoft.Identity.Client.Internal.Requests
@@ -26,11 +24,6 @@ namespace Microsoft.Identity.Client.Internal.Requests
             RedirectUriHelper.Validate(authenticationRequestParameters.RedirectUri);
         }
 
-        protected override void EnrichTelemetryApiEvent(ApiEvent apiEvent)
-        {
-            apiEvent.IsConfidentialClient = true;
-        }
-
         protected override async Task<AuthenticationResult> ExecuteAsync(CancellationToken cancellationToken)
         {
             await ResolveAuthorityAsync().ConfigureAwait(false);
@@ -42,6 +35,7 @@ namespace Microsoft.Identity.Client.Internal.Requests
         {
             var dict = new Dictionary<string, string>
             {
+                [OAuth2Parameter.ClientInfo] = "1",
                 [OAuth2Parameter.GrantType] = OAuth2GrantType.AuthorizationCode,
                 [OAuth2Parameter.Code] = _authorizationCodeParameters.AuthorizationCode,
                 [OAuth2Parameter.RedirectUri] = AuthenticationRequestParameters.RedirectUri.OriginalString
@@ -50,6 +44,11 @@ namespace Microsoft.Identity.Client.Internal.Requests
             if (!string.IsNullOrEmpty(_authorizationCodeParameters.PkceCodeVerifier))
             {
                 dict[OAuth2Parameter.PkceCodeVerifier] = _authorizationCodeParameters.PkceCodeVerifier;
+            }
+
+            if (_authorizationCodeParameters.SpaCode)
+            {
+                dict[OAuth2Parameter.SpaCode] = Constants.EnableSpaAuthCode;
             }
 
             return dict;

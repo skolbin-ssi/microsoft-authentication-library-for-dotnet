@@ -5,12 +5,9 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.Identity.Client.Advanced;
 using Microsoft.Identity.Client.ApiConfig.Executors;
 using Microsoft.Identity.Client.ApiConfig.Parameters;
-using Microsoft.Identity.Client.Internal;
 using Microsoft.Identity.Client.TelemetryCore.Internal.Events;
-using Microsoft.Identity.Client.Utils;
 
 namespace Microsoft.Identity.Client
 {
@@ -27,8 +24,6 @@ namespace Microsoft.Identity.Client
         AbstractConfidentialClientAcquireTokenParameterBuilder<GetAuthorizationRequestUrlParameterBuilder>
     {
         private GetAuthorizationRequestUrlParameters Parameters { get; } = new GetAuthorizationRequestUrlParameters();
-
-        internal override ApiTelemetryId ApiTelemetryId => ApiTelemetryId.GetAuthorizationRequestUrl;
 
         internal GetAuthorizationRequestUrlParameterBuilder(IConfidentialClientApplicationExecutor confidentialClientApplicationexecutor)
             : base(confidentialClientApplicationexecutor)
@@ -49,7 +44,6 @@ namespace Microsoft.Identity.Client
         /// <returns></returns>
         public GetAuthorizationRequestUrlParameterBuilder WithRedirectUri(string redirectUri)
         {
-            CommonParameters.AddApiTelemetryFeature(ApiTelemetryFeature.WithRedirectUri);
             Parameters.RedirectUri = redirectUri;
             return this;
         }
@@ -60,7 +54,6 @@ namespace Microsoft.Identity.Client
         /// <returns></returns>
         public GetAuthorizationRequestUrlParameterBuilder WithLoginHint(string loginHint)
         {
-            CommonParameters.AddApiTelemetryFeature(ApiTelemetryFeature.WithLoginHint);
             Parameters.LoginHint = loginHint;
 
             return this;
@@ -72,7 +65,6 @@ namespace Microsoft.Identity.Client
         /// <returns></returns>
         public GetAuthorizationRequestUrlParameterBuilder WithAccount(IAccount account)
         {
-            CommonParameters.AddApiTelemetryFeature(ApiTelemetryFeature.WithAccount);
             Parameters.Account = account;
             return this;
         }
@@ -83,7 +75,6 @@ namespace Microsoft.Identity.Client
         /// <returns></returns>
         public GetAuthorizationRequestUrlParameterBuilder WithExtraScopesToConsent(IEnumerable<string> extraScopesToConsent)
         {
-            CommonParameters.AddApiTelemetryFeature(ApiTelemetryFeature.WithExtraScopesToConsent);
             Parameters.ExtraScopesToConsent = extraScopesToConsent;
             return this;
         }
@@ -102,8 +93,8 @@ namespace Microsoft.Identity.Client
         }
 
         /// <summary>
-        /// To help with resiliency, AAD Cached Credential Service (CCS) operates as an AAD backup.
-        /// This will provide CCS with a routing hint to help improve performance during authentication.
+        /// To help with resiliency, the AAD backup authentication system operates as an AAD backup.
+        /// This will provide the AAD backup authentication system with a routing hint to help improve performance during authentication.
         /// The hint created with this api will take precedence over the one created with <see cref="WithLoginHint"/>
         /// </summary>
         /// <param name="userObjectIdentifier">GUID which is unique to the user, parsed from the client_info.</param>
@@ -117,6 +108,18 @@ namespace Microsoft.Identity.Client
             }
 
             Parameters.CcsRoutingHint = new KeyValuePair<string, string>(userObjectIdentifier, tenantIdentifier) as KeyValuePair<string, string>?;
+            return this;
+        }
+
+        /// <summary>
+        /// Specifies the interactive experience for the user.
+        /// </summary>
+        /// <param name="prompt">Requested interactive experience. The default is <see cref="Prompt.SelectAccount"/>
+        /// </param>
+        /// <returns>The builder to chain the .With methods</returns>
+        public GetAuthorizationRequestUrlParameterBuilder WithPrompt(Prompt prompt)
+        {
+            Parameters.Prompt = prompt;
             return this;
         }
 

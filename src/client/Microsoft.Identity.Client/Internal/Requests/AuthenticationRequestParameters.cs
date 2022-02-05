@@ -4,18 +4,22 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
+using System.Threading.Tasks;
+using Microsoft.Identity.Client.ApiConfig;
 using Microsoft.Identity.Client.ApiConfig.Parameters;
 using Microsoft.Identity.Client.AuthScheme;
 using Microsoft.Identity.Client.Cache;
+using Microsoft.Identity.Client.Extensibility;
 using Microsoft.Identity.Client.Instance;
 using Microsoft.Identity.Client.TelemetryCore.Internal.Events;
 using Microsoft.Identity.Client.Utils;
+using static Microsoft.Identity.Client.Extensibility.AbstractConfidentialClientAcquireTokenParameterBuilderExtension;
 
 namespace Microsoft.Identity.Client.Internal.Requests
 {
     /// <summary>
-    /// This class is responsible for merging app level and request level params. 
-    /// Not all params need to be merged - app level params can be accessed via AppConfig property
+    /// This class is responsible for merging app level and request level parameters. 
+    /// Not all parameters need to be merged - app level parameters can be accessed via AppConfig property
     /// </summary>
     internal class AuthenticationRequestParameters
     {
@@ -62,31 +66,24 @@ namespace Microsoft.Identity.Client.Internal.Requests
 
         public ApplicationConfiguration AppConfig => _serviceBundle.Config;
 
-        public ApiTelemetryId ApiTelemId => _commonParameters.ApiTelemId;
-
-        public IEnumerable<KeyValuePair<string, string>> GetApiTelemetryFeatures()
-        {
-            return _commonParameters.GetApiTelemetryFeatures();
-        }
-
         public ApiEvent.ApiIds ApiId => _commonParameters.ApiId;
 
         public RequestContext RequestContext { get; }
 
         #region Authority
 
-        public AuthorityManager AuthorityManager { get; set; } 
+        public AuthorityManager AuthorityManager { get; set; }
 
         /// <summary>
         /// Authority is the URI used by MSAL for communication and storage
         /// During a request it can be updated: 
-        /// - with the preffered enviroment
+        /// - with the preferred environment
         /// - with actual tenant
         /// </summary>
         public Authority Authority => AuthorityManager.Authority;
 
         public AuthorityInfo AuthorityInfo => AuthorityManager.Authority.AuthorityInfo;
-        
+
         public AuthorityInfo AuthorityOverride => _commonParameters.AuthorityOverride;
 
         #endregion
@@ -116,7 +113,6 @@ namespace Microsoft.Identity.Client.Internal.Requests
             }
         }
 
-
         public IAuthenticationScheme AuthenticationScheme => _commonParameters.AuthenticationScheme;
 
         #region TODO REMOVE FROM HERE AND USE FROM SPECIFIC REQUEST PARAMETERS
@@ -124,8 +120,8 @@ namespace Microsoft.Identity.Client.Internal.Requests
 
 
         // This should be set on a per-application basis, but can be overridden on a per-request basis should it be needed. 
-        public bool SendX5C { get; set; } 
-        
+        public bool SendX5C { get; set; }
+
         public string LoginHint
         {
             get
@@ -144,6 +140,11 @@ namespace Microsoft.Identity.Client.Internal.Requests
 
         public string HomeAccountId { get; }
 
+        /// <summary>
+        /// If set, MSAL should add the key / value pairs from the provider to the token endpoint instead of generating a client assertion
+        /// </summary>
+        public Func<OnBeforeTokenRequestData, Task> OnBeforeTokenRequestHandler { get => _commonParameters.OnBeforeTokenRequestHandler; }
+
         public IDictionary<string, string> ExtraHttpHeaders => _commonParameters.ExtraHttpHeaders;
 
         public bool IsClientCredentialRequest => ApiId == ApiEvent.ApiIds.AcquireTokenForClient;
@@ -159,7 +160,16 @@ namespace Microsoft.Identity.Client.Internal.Requests
 #endif
             }
         }
+
+        /// <remarks>
+        /// User assertion is null when <see cref="ILongRunningWebApi.AcquireTokenInLongRunningProcess"/> is called.
+        /// </remarks>
         public UserAssertion UserAssertion { get; set; }
+
+        /// <summary>
+        /// User-provided cache key for long-running OBO flow.
+        /// </summary>
+        public string LongRunningOboCacheKey { get; set; }
 
         public KeyValuePair<string, string>? CcsRoutingHint { get; set; }
 
@@ -186,6 +196,8 @@ namespace Microsoft.Identity.Client.Internal.Requests
             builder.AppendLine("IsBrokerConfigured - " + AppConfig.IsBrokerEnabled);
             builder.AppendLine("HomeAccountId - " + HomeAccountId);
             builder.AppendLine("CorrelationId - " + CorrelationId);
+            builder.AppendLine("UserAssertion set: " + (UserAssertion != null));
+            builder.AppendLine("LongRunningOboCacheKey set: " + !string.IsNullOrWhiteSpace(LongRunningOboCacheKey));
 
             string messageWithPii = builder.ToString();
 
@@ -203,6 +215,8 @@ namespace Microsoft.Identity.Client.Internal.Requests
             builder.AppendLine("IsBrokerConfigured - " + AppConfig.IsBrokerEnabled);
             builder.AppendLine("HomeAccountId - " + !string.IsNullOrEmpty(HomeAccountId));
             builder.AppendLine("CorrelationId - " + CorrelationId);
+            builder.AppendLine("UserAssertion set: " + (UserAssertion != null));
+            builder.AppendLine("LongRunningOboCacheKey set: " + !string.IsNullOrWhiteSpace(LongRunningOboCacheKey));
 
             logger.InfoPii(messageWithPii, builder.ToString());
         }

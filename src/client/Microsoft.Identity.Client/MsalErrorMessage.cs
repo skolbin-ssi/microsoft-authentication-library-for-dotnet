@@ -75,7 +75,7 @@ namespace Microsoft.Identity.Client
 
         public const string UnauthorizedHttpStatusCodeExpected =
             "Unauthorized HTTP Status Code (401) was expected in the response. ";
-        
+
         internal const string iOSBrokerKeyFetchFailed = "A broker key was generated but it could not be retrieved from the KeyChain. Please capture and inspect the logs to see why the fetch operation failed. ";
 
         public const string UnauthorizedResponseExpected = "Unauthorized HTTP response (status code 401) was expected. ";
@@ -163,7 +163,11 @@ namespace Microsoft.Identity.Client
 
         public const string AuthorizationServerInvalidResponse = "The authorization server returned an invalid response. ";
 
-        public const string NonHttpsRedirectNotSupported = "Non-HTTPS URL redirect is not supported in webview. ";
+        public const string NonHttpsRedirectNotSupported = "Non-HTTPS URL redirect is not supported in webview. " +
+            "This error happens when the authorization flow, which collects user credentials, gets redirected " +
+            "to a page that is not supported, for example if the redirect occurs over http. " +
+            "This error does not trigger for the final redirect, which can be http://localhost, but for intermediary redirects." + 
+            "Mitigation: This usually happens when using a federated directory which is not setup correctly. ";
 
         public const string IDTokenMustHaveTwoParts = "ID Token must have a valid JWT format. ";
         public const string FailedToParseIDToken = "Failed to parse the returned id token. ";
@@ -301,6 +305,7 @@ namespace Microsoft.Identity.Client
         public const string RegionDiscoveryFailed = "Region discovery for the instance failed. Region discovery can only be made if the service resides in Azure function or Azure VM. See https://aka.ms/msal-net-region-discovery for more details. ";
         public const string RegionDiscoveryFailedWithTimeout = "Region discovery failed due to app cancellation or timeout. ";
         public const string RegionDiscoveryNotAvailable = "Region discovery cannot be performed for ADFS authority. Do not set `WithAzureRegion` to true. ";
+        public const string RegionDiscoveryWithCustomInstanceMetadata = "Configure either region discovery or custom instance metadata. Custom instance discovery metadata overrides region discovery. ";
 
         public static string AuthorityTypeMismatch(
             AuthorityType appAuthorityType,
@@ -322,7 +327,7 @@ namespace Microsoft.Identity.Client
         public const string ScopesRequired = "At least one scope needs to be requested for this authentication flow. ";
         public const string InvalidAdalCacheMultipleRTs = "The ADAL cache is invalid as it contains multiple refresh token entries for one user. Deleting invalid ADAL cache. ";
 
-        public const string CryptoNet45 = 
+        public const string CryptoNet45 =
             "Could not use the certificate for signing. See inner exception for details. " +
             "Possible cause: this may be a known issue with apps build against .NET Desktop 4.6 or lower. " +
             "Either target a higher version of .NET desktop - 4.6.1 and above, " +
@@ -382,24 +387,31 @@ namespace Microsoft.Identity.Client
         }
 
         public const string LinuxOpenToolFailed = "Unable to open a web page using xdg-open, gnome-open, or kfmclient tools. See inner exception for details. Possible causes for this error are: tools are not installed or they cannot open a URL. Make sure you can open a web page by invoking from a terminal: xdg-open https://www.bing.com ";
+        public const string LinuxOpenAsSudoNotSupported = "Unable to open a web page using xdg-open, gnome-open, or kfmclient tools in sudo mode. Please run the process as non-sudo user.";
 
         public const string WebView2LoaderNotFound = "The embedded WebView2 browser cannot be started because a runtime component cannot be loaded. For troubleshooting details, see https://aka.ms/msal-net-webview2 .";
 
         public const string AuthenticationFailedWamElevatedProcess = "WAM Account Picker did not return an account. Either the user cancelled the authentication or the WAM Account Picker crashed because the app is running in an elevated process. For troubleshooting details, see https://aka.ms/msal-net-wam .";
 
-        public static string InitializeProcessSecurityError(string errorCode) => 
+        public static string InitializeProcessSecurityError(string errorCode) =>
             string.Format(
                 CultureInfo.InvariantCulture,
                 "Failure setting process security to enable WAM Account Picker in an elevated process ({0}). For troubleshooting details, see https://aka.ms/msal-net-wam .",
                 errorCode);
 
-        public const string CcsRoutingHintMissing = "Either the userObjectIdentifier or tenantIdenifier are missing. Both are needed to create the ccs routing hint. See https://aka.ms/msal-net/ccsRouting. ";
+        public const string CcsRoutingHintMissing = "Either the userObjectIdentifier or tenantIdenifier are missing. Both are needed to create the CCS routing hint. See https://aka.ms/msal-net/ccsRouting. ";
 
-        public const string StaticCacheWithExternalSerialization = 
+        public const string StaticCacheWithExternalSerialization =
             "You configured MSAL cache serialization at the same time with internal caching options. These are mutually exclusive. " +
             "Use only one option. Web site and web api scenarios should rely on external cache serialization, as internal cache serialization cannot scale. " +
-            "See https://docs.microsoft.com/en-us/azure/active-directory/develop/msal-net-token-cache-serialization?tabs=aspnetcore  ";
-        
-        public static string ClientCredentialWrongAuthority = "The current authority is targeting the /common or /organizations endpoint which is not reccomended. See https://aka.ms/msal-net-client-credentials for more details.";
+            "See https://aka.ms/msal-net-token-cache-serialization .";
+
+        public const string ClientCredentialWrongAuthority = "The current authority is targeting the /common or /organizations endpoint which is not recommended. See https://aka.ms/msal-net-client-credentials for more details.";
+
+        public const string TenantOverrideNonAad = "WithTenantId can only be used when an AAD authority is specified at the application level.";
+
+        public const string RegionalAndAuthorityOverride = "You configured WithAuthority at the request level, and also WithAzureRegion. This is not supported when the environment changes from application to request. Use WithTenantId at the request level instead.";
+
+        public const string OboCacheKeyNotInCache = "The token cache does not contain a token with an OBO cache key that matches the longRunningProcessSessionKey passed into ILongRunningWebApi.AcquireTokenInLongRunningProcess method. Call ILongRunningWebApi.InitiateLongRunningProcessInWebApi method with this longRunningProcessSessionKey first or call ILongRunningWebApi.AcquireTokenInLongRunningProcess method with an already used longRunningProcessSessionKey. See https://aka.ms/msal-net-long-running-obo .";
     }
 }

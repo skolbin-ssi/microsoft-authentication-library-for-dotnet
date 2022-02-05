@@ -29,7 +29,8 @@ namespace Microsoft.Identity.Client
         : ClientApplicationBase,
             IConfidentialClientApplication,
             IConfidentialClientApplicationWithCertificate,
-            IByRefreshToken
+            IByRefreshToken,
+            ILongRunningWebApi
     {
         /// <summary>
         /// Instructs MSAL to try to auto discover the Azure region.
@@ -61,9 +62,7 @@ namespace Microsoft.Identity.Client
         /// <param name="scopes">Scopes requested to access a protected API</param>
         /// <param name="authorizationCode">The authorization code received from the service authorization endpoint.</param>
         /// <returns>A builder enabling you to add optional parameters before executing the token request</returns>
-        /// <remarks>You can set optional parameters by chaining the builder with:
-        /// <see cref="AbstractAcquireTokenParameterBuilder{T}.WithAuthority(string, bool)"/>,
-        /// <see cref="AbstractAcquireTokenParameterBuilder{T}.WithExtraQueryParameters(Dictionary{string, string})"/>,
+        /// <remarks>You can set optional parameters by chaining the builder with other .With methods.
         /// </remarks>
         public AcquireTokenByAuthorizationCodeParameterBuilder AcquireTokenByAuthorizationCode(
             IEnumerable<string> scopes,
@@ -126,6 +125,47 @@ namespace Microsoft.Identity.Client
                 userAssertion);
         }
 
+        /// <inheritdoc />
+        public AcquireTokenOnBehalfOfParameterBuilder InitiateLongRunningProcessInWebApi(
+            IEnumerable<string> scopes,
+            string userToken,
+            ref string longRunningProcessSessionKey)
+        {
+            if (string.IsNullOrEmpty(userToken))
+            {
+                throw new ArgumentNullException(nameof(userToken));
+            }
+
+            UserAssertion userAssertion = new UserAssertion(userToken);
+
+            if (string.IsNullOrEmpty(longRunningProcessSessionKey))
+            {
+                longRunningProcessSessionKey = userAssertion.AssertionHash;
+            }
+
+            return AcquireTokenOnBehalfOfParameterBuilder.Create(
+                ClientExecutorFactory.CreateConfidentialClientExecutor(this),
+                scopes,
+                userAssertion,
+                longRunningProcessSessionKey);
+        }
+
+        /// <inheritdoc />
+        public AcquireTokenOnBehalfOfParameterBuilder AcquireTokenInLongRunningProcess(
+            IEnumerable<string> scopes,
+            string longRunningProcessSessionKey)
+        {
+            if (string.IsNullOrEmpty(longRunningProcessSessionKey))
+            {
+                throw new ArgumentNullException(nameof(longRunningProcessSessionKey));
+            }
+
+            return AcquireTokenOnBehalfOfParameterBuilder.Create(
+                ClientExecutorFactory.CreateConfidentialClientExecutor(this),
+                scopes,
+                longRunningProcessSessionKey);
+        }
+
         /// <summary>
         /// Computes the URL of the authorization request letting the user sign-in and consent to the application accessing specific scopes in
         /// the user's name. The URL targets the /authorize endpoint of the authority configured in the application.
@@ -157,8 +197,6 @@ namespace Microsoft.Identity.Client
                 scopes,
                 refreshToken);
         }
-
-        internal ClientCredentialWrapper ClientCredential => ServiceBundle.Config.ClientCredential;
 
         /// <summary>
         /// Application token cache. This case holds access tokens for the application. It's maintained

@@ -3,6 +3,7 @@
 
 #if !ANDROID && !iOS && !WINDOWS_APP 
 using System;
+using System.IO;
 using System.Net;
 using System.Net.Http;
 using System.Threading;
@@ -17,8 +18,78 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 namespace Microsoft.Identity.Test.Unit
 {
     [TestClass]
+    [DeploymentItem(@"Resources\CustomInstanceMetadata.json")]
     public class ConfidentialClientWithRegionTests : TestBase
     {
+
+        [TestCleanup]
+        public override void TestCleanup()
+        {
+            Environment.SetEnvironmentVariable("REGION_NAME", null);
+        }
+
+        [TestMethod]
+        // regression for #2837
+        public async Task AuthorityOverrideAndRegionalAsync()
+        {
+            const string region = "eastus";
+            Environment.SetEnvironmentVariable("REGION_NAME", region);
+
+            var app = ConfidentialClientApplicationBuilder
+                             .Create(TestConstants.ClientId)
+                             .WithAzureRegion(ConfidentialClientApplication.AttemptRegionDiscovery)
+                             .WithClientSecret(TestConstants.ClientSecret)
+                             .Build();
+
+#pragma warning disable CS0618 // Type or member is obsolete
+            var ex = await AssertException.TaskThrowsAsync<MsalClientException>(() =>
+                app
+                .AcquireTokenForClient(TestConstants.s_scope)
+                .WithAuthority($"https://login.microsoft.com/17b189bc-2b81-4ec5-aa51-3e628cbc931b")
+#pragma warning restore CS0618 // Type or member is obsolete
+                    .ExecuteAsync())
+                .ConfigureAwait(false);
+
+            Assert.AreEqual(MsalError.RegionalAndAuthorityOverride, ex.ErrorCode);
+        }
+
+        [TestMethod]
+        // regression for #2837
+        public async Task TenantIdOverrideAndRegionalAsync()
+        {
+            // Arrange
+            const string region = "eastus";
+            Environment.SetEnvironmentVariable("REGION_NAME", region);
+
+            using (var harness = new MockHttpAndServiceBundle())
+            {
+                var tokenHttpCallHandler = new MockHttpMessageHandler()
+                {
+                    // Asserts
+                    ExpectedUrl = $"https://eastus.r.login.microsoftonline.com/17b189bc-2b81-4ec5-aa51-3e628cbc931b/oauth2/v2.0/token",
+                    ExpectedMethod = HttpMethod.Post,
+
+                    ResponseMessage = CreateResponse(true)
+                };
+                harness.HttpManager.AddMockHandler(tokenHttpCallHandler);
+
+                var app = ConfidentialClientApplicationBuilder
+                                 .Create(TestConstants.ClientId)
+                                 .WithAuthority($"https://login.microsoftonline.com/common", true)
+                                 .WithHttpManager(harness.HttpManager)
+                                 .WithAzureRegion(ConfidentialClientApplication.AttemptRegionDiscovery)
+                                 .WithClientSecret(TestConstants.ClientSecret)
+                                 .Build();
+
+                // Act
+                var result = await app.AcquireTokenForClient(TestConstants.s_scope)
+                    .WithTenantId("17b189bc-2b81-4ec5-aa51-3e628cbc931b")
+                    .ExecuteAsync()
+                    .ConfigureAwait(false);
+
+                Assert.IsNotNull(result.AccessToken);
+            }
+        }
 
         [TestMethod]
         [Description("Test for regional auth with successful instance discovery.")]
@@ -39,8 +110,11 @@ namespace Microsoft.Identity.Test.Unit
                     .ConfigureAwait(false);
 
                 Assert.AreEqual(TestConstants.Region, result.ApiEvent.RegionUsed);
-                Assert.AreEqual((int)RegionAutodetectionSource.Imds, result.ApiEvent.RegionAutodetectionSource);
-                Assert.AreEqual((int)RegionOutcome.AutodetectSuccess, result.ApiEvent.RegionOutcome);
+                Assert.AreEqual(RegionAutodetectionSource.Imds, result.ApiEvent.RegionAutodetectionSource);
+                Assert.AreEqual(RegionOutcome.AutodetectSuccess, result.ApiEvent.RegionOutcome);
+                Assert.AreEqual(
+                    "https://centralus.r.login.microsoftonline.com/common/oauth2/v2.0/token",
+                    result.AuthenticationResultMetadata.TokenEndpoint);
 
                 // try again, result will be from cache
                 result = await app
@@ -49,8 +123,8 @@ namespace Microsoft.Identity.Test.Unit
                     .ConfigureAwait(false);
 
                 Assert.AreEqual(TestConstants.Region, result.ApiEvent.RegionUsed);
-                Assert.AreEqual((int)RegionAutodetectionSource.Cache, result.ApiEvent.RegionAutodetectionSource);
-                Assert.AreEqual((int)RegionOutcome.AutodetectSuccess, result.ApiEvent.RegionOutcome);
+                Assert.AreEqual(RegionAutodetectionSource.Cache, result.ApiEvent.RegionAutodetectionSource);
+                Assert.AreEqual(RegionOutcome.AutodetectSuccess, result.ApiEvent.RegionOutcome);
                 Assert.IsTrue(result.AuthenticationResultMetadata.TokenSource == TokenSource.Cache);
 
                 // try again, with force refresh, region should be from cache
@@ -62,8 +136,8 @@ namespace Microsoft.Identity.Test.Unit
                   .ConfigureAwait(false);
 
                 Assert.AreEqual(TestConstants.Region, result.ApiEvent.RegionUsed);
-                Assert.AreEqual((int)RegionAutodetectionSource.Cache, result.ApiEvent.RegionAutodetectionSource);
-                Assert.AreEqual((int)RegionOutcome.AutodetectSuccess, result.ApiEvent.RegionOutcome);
+                Assert.AreEqual(RegionAutodetectionSource.Cache, result.ApiEvent.RegionAutodetectionSource);
+                Assert.AreEqual(RegionOutcome.AutodetectSuccess, result.ApiEvent.RegionOutcome);
                 Assert.IsTrue(result.AuthenticationResultMetadata.TokenSource == TokenSource.IdentityProvider);
 
                 // try again, create a new app, result should still be from cache 
@@ -78,14 +152,14 @@ namespace Microsoft.Identity.Test.Unit
                   .ConfigureAwait(false);
 
                 Assert.AreEqual(TestConstants.Region, result.ApiEvent.RegionUsed);
-                Assert.AreEqual((int)RegionAutodetectionSource.Cache, result.ApiEvent.RegionAutodetectionSource);
-                Assert.AreEqual((int)RegionOutcome.AutodetectSuccess, result.ApiEvent.RegionOutcome);
+                Assert.AreEqual(RegionAutodetectionSource.Cache, result.ApiEvent.RegionAutodetectionSource);
+                Assert.AreEqual(RegionOutcome.AutodetectSuccess, result.ApiEvent.RegionOutcome);
                 Assert.IsTrue(result.AuthenticationResultMetadata.TokenSource == TokenSource.IdentityProvider);
             }
         }
 
         [TestMethod]
-        [Description("Tokens between regional and non-regional are interchangable.")]
+        [Description("Tokens between regional and non-regional are interchangeable.")]
         public async Task TokensAreInterchangable_Regional_To_NonRegional_Async()
         {
             using (var httpManager = new MockHttpManager())
@@ -110,8 +184,8 @@ namespace Microsoft.Identity.Test.Unit
                     .ConfigureAwait(false);
 
                 Assert.AreEqual(TestConstants.Region, result.ApiEvent.RegionUsed);
-                Assert.AreEqual((int)RegionAutodetectionSource.Imds, result.ApiEvent.RegionAutodetectionSource);
-                Assert.AreEqual((int)RegionOutcome.AutodetectSuccess, result.ApiEvent.RegionOutcome);
+                Assert.AreEqual(RegionAutodetectionSource.Imds, result.ApiEvent.RegionAutodetectionSource);
+                Assert.AreEqual(RegionOutcome.AutodetectSuccess, result.ApiEvent.RegionOutcome);
 
                 // when switching to non-region, token is found in the cache
                 result = await appWithoutRegion
@@ -120,8 +194,8 @@ namespace Microsoft.Identity.Test.Unit
                     .ConfigureAwait(false);
 
                 Assert.AreEqual(null, result.ApiEvent.RegionUsed);
-                Assert.AreEqual((int)RegionAutodetectionSource.None, result.ApiEvent.RegionAutodetectionSource);
-                Assert.AreEqual((int)RegionOutcome.None, result.ApiEvent.RegionOutcome);
+                Assert.AreEqual(RegionAutodetectionSource.None, result.ApiEvent.RegionAutodetectionSource);
+                Assert.AreEqual(RegionOutcome.None, result.ApiEvent.RegionOutcome);
 
                 Assert.IsTrue(result.AuthenticationResultMetadata.TokenSource == TokenSource.Cache);
             }
@@ -148,8 +222,8 @@ namespace Microsoft.Identity.Test.Unit
                         .ConfigureAwait(false);
 
                     Assert.AreEqual(TestConstants.Region, result.ApiEvent.RegionUsed);
-                    Assert.AreEqual((int)RegionAutodetectionSource.EnvVariable, result.ApiEvent.RegionAutodetectionSource);
-                    Assert.AreEqual((int)RegionOutcome.AutodetectSuccess, result.ApiEvent.RegionOutcome);
+                    Assert.AreEqual(RegionAutodetectionSource.EnvVariable, result.ApiEvent.RegionAutodetectionSource);
+                    Assert.AreEqual(RegionOutcome.AutodetectSuccess, result.ApiEvent.RegionOutcome);
 
                     Assert.IsNotNull(result.AccessToken);
 
@@ -185,8 +259,8 @@ namespace Microsoft.Identity.Test.Unit
                     Assert.IsNotNull(result.AccessToken);
 
                     Assert.AreEqual(null, result.ApiEvent.RegionUsed);
-                    Assert.AreEqual((int)RegionAutodetectionSource.FailedAutoDiscovery, result.ApiEvent.RegionAutodetectionSource);
-                    Assert.AreEqual((int)RegionOutcome.FallbackToGlobal, result.ApiEvent.RegionOutcome);
+                    Assert.AreEqual(RegionAutodetectionSource.FailedAutoDiscovery, result.ApiEvent.RegionAutodetectionSource);
+                    Assert.AreEqual(RegionOutcome.FallbackToGlobal, result.ApiEvent.RegionOutcome);
                 }
                 catch (MsalServiceException)
                 {
@@ -245,6 +319,7 @@ namespace Microsoft.Identity.Test.Unit
                                  .WithClientSecret(TestConstants.ClientSecret)
                                  .Build();
 
+#pragma warning disable CS0618 // Type or member is obsolete
                 AuthenticationResult result = await app
                     .AcquireTokenForClient(TestConstants.s_scope)
                     .WithAuthority("https://login.windows-ppe.net/17b189bc-2b81-4ec5-aa51-3e628cbc931b")
@@ -263,6 +338,7 @@ namespace Microsoft.Identity.Test.Unit
                    .WithAuthority("https://login.windows-ppe.net/17b189bc-2b81-4ec5-aa51-3e628cbc931b")
                    .ExecuteAsync()
                    .ConfigureAwait(false);
+#pragma warning restore CS0618 // Type or member is obsolete
 
                 Assert.AreEqual("eastus", result.ApiEvent.RegionUsed);
                 Assert.AreEqual(TokenSource.Cache, result.AuthenticationResultMetadata.TokenSource);
@@ -270,18 +346,19 @@ namespace Microsoft.Identity.Test.Unit
             }
         }
 
-        [TestMethod]
+        [DataTestMethod]
+        [DataRow(true, true)]
+        [DataRow(true, false)]
+        [DataRow(false, true)]
+        [DataRow(false, false)]
         // regression: https://github.com/AzureAD/microsoft-authentication-library-for-dotnet/issues/2686
-        public async Task OtherCloud_WithValidation_Async()
+        public async Task OtherCloud_WithValidation_Async(bool validateAuthority, bool authorityIsValid)
         {
             try
             {
                 Environment.SetEnvironmentVariable("REGION_NAME", "eastus");
 
-                await RunPpeTestAsync(validateAuthority: true, authorityIsValid: true).ConfigureAwait(false);
-                await RunPpeTestAsync(validateAuthority: true, authorityIsValid: false).ConfigureAwait(false);
-                await RunPpeTestAsync(validateAuthority: false, authorityIsValid: true).ConfigureAwait(false);
-                await RunPpeTestAsync(validateAuthority: false, authorityIsValid: false).ConfigureAwait(false);
+                await RunPpeTestAsync(validateAuthority, authorityIsValid).ConfigureAwait(false);
 
             }
             finally
@@ -328,7 +405,7 @@ namespace Microsoft.Identity.Test.Unit
 
                     AuthenticationResult result = await app
                         .AcquireTokenForClient(TestConstants.s_scope)
-                        .WithAuthority($"https://{inputEnv}/17b189bc-2b81-4ec5-aa51-3e628cbc931b")
+                        .WithTenantId($"17b189bc-2b81-4ec5-aa51-3e628cbc931b")
                         .ExecuteAsync()
                         .ConfigureAwait(false);
 
@@ -337,7 +414,7 @@ namespace Microsoft.Identity.Test.Unit
 
                     result = await app
                        .AcquireTokenForClient(TestConstants.s_scope)
-                       .WithAuthority($"https://{inputEnv}/17b189bc-2b81-4ec5-aa51-3e628cbc931b")
+                       .WithTenantId($"17b189bc-2b81-4ec5-aa51-3e628cbc931b")
                        .ExecuteAsync()
                        .ConfigureAwait(false);
 
@@ -381,17 +458,12 @@ namespace Microsoft.Identity.Test.Unit
                     ResponseMessage = CreateResponse(true)
                 };
 
-
-                if (authorityIsValid || !validateAuthority) // no calls because authority validation will fail
-                {
-                    harness.HttpManager.AddMockHandler(discoveryHandler);
-                    harness.HttpManager.AddMockHandler(tokenHttpCallHandler);
-                }
-                else
+                if (validateAuthority)
                 {
                     harness.HttpManager.AddMockHandler(discoveryHandler);
                 }
 
+                harness.HttpManager.AddMockHandler(tokenHttpCallHandler);
                 var app = ConfidentialClientApplicationBuilder
                                  .Create(TestConstants.ClientId)
                                  .WithAuthority("https://login.windows-ppe.net/common", validateAuthority)
@@ -403,9 +475,9 @@ namespace Microsoft.Identity.Test.Unit
                 if (!authorityIsValid && validateAuthority)
                 {
                     var ex = await AssertException.TaskThrowsAsync<MsalServiceException>(() => app
-                   .AcquireTokenForClient(TestConstants.s_scope)
-                   .WithAuthority("https://login.windows-ppe.net/17b189bc-2b81-4ec5-aa51-3e628cbc931b")
-                   .ExecuteAsync()).ConfigureAwait(false);
+                       .AcquireTokenForClient(TestConstants.s_scope)
+                       .WithTenantId("17b189bc-2b81-4ec5-aa51-3e628cbc931b")
+                       .ExecuteAsync()).ConfigureAwait(false);
 
                     Assert.AreEqual(MsalError.InvalidInstance, ex.ErrorCode);
                     var qp = CoreHelpers.ParseKeyValueList(discoveryHandler.ActualRequestMessage.RequestUri.Query.Substring(1), '&', true, null);
@@ -415,20 +487,22 @@ namespace Microsoft.Identity.Test.Unit
                 {
                     AuthenticationResult result = await app
                         .AcquireTokenForClient(TestConstants.s_scope)
-                        .WithAuthority("https://login.windows-ppe.net/17b189bc-2b81-4ec5-aa51-3e628cbc931b")
-                        .ExecuteAsync()
+                        .WithTenantId("17b189bc-2b81-4ec5-aa51-3e628cbc931b").ExecuteAsync()
                         .ConfigureAwait(false);
 
                     Assert.AreEqual("eastus", result.ApiEvent.RegionUsed);
                     Assert.AreEqual(TokenSource.IdentityProvider, result.AuthenticationResultMetadata.TokenSource);
-                    Assert.AreEqual(
-                        "https://login.microsoftonline.com/common/discovery/instance?api-version=1.1&authorization_endpoint=https%3A%2F%2Flogin.windows-ppe.net%2F17b189bc-2b81-4ec5-aa51-3e628cbc931b%2Foauth2%2Fv2.0%2Fauthorize",
-                        discoveryHandler.ActualRequestMessage.RequestUri.AbsoluteUri,
-                        "Authority validation is made on https://login.microsoftonline.com/ and it validates the auth_endpoint of the non-regional authority");
+                    if (validateAuthority)
+                    {
+                        Assert.AreEqual(
+                            "https://login.microsoftonline.com/common/discovery/instance?api-version=1.1&authorization_endpoint=https%3A%2F%2Flogin.windows-ppe.net%2F17b189bc-2b81-4ec5-aa51-3e628cbc931b%2Foauth2%2Fv2.0%2Fauthorize",
+                            discoveryHandler.ActualRequestMessage.RequestUri.AbsoluteUri,
+                            "Authority validation is made on https://login.microsoftonline.com/ and it validates the auth_endpoint of the non-regional authority");
+                    }
 
                     result = await app
                        .AcquireTokenForClient(TestConstants.s_scope)
-                       .WithAuthority("https://login.windows-ppe.net/17b189bc-2b81-4ec5-aa51-3e628cbc931b")
+                       .WithTenantId("17b189bc-2b81-4ec5-aa51-3e628cbc931b")
                        .ExecuteAsync()
                        .ConfigureAwait(false);
 
@@ -457,8 +531,8 @@ namespace Microsoft.Identity.Test.Unit
                     .ConfigureAwait(false);
 
                 Assert.AreEqual(TestConstants.Region, result.ApiEvent.RegionUsed);
-                Assert.AreEqual((int)RegionAutodetectionSource.Imds, result.ApiEvent.RegionAutodetectionSource);
-                Assert.AreEqual((int)RegionOutcome.UserProvidedValid, result.ApiEvent.RegionOutcome);
+                Assert.AreEqual(RegionAutodetectionSource.Imds, result.ApiEvent.RegionAutodetectionSource);
+                Assert.AreEqual(RegionOutcome.UserProvidedValid, result.ApiEvent.RegionOutcome);
 
                 Assert.IsTrue(result.AuthenticationResultMetadata.TokenSource == TokenSource.IdentityProvider);
 
@@ -510,18 +584,61 @@ namespace Microsoft.Identity.Test.Unit
             }
         }
 
-        private static IConfidentialClientApplication CreateCca(MockHttpManager httpManager, string region)
+        [TestMethod]
+        [Description("Test when region is configured with custom metadata")]
+        public void RegionConfiguredWithCustomInstanceDiscoveryThrowsException()
+        {
+            using (var httpManager = new MockHttpManager())
+            {
+                var ex = Assert.ThrowsException<MsalClientException>(() => CreateCca(
+                    httpManager,
+                    ConfidentialClientApplication.AttemptRegionDiscovery,
+                    hasCustomInstanceMetadata: true));
+
+                Assert.AreEqual(MsalError.RegionDiscoveryWithCustomInstanceMetadata, ex.ErrorCode);
+                Assert.AreEqual(MsalErrorMessage.RegionDiscoveryWithCustomInstanceMetadata, ex.Message);
+            }
+        }
+
+        [TestMethod]
+        [Description("Test when region is configured with custom metadata uri")]
+        public void RegionConfiguredWithCustomInstanceDiscoveryUriThrowsException()
+        {
+            using (var httpManager = new MockHttpManager())
+            {
+                var ex = Assert.ThrowsException<MsalClientException>(() => CreateCca(
+                    httpManager,
+                    ConfidentialClientApplication.AttemptRegionDiscovery,
+                    hasCustomInstanceMetadataUri: true));
+
+                Assert.AreEqual(MsalError.RegionDiscoveryWithCustomInstanceMetadata, ex.ErrorCode);
+                Assert.AreEqual(MsalErrorMessage.RegionDiscoveryWithCustomInstanceMetadata, ex.Message);
+            }
+        }
+
+        private static IConfidentialClientApplication CreateCca(MockHttpManager httpManager, string region, bool hasCustomInstanceMetadata = false, bool hasCustomInstanceMetadataUri = false)
         {
             var builder = ConfidentialClientApplicationBuilder
                                  .Create(TestConstants.ClientId)
-                                 .WithAuthority(new System.Uri(ClientApplicationBase.DefaultAuthority))
-                                 .WithRedirectUri(TestConstants.RedirectUri)
                                  .WithHttpManager(httpManager)
                                  .WithClientSecret(TestConstants.ClientSecret);
 
             if (region != null)
             {
                 builder = builder.WithAzureRegion(region);
+            }
+
+            if (hasCustomInstanceMetadata)
+            {
+                string instanceMetadataJson = File.ReadAllText(
+                ResourceHelper.GetTestResourceRelativePath("CustomInstanceMetadata.json"));
+                builder = builder.WithInstanceDiscoveryMetadata(instanceMetadataJson);
+            }
+
+            if (hasCustomInstanceMetadataUri)
+            {
+                Uri customMetadataUri = new Uri("http://login.microsoftonline.com/");
+                builder = builder.WithInstanceDiscoveryMetadata(customMetadataUri);
             }
 
             return builder.Build();

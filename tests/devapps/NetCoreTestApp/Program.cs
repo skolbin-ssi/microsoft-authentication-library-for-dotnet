@@ -7,12 +7,12 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Security;
-using System.Security.Cryptography.X509Certificates;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Identity.Client;
 using Microsoft.Identity.Client.Desktop;
 using Microsoft.Identity.Client.Extensibility;
+using Microsoft.Identity.Test.Integration.NetFx.Infrastructure;
 using NetCoreTestApp.Experimental;
 
 namespace NetCoreTestApp
@@ -25,17 +25,19 @@ namespace NetCoreTestApp
         private static readonly string s_username = ""; // used for WIA and U/P, cannot be empty on .net core
 
         // Confidential client app with access to https://graph.microsoft.com/.default
-        private static readonly string s_clientIdForConfidentialApp =
-            Environment.GetEnvironmentVariable("LAB_APP_CLIENT_ID");
+        private static string s_clientIdForConfidentialApp;
 
         // App secret for app above 
-        private static readonly string s_confidentialClientSecret =
-            Environment.GetEnvironmentVariable("LAB_APP_CLIENT_SECRET");
+        private static string s_confidentialClientSecret;
+
+        private static string s_ccaAuthority;
 
         private static readonly IEnumerable<string> s_scopes = new[] {
             "user.read", "openid" }; // used for WIA and U/P, can be empty
 
         private const string GraphAPIEndpoint = "https://graph.microsoft.com/v1.0/me";
+
+        private static readonly string[] GraphAppScope = new[] { "https://graph.microsoft.com/.default" };
 
         public static readonly string CacheFilePath = System.Reflection.Assembly.GetExecutingAssembly().Location + ".msalcache.json";
 
@@ -49,6 +51,11 @@ namespace NetCoreTestApp
 
         public static void Main(string[] args)
         {
+            var ccaSettings = ConfidentialAppSettings.GetSettings(Cloud.Public);
+            s_clientIdForConfidentialApp = ccaSettings.ClientId;
+            s_ccaAuthority = ccaSettings.Authority;
+            s_confidentialClientSecret = ccaSettings.GetSecret();
+
             var pca = CreatePca();
             RunConsoleAppLogicAsync(pca).Wait();
         }
@@ -69,7 +76,7 @@ namespace NetCoreTestApp
                             .WithDesktopFeatures();
 
             Console.WriteLine($"IsBrokerAvailable: {pcaBuilder.IsBrokerAvailable()}");
-            
+
             var pca = pcaBuilder.WithRedirectUri("http://localhost") // required for DefaultOsBrowser
                             .Build();
 
@@ -101,7 +108,7 @@ namespace NetCoreTestApp
                     $"IsDesktopSession: {pca.IsUserInteractive()}, " +
                     $"IsEmbeddedWebViewAvailable: {pca.IsEmbeddedWebViewAvailable()} " +
                     $"IsEmbeddedWebViewAvailable: {pca.IsSystemWebViewAvailable()}");
-                    
+
                 Console.WriteLine("Authority: " + GetAuthority());
                 await DisplayAccountsAsync(pca).ConfigureAwait(false);
 
@@ -117,6 +124,7 @@ namespace NetCoreTestApp
                         8. Clear cache
                         9. Rotate Tenant ID
                        10. Acquire Token Interactive with Chrome
+                       11. AcquireTokenForClient with multiple threads
                         0. Exit App
                     Enter your Selection: ");
                 int.TryParse(Console.ReadLine(), out var selection);
@@ -196,8 +204,7 @@ namespace NetCoreTestApp
                             {
                                 var cca = CreateCca();
 
-                                var resultX = await cca.AcquireTokenForClient(
-                                    new[] { "https://graph.microsoft.com/.default" })
+                                var resultX = await cca.AcquireTokenForClient(GraphAppScope)
                                     //.WithForceRefresh(true)
                                     .ExecuteAsync()
                                     .ConfigureAwait(false);
@@ -208,6 +215,7 @@ namespace NetCoreTestApp
 
                             Console.WriteLine("Finished");
                             break;
+
                         case 8:
                             var accounts = await pca.GetAccountsAsync().ConfigureAwait(false);
                             foreach (var acc in accounts)
@@ -218,7 +226,6 @@ namespace NetCoreTestApp
                             break;
 
                         case 9:
-
                             s_currentTid = (s_currentTid + 1) % s_tids.Length;
                             pca = CreatePca();
                             RunConsoleAppLogicAsync(pca).Wait();
@@ -241,6 +248,33 @@ namespace NetCoreTestApp
 
                             break;
 
+                        case 11: // AcquireTokenForClient with multiple threads
+                            Console.Write("Enter number of threads to start (default 10): ");
+                            int totalThreads = int.TryParse(Console.ReadLine(), out totalThreads) ? totalThreads : 10;
+                            Console.Write("Enter run duration in seconds (default 10): ");
+                            int durationInSeconds = int.TryParse(Console.ReadLine(), out durationInSeconds) ? durationInSeconds : 10;
+
+                            var acquireTokenBuilder = CreateCca().AcquireTokenForClient(GraphAppScope);
+
+                            var threads = new List<Thread>();
+                            for (int i = 0; i < totalThreads; i++)
+                            {
+                                var thread = new Thread(new ThreadStart(new ThreadWork(i, acquireTokenBuilder, durationInSeconds).Run));
+                                thread.Name = $"Thread #{i}";
+                                threads.Add(thread);
+                            }
+
+                            foreach (var thread in threads)
+                            {
+                                thread.Start();
+                            }
+
+                            foreach (var thread in threads)
+                            {
+                                thread.Join();
+                            }
+
+                            break;
                         case 0:
                             return;
 
@@ -263,12 +297,11 @@ namespace NetCoreTestApp
         {
             IConfidentialClientApplication cca = ConfidentialClientApplicationBuilder
                 .Create(s_clientIdForConfidentialApp)
-                //.WithAuthority("https://login.microsoftonline.com/12354-12345-123-123-23")
-                //.WithAuthority("https://login.microsoftonline.com/common")
+                .WithAuthority(s_ccaAuthority)
                 .WithClientSecret(s_confidentialClientSecret)
                 .Build();
 
-            
+
             //cca.AppTokenCache.SetBeforeAccess((t) => { });
 
             //cca.AcquireTokenForClient(new[] "12345-123321-1111/default");
@@ -276,7 +309,7 @@ namespace NetCoreTestApp
             return cca;
         }
 
-     
+
 
         private static async Task FetchTokenAndCallGraphAsync(IPublicClientApplication pca, Task<AuthenticationResult> authTask)
         {
@@ -379,6 +412,44 @@ namespace NetCoreTestApp
             catch (Exception ex)
             {
                 return ex.ToString();
+            }
+        }
+
+
+        public class ThreadWork
+        {
+            private readonly int Id;
+            private readonly AcquireTokenForClientParameterBuilder AcquireTokenBuilder;
+            private readonly DateTimeOffset EndTime;
+
+            public ThreadWork(int id, AcquireTokenForClientParameterBuilder acquireTokenBuilder, int durationInSeconds)
+            {
+                Id = id;
+                AcquireTokenBuilder = acquireTokenBuilder;
+                EndTime = DateTimeOffset.UtcNow.AddSeconds(durationInSeconds);
+            }
+
+            public void Run()
+            {
+                Console.WriteLine($"Thread #{Id} start.");
+                while (DateTimeOffset.UtcNow < EndTime)
+                {
+                    try
+                    {
+                        Task<AuthenticationResult> authenticationResultTask = Task.Run(() =>
+                            AcquireTokenBuilder
+                                .WithAuthority(s_ccaAuthority, true)
+                                .ExecuteAsync());
+
+                        authenticationResultTask.Wait();
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"Thread #{Id}: {ex}");
+                    }
+                }
+                Console.WriteLine($"Thread #{Id} stop.");
+
             }
         }
     }

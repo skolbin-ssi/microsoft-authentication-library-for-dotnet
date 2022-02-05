@@ -137,7 +137,6 @@ namespace Microsoft.Identity.Client.Internal.Logger
             Log(LogLevel.Error, string.Empty, messageScrubbed);
         }
 
-
         public void ErrorPiiWithPrefix(Exception exWithPii, string prefix)
         {
             Log(LogLevel.Error, prefix + exWithPii.ToString(), prefix + GetPiiScrubbedExceptionDetails(exWithPii));
@@ -151,6 +150,16 @@ namespace Microsoft.Identity.Client.Internal.Logger
         public void ErrorPii(Exception exWithPii)
         {
             Log(LogLevel.Error, exWithPii.ToString(), GetPiiScrubbedExceptionDetails(exWithPii));
+        }
+
+        public void Always(string messageScrubbed)
+        {
+            Log(LogLevel.Always, string.Empty, messageScrubbed);
+        }
+
+        public void AlwaysPii(string messageWithPii, string messageScrubbed)
+        {
+            Log(LogLevel.Always, messageWithPii, messageScrubbed);
         }
 
         private static Lazy<string> s_osLazy = new Lazy<string>(() =>
@@ -183,12 +192,27 @@ namespace Microsoft.Identity.Client.Internal.Logger
                 bool isLoggingPii = messageWithPiiExists && PiiLoggingEnabled;
                 string messageToLog = isLoggingPii ? messageWithPii : messageScrubbed;
 
-                string log = $"{isLoggingPii} MSAL {s_msalVersionLazy.Value} {s_skuLazy.Value} {s_runtimeVersionLazy.Value} {s_osLazy.Value} [{DateTime.UtcNow:MM/dd HH:mm:ss.ff}{_correlationId}]{ClientInformation} {messageToLog}";
+                string log = string.Format(
+                    CultureInfo.InvariantCulture,
+                    "{0} MSAL {1} {2} {3} {4} [{5}{6}]{7} {8}",
+                    isLoggingPii,
+                    s_msalVersionLazy.Value,
+                    s_skuLazy.Value,
+                    s_runtimeVersionLazy.Value,
+                    s_osLazy.Value,
+                    DateTime.UtcNow.ToString("u"),
+                    _correlationId,
+                    ClientInformation,
+                    messageToLog);
+
 
                 if (_isDefaultPlatformLoggingEnabled)
                 {
                     switch (logLevel)
                     {
+                        case LogLevel.Always:
+                            _platformLogger.Always(log);
+                            break;
                         case LogLevel.Error:
                             _platformLogger.Error(log);
                             break;

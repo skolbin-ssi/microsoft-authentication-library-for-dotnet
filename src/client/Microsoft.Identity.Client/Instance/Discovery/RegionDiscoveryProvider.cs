@@ -21,17 +21,22 @@ namespace Microsoft.Identity.Client.Region
 
         public async Task<InstanceDiscoveryMetadataEntry> GetMetadataAsync(Uri authority, RequestContext requestContext)
         {
-            string region = await _regionManager.GetAzureRegionAsync(requestContext).ConfigureAwait(false);
+            string region = null;
+            if (requestContext.ApiEvent?.ApiId == TelemetryCore.Internal.Events.ApiEvent.ApiIds.AcquireTokenForClient)
+            {
+                region = await _regionManager.GetAzureRegionAsync(requestContext).ConfigureAwait(false);
+            }
+
             if (string.IsNullOrEmpty(region))
             {
-                requestContext.Logger.Info("[Region discovery] Azure region was not configured or could not be discovered. Not using a regional authority.");
+                requestContext.Logger.Info("[Region discovery] Not using a regional authority. ");
                 return null;
             }
 
             // already regionalized
             if (authority.Host.StartsWith($"{region}."))
             {
-                return CreateEntry(requestContext.ServiceBundle.Config.AuthorityInfo.Host, authority.Host);
+                return CreateEntry(requestContext.ServiceBundle.Config.Authority.AuthorityInfo.Host, authority.Host);
             }
 
             string regionalEnv = GetRegionalizedEnviroment(authority, region);

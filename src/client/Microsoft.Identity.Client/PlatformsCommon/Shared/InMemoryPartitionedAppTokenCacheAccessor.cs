@@ -9,6 +9,7 @@ using Microsoft.Identity.Client.Cache;
 using Microsoft.Identity.Client.Cache.Items;
 using Microsoft.Identity.Client.Cache.Keys;
 using Microsoft.Identity.Client.Core;
+using Microsoft.Identity.Client.Utils;
 
 namespace Microsoft.Identity.Client.PlatformsCommon.Shared
 {
@@ -32,14 +33,14 @@ namespace Microsoft.Identity.Client.PlatformsCommon.Shared
            new ConcurrentDictionary<string, MsalAppMetadataCacheItem>(1, 1);
 
         protected readonly ICoreLogger _logger;
-        private readonly InternalMemoryTokenCacheOptions _tokenCacheAccessorOptions;
+        private readonly CacheOptions _tokenCacheAccessorOptions;
 
         public InMemoryPartitionedAppTokenCacheAccessor(
             ICoreLogger logger,
-            InternalMemoryTokenCacheOptions tokenCacheAccessorOptions)
+            CacheOptions tokenCacheAccessorOptions)
         {
             _logger = logger ?? throw new System.ArgumentNullException(nameof(logger));
-            _tokenCacheAccessorOptions = tokenCacheAccessorOptions ?? new InternalMemoryTokenCacheOptions();
+            _tokenCacheAccessorOptions = tokenCacheAccessorOptions ?? new CacheOptions();
 
             if (_tokenCacheAccessorOptions.UseSharedCache)
             {
@@ -57,7 +58,7 @@ namespace Microsoft.Identity.Client.PlatformsCommon.Shared
         public void SaveAccessToken(MsalAccessTokenCacheItem item)
         {
             string itemKey = item.GetKey().ToString();
-            string partitionKey = CacheKeyFactory.GetClientCredentialKey(item.ClientId, item.TenantId);
+            string partitionKey = CacheKeyFactory.GetClientCredentialKey(item.ClientId, item.TenantId, item.KeyId);
 
             // if a conflict occurs, pick the latest value
             AccessTokenCacheDictionary
@@ -127,7 +128,7 @@ namespace Microsoft.Identity.Client.PlatformsCommon.Shared
         #region Delete
         public void DeleteAccessToken(MsalAccessTokenCacheItem item)
         {
-            var partitionKey = CacheKeyFactory.GetClientCredentialKey(item.ClientId, item.TenantId);
+            var partitionKey = CacheKeyFactory.GetClientCredentialKey(item.ClientId, item.TenantId, item.KeyId);
 
             AccessTokenCacheDictionary.TryGetValue(partitionKey, out var partition);
             if (partition == null || !partition.TryRemove(item.GetKey().ToString(), out _))
@@ -174,6 +175,7 @@ namespace Microsoft.Identity.Client.PlatformsCommon.Shared
         /// </summary>
         public virtual IReadOnlyList<MsalAccessTokenCacheItem> GetAllAccessTokens(string partitionKey = null)
         {
+            _logger.Always($"[GetAllAccessTokens] Total number of cache partitions found while getting access tokens: {AccessTokenCacheDictionary.Count}");
             if (string.IsNullOrEmpty(partitionKey))
             {
                 return AccessTokenCacheDictionary.SelectMany(dict => dict.Value).Select(kv => kv.Value).ToList();
@@ -181,23 +183,23 @@ namespace Microsoft.Identity.Client.PlatformsCommon.Shared
             else
             {
                 AccessTokenCacheDictionary.TryGetValue(partitionKey, out ConcurrentDictionary<string, MsalAccessTokenCacheItem> partition);
-                return partition?.Select(kv => kv.Value)?.ToList() ?? new List<MsalAccessTokenCacheItem>();
+                return partition?.Select(kv => kv.Value)?.ToList() ?? CollectionHelpers.GetEmptyReadOnlyList<MsalAccessTokenCacheItem>();
             }
         }
 
         public virtual IReadOnlyList<MsalRefreshTokenCacheItem> GetAllRefreshTokens(string partitionKey = null)
         {
-            return new List<MsalRefreshTokenCacheItem>();
+            return CollectionHelpers.GetEmptyReadOnlyList<MsalRefreshTokenCacheItem>();
         }
 
         public virtual IReadOnlyList<MsalIdTokenCacheItem> GetAllIdTokens(string partitionKey = null)
         {
-            return new List<MsalIdTokenCacheItem>();
+            return CollectionHelpers.GetEmptyReadOnlyList<MsalIdTokenCacheItem>();
         }
 
         public virtual IReadOnlyList<MsalAccountCacheItem> GetAllAccounts(string partitionKey = null)
         {
-            return new List<MsalAccountCacheItem>();
+            return CollectionHelpers.GetEmptyReadOnlyList<MsalAccountCacheItem>();
         }
 
         public IReadOnlyList<MsalAppMetadataCacheItem> GetAllAppMetadata()
@@ -214,6 +216,7 @@ namespace Microsoft.Identity.Client.PlatformsCommon.Shared
         public virtual void Clear()
         {
             AccessTokenCacheDictionary.Clear();
+            _logger.Always("[Clear] Clearing access token cache data.");
             // app metadata isn't removable
         }
 

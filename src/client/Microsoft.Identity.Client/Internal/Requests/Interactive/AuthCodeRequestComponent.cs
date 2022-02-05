@@ -9,11 +9,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Identity.Client.ApiConfig.Parameters;
 using Microsoft.Identity.Client.Http;
-using Microsoft.Identity.Client.Internal.Broker;
 using Microsoft.Identity.Client.Internal.Requests;
 using Microsoft.Identity.Client.OAuth2;
-using Microsoft.Identity.Client.TelemetryCore.Internal;
-using Microsoft.Identity.Client.TelemetryCore.Internal.Events;
 using Microsoft.Identity.Client.UI;
 using Microsoft.Identity.Client.Utils;
 
@@ -69,22 +66,17 @@ namespace Microsoft.Identity.Client.Internal
             string state = authorizationTuple.Item2;
             string codeVerifier = authorizationTuple.Item3;
 
-            var uiEvent = new UiEvent(_requestParams.RequestContext.CorrelationId.AsMatsCorrelationId());
-            using (_requestParams.RequestContext.CreateTelemetryHelper(uiEvent))
-            {
-                var authorizationResult = await webUi.AcquireAuthorizationAsync(
-                                           authorizationUri,
-                                           _requestParams.RedirectUri,
-                                           _requestParams.RequestContext,
-                                           cancellationToken).ConfigureAwait(false);
 
-                uiEvent.UserCancelled = authorizationResult.Status == AuthorizationStatus.UserCancel;
-                uiEvent.AccessDenied = authorizationResult.Status == AuthorizationStatus.ProtocolError;
+            var authorizationResult = await webUi.AcquireAuthorizationAsync(
+                                       authorizationUri,
+                                       _requestParams.RedirectUri,
+                                       _requestParams.RequestContext,
+                                       cancellationToken).ConfigureAwait(false);
 
-                VerifyAuthorizationResult(authorizationResult, state);
+            VerifyAuthorizationResult(authorizationResult, state);
 
-                return new Tuple<AuthorizationResult, string>(authorizationResult, codeVerifier);
-            }
+            return new Tuple<AuthorizationResult, string>(authorizationResult, codeVerifier);
+
         }
 
         private Tuple<Uri, string> CreateAuthorizationUriWithCodeChallenge(
@@ -186,7 +178,7 @@ namespace Microsoft.Identity.Client.Internal
                 authorizationRequestParameters[OAuth2Parameter.Claims] = _requestParams.ClaimsAndClientCapabilities;
             }
 
-            //CcsRoutingHint passed in from WithCcsRoutingHint() will override the CCS Hint created from the login hint
+            //CcsRoutingHint passed in from WithCcsRoutingHint() will override the AAD backup authentication system Hint created from the login hint
             if (!string.IsNullOrWhiteSpace(_interactiveParameters.LoginHint) || _requestParams.CcsRoutingHint != null)
             {
                 string OidCcsHeader;
@@ -201,7 +193,8 @@ namespace Microsoft.Identity.Client.Internal
                     OidCcsHeader = CoreHelpers.GetCcsClientInfoHint(_requestParams.CcsRoutingHint.Value.Key, _requestParams.CcsRoutingHint.Value.Value);
                 }
 
-                //The CCS header is used by the CCS service to help route requests to resources in Azure during requests to speed up authentication.
+                //The AAD backup authentication system header is used by the AAD backup authentication system service
+                //to help route requests to resources in Azure during requests to speed up authentication.
                 //It consists of either the ObjectId.TenantId or the upn of the account signign in.
                 //See https://github.com/AzureAD/microsoft-authentication-library-for-dotnet/issues/2525
                 authorizationRequestParameters[Constants.CcsRoutingHintHeader] = OidCcsHeader;

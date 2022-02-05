@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 using System;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
@@ -142,32 +143,9 @@ namespace Microsoft.Identity.Client.Platforms.netcore
         protected override ICryptographyManager InternalGetCryptographyManager() => new NetCoreCryptographyManager();
         protected override IPlatformLogger InternalGetPlatformLogger() => new EventSourcePlatformLogger();
 
-        public override string GetDeviceNetworkState()
-        {
-            // TODO(mats):
-            return string.Empty;
-        }
-
-        public override string GetDevicePlatformTelemetryId()
-        {
-            // TODO(mats):
-            return string.Empty;
-        }
-
-        public override string GetMatsOsPlatform()
-        {
-            // TODO(mats): need to detect operating system and switch on it to determine proper enum
-            return MatsConverter.AsString(OsPlatform.Win32);
-        }
-
-        public override int GetMatsOsPlatformCode()
-        {
-            // TODO(mats): need to detect operating system and switch on it to determine proper enum
-            return MatsConverter.AsInt(OsPlatform.Win32);
-        }
         protected override IFeatureFlags CreateFeatureFlags() => new NetCoreFeatureFlags();
 
-        public override Task StartDefaultOsBrowserAsync(string url)
+        public override Task StartDefaultOsBrowserAsync(string url, bool isBrokerConfigured)
         {
             if (DesktopOsHelper.IsWindows())
             {
@@ -189,25 +167,26 @@ namespace Microsoft.Identity.Client.Platforms.netcore
             }
             else if (DesktopOsHelper.IsLinux())
             {
+                string sudoUser = Environment.GetEnvironmentVariable("SUDO_USER");
+                if (!string.IsNullOrWhiteSpace(sudoUser))
+                {
+                    throw new MsalClientException(MsalError.LinuxXdgOpen, MsalErrorMessage.LinuxOpenAsSudoNotSupported);
+                }
+
                 try
                 {
                     ProcessStartInfo psi = null;
-                    foreach (string openTool in new[] { "xdg-open", "gnome-open", "kfmclient" })
+
+                    foreach (string openTool in GetOpenToolsLinux(isBrokerConfigured))
                     {
                         if (TryGetExecutablePath(openTool, out string openToolPath))
                         {
-                            psi = new ProcessStartInfo(openToolPath, url)
-                            {
-                                RedirectStandardOutput = true,
-                                RedirectStandardError = true
-                            };
-
-                            Process.Start(psi);
+                            psi = OpenLinuxBrowser(openToolPath, url);
 
                             break;
                         }
                     }
-
+                    
                     if (psi == null)
                     {
                         throw new Exception("Failed to locate a utility to launch the default web browser.");
@@ -231,6 +210,29 @@ namespace Microsoft.Identity.Client.Platforms.netcore
             }
             return Task.FromResult(0);
 
+        }
+
+        private ProcessStartInfo OpenLinuxBrowser(string openToolPath, string url)
+        {
+            ProcessStartInfo psi = new ProcessStartInfo(openToolPath, url)
+            {
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
+            };
+
+            Process.Start(psi);
+
+            return psi;
+        }
+
+        private string[] GetOpenToolsLinux(bool isBrokerConfigured)
+        {
+            if (isBrokerConfigured)
+            {
+                return new[] { "microsoft-edge", "xdg-open", "gnome-open", "kfmclient" };
+            }
+
+            return new[] { "xdg-open", "gnome-open", "kfmclient" };
         }
 
         public override IPoPCryptoProvider GetDefaultPoPCryptoProvider()

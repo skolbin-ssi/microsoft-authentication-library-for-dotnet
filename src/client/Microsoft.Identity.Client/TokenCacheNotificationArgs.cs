@@ -18,6 +18,32 @@ namespace Microsoft.Identity.Client
         /// This constructor is for test purposes only. It allows apps to unit test their MSAL token cache implementation code.
         /// </summary>
         public TokenCacheNotificationArgs(
+          ITokenCacheSerializer tokenCache,
+          string clientId,
+          IAccount account,
+          bool hasStateChanged,
+          bool isApplicationCache,
+          string suggestedCacheKey,
+          bool hasTokens,
+          DateTimeOffset? suggestedCacheExpiry,
+          CancellationToken cancellationToken)
+            : this(tokenCache,
+                   clientId,
+                   account,
+                   hasStateChanged,
+                   isApplicationCache,
+                   suggestedCacheKey,
+                   hasTokens,
+                   suggestedCacheExpiry,
+                   cancellationToken,
+                   default)
+            {
+            }
+
+        /// <summary>
+        /// This constructor is for test purposes only. It allows apps to unit test their MSAL token cache implementation code.
+        /// </summary>
+        public TokenCacheNotificationArgs(
             ITokenCacheSerializer tokenCache, 
             string clientId, 
             IAccount account, 
@@ -26,7 +52,8 @@ namespace Microsoft.Identity.Client
             string suggestedCacheKey, 
             bool hasTokens,
             DateTimeOffset? suggestedCacheExpiry,
-            CancellationToken cancellationToken)
+            CancellationToken cancellationToken,
+            Guid correlationId)
         {
             TokenCache = tokenCache;
             ClientId = clientId;
@@ -36,31 +63,10 @@ namespace Microsoft.Identity.Client
             SuggestedCacheKey = suggestedCacheKey;
             HasTokens = hasTokens;
             CancellationToken = cancellationToken;
+            CorrelationId = correlationId;
             SuggestedCacheExpiry = suggestedCacheExpiry;
         }
-
-        internal TokenCacheNotificationArgs(
-            ITokenCacheSerializer tokenCacheSerializer,
-            string clientId,
-            IAccount account,
-            bool hasStateChanged,
-            bool isAppCache, 
-            bool hasTokens,
-            CancellationToken cancellationToken,
-            string suggestedCacheKey = null,
-            DateTimeOffset? suggestedCacheExpiry = null)
-        {
-            TokenCache = tokenCacheSerializer;
-            ClientId = clientId;
-            Account = account;
-            HasStateChanged = hasStateChanged;
-            IsApplicationCache = isAppCache;
-            HasTokens = hasTokens;
-            SuggestedCacheKey = suggestedCacheKey;
-            CancellationToken = cancellationToken;
-            SuggestedCacheExpiry = suggestedCacheExpiry;
-        }
-
+        
         /// <summary>
         /// Gets the <see cref="ITokenCacheSerializer"/> involved in the transaction
         /// </summary>
@@ -122,6 +128,11 @@ namespace Microsoft.Identity.Client
         /// along to the custom token cache implementation.
         /// </summary>
         public CancellationToken CancellationToken { get; }
+
+        /// <summary>
+        /// The correlation id associated with the request. See <see cref="AbstractAcquireTokenParameterBuilder{T}.WithCorrelationId(Guid)"/>
+        /// </summary>
+        public Guid CorrelationId { get; }
 
         /// <summary>
         /// Suggested value of the expiry, to help determining the cache eviction time. 

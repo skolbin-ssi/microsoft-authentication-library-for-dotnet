@@ -29,5 +29,6 @@ namespace Microsoft.Identity.Test.Unit.ExceptionTests
             Assert.AreEqual(MsalError.ExperimentalFeature, ex.ErrorCode);
         }
 #endif
+
     }
 }

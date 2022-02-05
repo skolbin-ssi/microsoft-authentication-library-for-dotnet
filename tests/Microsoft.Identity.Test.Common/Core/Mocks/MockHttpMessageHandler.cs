@@ -4,9 +4,9 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
-using System.IO;
 using System.Linq;
 using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Identity.Client.OAuth2;
@@ -26,7 +26,7 @@ namespace Microsoft.Identity.Test.Common.Core.Mocks
         public IList<string> UnexpectedRequestHeaders { get; set; }
 
         public HttpMethod ExpectedMethod { get; set; }
-        
+
         public Exception ExceptionToThrow { get; set; }
         public Action<HttpRequestMessage> AdditionalRequestValidation { get; set; }
 
@@ -36,6 +36,7 @@ namespace Microsoft.Identity.Test.Common.Core.Mocks
         public HttpRequestMessage ActualRequestMessage { get; private set; }
 
         public Dictionary<string, string> ActualRequestPostData { get; private set; }
+        public HttpRequestHeaders ActualRequestHeaders { get; private set; }
 
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
@@ -51,11 +52,7 @@ namespace Microsoft.Identity.Test.Common.Core.Mocks
             {
                 Assert.AreEqual(
                     ExpectedUrl,
-                    uri.AbsoluteUri.Split(
-                        new[]
-                        {
-                            '?'
-                        })[0]);
+                    uri.AbsoluteUri.Split('?')[0]);
             }
 
             Assert.AreEqual(ExpectedMethod, request.Method);
@@ -67,7 +64,7 @@ namespace Microsoft.Identity.Test.Common.Core.Mocks
                     string.IsNullOrEmpty(uri.Query),
                     string.Format(
                         CultureInfo.InvariantCulture,
-                        "provided url ({0}) does not contain query parameters, as expected",
+                        "Provided url ({0}) does not contain query parameters, as expected",
                         uri.AbsolutePath));
                 IDictionary<string, string> inputQp = CoreHelpers.ParseKeyValueList(uri.Query.Substring(1), '&', false, null);
                 Assert.AreEqual(ExpectedQueryParams.Count, inputQp.Count, "Different number of query params`");
@@ -77,7 +74,7 @@ namespace Microsoft.Identity.Test.Common.Core.Mocks
                         inputQp.ContainsKey(key),
                         string.Format(
                             CultureInfo.InvariantCulture,
-                            "expected QP ({0}) not found in the url ({1})",
+                            "Expected query parameter ({0}) not found in the url ({1})",
                             key,
                             uri.AbsolutePath));
                     Assert.AreEqual(ExpectedQueryParams[key], inputQp[key]);
@@ -104,8 +101,10 @@ namespace Microsoft.Identity.Test.Common.Core.Mocks
                         Assert.AreEqual(ExpectedPostData[key], ActualRequestPostData[key]);
                     }
                 }
-            }       
-            
+            }
+
+            ActualRequestHeaders = request.Headers;
+
             if (ExpectedRequestHeaders != null )
             {
                 foreach (var kvp in ExpectedRequestHeaders)
@@ -131,14 +130,6 @@ namespace Microsoft.Identity.Test.Common.Core.Mocks
             AdditionalRequestValidation?.Invoke(request);
 
             return new TaskFactory().StartNew(() => ResponseMessage, cancellationToken);
-        }
-
-        private string ReturnValueFromRequestHeader(string telemRequest)
-        {
-            IEnumerable<string> telemRequestValue = ActualRequestMessage.Headers.GetValues(telemRequest);
-            List<string> telemRequestValueAsList = telemRequestValue.ToList();
-            string value = telemRequestValueAsList[0];
-            return value;
         }
     }
 }

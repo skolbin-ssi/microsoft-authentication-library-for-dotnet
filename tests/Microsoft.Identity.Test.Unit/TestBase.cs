@@ -20,7 +20,7 @@ namespace Microsoft.Identity.Test.Unit
             Trace.WriteLine("Test run started");
         }
 
-        [AssemblyCleanup()]
+        [AssemblyCleanup]
         public static void AssemblyCleanup()
         {
             Trace.WriteLine("Test run finished");
@@ -50,17 +50,14 @@ namespace Microsoft.Identity.Test.Unit
         public TestContext TestContext { get; set; }
 
         internal MockHttpAndServiceBundle CreateTestHarness(
-            TelemetryCallback telemetryCallback = null,
             LogCallback logCallback = null,
             bool isExtendedTokenLifetimeEnabled = false)
         {
             return new MockHttpAndServiceBundle(
-                telemetryCallback,
                 logCallback,
                 isExtendedTokenLifetimeEnabled,
                 testContext: TestContext);
         }
-
 
         private static void EnableFileTracingOnEnvVar()
         {

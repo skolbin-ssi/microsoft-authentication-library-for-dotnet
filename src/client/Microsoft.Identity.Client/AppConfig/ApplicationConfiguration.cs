@@ -3,16 +3,18 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
+using System.ComponentModel;
 using System.Security.Cryptography.X509Certificates;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Identity.Client.Cache;
 using Microsoft.Identity.Client.Core;
 using Microsoft.Identity.Client.Http;
+using Microsoft.Identity.Client.Instance;
 using Microsoft.Identity.Client.Instance.Discovery;
 using Microsoft.Identity.Client.Internal;
 using Microsoft.Identity.Client.Internal.Broker;
+using Microsoft.Identity.Client.Internal.ClientCredential;
 using Microsoft.Identity.Client.Kerberos;
 using Microsoft.Identity.Client.PlatformsCommon.Interfaces;
 using Microsoft.Identity.Client.UI;
@@ -62,24 +64,24 @@ namespace Microsoft.Identity.Client
         /// </summary>
         public KerberosTicketContainer TicketContainer { get; set; } = KerberosTicketContainer.IdToken;
 
+        [Obsolete("Telemetry is sent automatically by MSAL.NET. See https://aka.ms/msal-net-telemetry.")]
+        [EditorBrowsable(EditorBrowsableState.Never)]
         public ITelemetryConfig TelemetryConfig { get; internal set; }
 
         public IHttpManager HttpManager { get; internal set; }
 
         public IPlatformProxy PlatformProxy { get; internal set; }
 
-        public InternalMemoryTokenCacheOptions AccessorOptions { get; set; }
+        public CacheOptions AccessorOptions { get; set; }
 
-        public AuthorityInfo AuthorityInfo { get; internal set; }
+        public Authority Authority { get; internal set; }
         public string ClientId { get; internal set; }
-        public string TenantId { get; internal set; }
         public string RedirectUri { get; internal set; }
         public bool EnablePiiLogging { get; internal set; }
         public LogLevel LogLevel { get; internal set; } = LogLevel.Info;
         public bool IsDefaultPlatformLoggingEnabled { get; internal set; }
         public IMsalHttpClientFactory HttpClientFactory { get; internal set; }
         public bool IsExtendedTokenLifetimeEnabled { get; set; }
-        public TelemetryCallback TelemetryCallback { get; internal set; }
         public LogCallback LoggingCallback { get; internal set; }
         public string Component { get; internal set; }
         public IDictionary<string, string> ExtraQueryParameters { get; internal set; } = new Dictionary<string, string>();
@@ -88,29 +90,56 @@ namespace Microsoft.Identity.Client
         public bool ExperimentalFeaturesEnabled { get; set; } = false;
 
         public IEnumerable<string> ClientCapabilities { get; set; }
-
-
-        public ClientCredentialWrapper ClientCredential { get; internal set; }
-        public string ClientSecret { get; internal set; }
-        public string SignedClientAssertion { get; internal set; }
-        public Func<CancellationToken, Task<string>> SignedClientAssertionDelegate { get; internal set; }
-         
-        public X509Certificate2 ClientCredentialCertificate { get; internal set; }
         public bool SendX5C { get; internal set; } = false;
-
-        public IDictionary<string, string> ClaimsToSign { get; internal set; }
-        public bool MergeWithDefaultClaims { get; internal set; }
-        internal int ConfidentialClientCredentialCount;
-
         public bool LegacyCacheCompatibilityEnabled { get; internal set; } = true;
         public bool CacheSynchronizationEnabled { get; internal set; } = true;
 
+        #region ClientCredentials
+
+        public IClientCredential ClientCredential { get; internal set; }
+
+        /// <summary>
+        /// This is here just to support the public IAppConfig. Should not be used internally, instead use the <see cref="ClientCredential" /> abstraction.
+        /// </summary>
+        public string ClientSecret
+        {
+            get
+            {
+                if (ClientCredential is SecretStringClientCredential secretCred)
+                {
+                    return secretCred.Secret;
+                }
+
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// This is here just to support the public IAppConfig. Should not be used internally, instead use the <see cref="ClientCredential" /> abstraction.
+        /// </summary>
+        public X509Certificate2 ClientCredentialCertificate
+        {
+            get
+            {
+                if (ClientCredential is CertificateAndClaimsClientCredential cred)
+                {
+                    return cred.Certificate;
+                }
+               
+                return null;
+            }
+        }
+
+        #endregion
 
         #region Region
         public string AzureRegion { get; set; }
-#endregion
+        #endregion
 
-#region Authority
+        #region Authority
+        // These are all used to create the Authority when the app is built.
+
+        public string TenantId { get; internal set; }
 
         public InstanceDiscoveryResponse CustomInstanceDiscoveryMetadata { get; set; }
         public Uri CustomInstanceDiscoveryMetadataUri { get; set; }
@@ -135,16 +164,16 @@ namespace Microsoft.Identity.Client
         /// </summary>
         public bool ValidateAuthority { get; set; }
 
-#endregion
+        #endregion
 
-#region Test Hooks
+        #region Test Hooks
         public ILegacyCachePersistence UserTokenLegacyCachePersistenceForTest { get; set; }
 
         public ITokenCacheInternal UserTokenCacheInternalForTest { get; set; }
         public ITokenCacheInternal AppTokenCacheInternalForTest { get; set; }
 
         public IDeviceAuthManager DeviceAuthManagerForTest { get; set; }
-#endregion
+        #endregion
 
     }
 }

@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.Identity.Client;
-using Microsoft.Identity.Client.ApiConfig.Parameters;
 using Microsoft.Identity.Client.Cache;
 using Microsoft.Identity.Client.Cache.Items;
 using Microsoft.Identity.Client.Instance;
@@ -15,7 +14,6 @@ using Microsoft.Identity.Client.Internal;
 using Microsoft.Identity.Client.Internal.Requests;
 using Microsoft.Identity.Client.OAuth2;
 using Microsoft.Identity.Client.PlatformsCommon.Interfaces;
-using Microsoft.Identity.Client.TelemetryCore.Internal;
 using Microsoft.Identity.Client.TelemetryCore.Internal.Events;
 using Microsoft.Identity.Client.Utils;
 using Microsoft.Identity.Test.Common;
@@ -31,7 +29,7 @@ namespace Microsoft.Identity.Test.Unit.CacheTests
     {
         public static long ValidExpiresIn = 3600;
         public static long ValidExtendedExpiresIn = 7200;
-        
+
         private string _clientInfo;
         private string _homeAccountId;
 
@@ -48,10 +46,10 @@ namespace Microsoft.Identity.Test.Unit.CacheTests
         [DataRow(true, true, true)]
         [DataRow(true, false, false)]
         [DataRow(false, true, false)]
-        [DataRow(false, true, false)]        
+        [DataRow(false, true, false)]
         public async Task WithLegacyCacheCompatibilityTest_Async(
-            bool enableLegacyCacheCompatibility, 
-            bool serializeCache, 
+            bool enableLegacyCacheCompatibility,
+            bool serializeCache,
             bool expectToCallAdalLegacyCache)
         {
             // Arrange
@@ -60,7 +58,7 @@ namespace Microsoft.Identity.Test.Unit.CacheTests
             var requestContext = new RequestContext(serviceBundle, Guid.NewGuid());
             var response = TestConstants.CreateMsalTokenResponse();
 
-            ITokenCacheInternal cache = new TokenCache(serviceBundle, false);            
+            ITokenCacheInternal cache = new TokenCache(serviceBundle, false);
             ((TokenCache)cache).LegacyCachePersistence = legacyCachePersistence;
             if (serializeCache) // no point in invoking the Legacy ADAL cache if you're only keeping it memory
             {
@@ -121,7 +119,7 @@ namespace Microsoft.Identity.Test.Unit.CacheTests
             {
                 ITokenCacheInternal cache = new TokenCache(harness.ServiceBundle, false);
                 var atItem = TokenCacheHelper.CreateAccessTokenItem("r1/scope1 r1/scope2");
-              
+
                 cache.Accessor.SaveAccessToken(atItem);
                 var param = harness.CreateAuthenticationRequestParameters(
                     TestConstants.AuthorityTestTenant,
@@ -554,7 +552,7 @@ namespace Microsoft.Identity.Test.Unit.CacheTests
             {
                 ClientId = TestConstants.ClientId,
                 RedirectUri = TestConstants.RedirectUri,
-                AuthorityInfo = AuthorityInfo.FromAuthorityUri(TestConstants.B2CAuthority, false)
+                Authority = Authority.CreateAuthority(TestConstants.B2CAuthority, false)
             };
 
             var serviceBundle = ServiceBundle.Create(appConfig);
@@ -660,8 +658,8 @@ namespace Microsoft.Identity.Test.Unit.CacheTests
                     new DateTimeOffset(DateTime.UtcNow + TimeSpan.FromHours(1)),
                     new DateTimeOffset(DateTime.UtcNow + TimeSpan.FromHours(2)),
                     _clientInfo,
-                    _homeAccountId, 
-                    userAssertionHash: assertion);
+                    _homeAccountId,
+                    oboCacheKey: assertion);
 
                 cache.Accessor.SaveAccessToken(atItem);
 
@@ -675,7 +673,7 @@ namespace Microsoft.Identity.Test.Unit.CacheTests
 
                 string rtKey = rtItem.GetKey().ToString();
                 rtItem.Secret = rtKey;
-                rtItem.UserAssertionHash = assertion;
+                rtItem.OboCacheKey = assertion;
                 cache.Accessor.SaveRefreshToken(rtItem);
 
                 var authParams = harness.CreateAuthenticationRequestParameters(
@@ -683,12 +681,12 @@ namespace Microsoft.Identity.Test.Unit.CacheTests
                     TestConstants.s_scope,
                     cache,
                     apiId: ApiEvent.ApiIds.AcquireTokenOnBehalfOf);
-                authParams.UserAssertion = new UserAssertion(atItem.UserAssertionHash + "-random");
+                authParams.UserAssertion = new UserAssertion(atItem.OboCacheKey + "-random");
 
                 var itemAT = cache.FindAccessTokenAsync(authParams).Result;
                 var itemRT = cache.FindRefreshTokenAsync(authParams).Result;
 
-                // cache lookup should fail because there was userassertion hash did not match the one
+                // cache lookup should fail because there was user assertion hash did not match the one
                 // stored in token cache item.
                 Assert.IsNull(itemAT);
                 Assert.IsNull(itemRT);
@@ -702,7 +700,7 @@ namespace Microsoft.Identity.Test.Unit.CacheTests
             using (var harness = CreateTestHarness())
             {
                 ITokenCacheInternal cache = new TokenCache(harness.ServiceBundle, false);
-                string assertionHash = harness.ServiceBundle.PlatformProxy.CryptographyManager.CreateBase64UrlEncodedSha256Hash("T"); 
+                string assertionHash = harness.ServiceBundle.PlatformProxy.CryptographyManager.CreateBase64UrlEncodedSha256Hash("T");
                 var atItem = new MsalAccessTokenCacheItem(
                     TestConstants.ProductionPrefNetworkEnvironment,
                     TestConstants.ClientId,
@@ -714,7 +712,7 @@ namespace Microsoft.Identity.Test.Unit.CacheTests
                     new DateTimeOffset(DateTime.UtcNow + TimeSpan.FromHours(2)),
                     _clientInfo,
                     _homeAccountId,
-                    userAssertionHash: assertionHash);
+                    oboCacheKey: assertionHash);
 
                 cache.Accessor.SaveAccessToken(atItem);
 
@@ -726,7 +724,7 @@ namespace Microsoft.Identity.Test.Unit.CacheTests
                     null,
                     _homeAccountId);
 
-                rtItem.UserAssertionHash = assertionHash;
+                rtItem.OboCacheKey = assertionHash;
                 cache.Accessor.SaveRefreshToken(rtItem);
 
                 var authParams = harness.CreateAuthenticationRequestParameters(
@@ -1018,7 +1016,7 @@ namespace Microsoft.Identity.Test.Unit.CacheTests
             var requestParams = TestCommon.CreateAuthenticationRequestParameters(
                 serviceBundle,
                 Authority.CreateAuthority(TestConstants.AuthorityHomeTenant));
-            
+
 
 
             AddHostToInstanceCache(serviceBundle, TestConstants.ProductionPrefNetworkEnvironment);
@@ -1081,7 +1079,7 @@ namespace Microsoft.Identity.Test.Unit.CacheTests
 
             cache.Accessor.ClearAccessTokens();
             cache.Accessor.ClearRefreshTokens();
-            
+
             Assert.AreEqual(0, cache.Accessor.GetAllRefreshTokens().Count());
             Assert.AreEqual(0, cache.Accessor.GetAllAccessTokens().Count());
 
@@ -1162,10 +1160,7 @@ namespace Microsoft.Identity.Test.Unit.CacheTests
                 serviceBundle,
                 scopes: new HashSet<string>());
             requestParams.Account = TestConstants.s_user;
-            requestParams.RequestContext.ApiEvent = new ApiEvent(
-                serviceBundle.ApplicationLogger,
-                serviceBundle.PlatformProxy.CryptographyManager,
-                Guid.NewGuid().AsMatsCorrelationId());
+            requestParams.RequestContext.ApiEvent = new ApiEvent(Guid.NewGuid());
 
             string scopeInCache = TestConstants.s_scope.FirstOrDefault();
 
@@ -1269,6 +1264,59 @@ namespace Microsoft.Identity.Test.Unit.CacheTests
 
                 // Assert
                 Assert.AreEqual(true, result.Value);
+            }
+        }
+
+        [TestMethod]
+        [TestCategory("TokenCacheTests")]
+        public async Task ValidateTokenCacheIsDumpedToLogsTestAsync()
+        {
+            using (MockHttpAndServiceBundle harness = CreateTestHarness())
+            {
+                //Arrange
+                harness.HttpManager.AddInstanceDiscoveryMockHandler();
+
+                string dump = string.Empty;
+                LogCallback callback = (LogLevel level, string message, bool containsPii) =>
+                                        {
+                                            if (level == LogLevel.Verbose)
+                                            {
+                                                dump += $"MSAL Test: {message}\n";
+                                            }
+                                        };
+
+                var serviceBundle = TestCommon.CreateServiceBundleWithCustomHttpManager(harness.HttpManager, logCallback: callback);
+                ITokenCacheInternal cache = new TokenCache(serviceBundle, false);
+                cache.SetAfterAccess((args) => { return; });
+
+                var ex = TokenCacheHelper.PopulateCacheWithAccessTokens(cache.Accessor, 19);
+
+                var requestParams = TestCommon.CreateAuthenticationRequestParameters(
+                    serviceBundle,
+                    scopes: new HashSet<string>());
+                requestParams.Account = TestConstants.s_user;
+                requestParams.RequestContext.ApiEvent = new ApiEvent(Guid.NewGuid());
+
+                var response = TokenCacheHelper.CreateMsalTokenResponse(true);
+
+                //Act
+                await cache.SaveTokenResponseAsync(requestParams, response).ConfigureAwait(false);
+
+                //Assert
+                Assert.IsTrue(dump != string.Empty);
+                Assert.IsTrue(dump.Contains("Total number of access tokens in cache: 20"));
+                Assert.IsTrue(dump.Contains("Total number of refresh tokens in cache: 20"));
+                Assert.IsTrue(dump.Contains("Token cache dump of the first 10 cache keys"));
+
+                var accessTokens = cache.Accessor.GetAllAccessTokens().ToList();
+                foreach (MsalAccessTokenCacheItem item in accessTokens)
+                {
+                    Assert.IsTrue(dump.Contains(item.GetKey().ToLogString()));
+                    if (accessTokens.IndexOf(item) >= 9)
+                    {
+                        break;
+                    }
+                }
             }
         }
 

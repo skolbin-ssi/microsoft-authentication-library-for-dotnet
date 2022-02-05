@@ -36,6 +36,7 @@ namespace Microsoft.Identity.Client.Internal
         {
             var dict = new Dictionary<string, string>
             {
+                [OAuth2Parameter.ClientInfo] = "1",
                 [OAuth2Parameter.GrantType] = OAuth2GrantType.RefreshToken,
                 [OAuth2Parameter.RefreshToken] = refreshTokenSecret
             };
@@ -43,51 +44,68 @@ namespace Microsoft.Identity.Client.Internal
             return dict;
         }
 
-        internal static void ProcessFetchInBackgroundAsync(
-            MsalAccessTokenCacheItem oldAccessToken, 
-            Func<Task<AuthenticationResult>> fetchAction, ICoreLogger logger)
+        internal static bool NeedsRefresh(MsalAccessTokenCacheItem oldAccessToken)
         {
-            
-            if (AccessTokenNeedsRefresh(oldAccessToken))
-            {
-                _ = Task.Run(async () =>
-                {
-                    try
-                    {
-                        await fetchAction().ConfigureAwait(false);
-                    }
-                    catch (MsalServiceException ex)
-                    {
-                        string logMsg = $"Background fetch failed with MsalServiceException. Is AAD down? { ex.IsAadUnavailable()}";
-                        if (ex.StatusCode == 400)
-                        {
-                            logger.ErrorPiiWithPrefix(ex, logMsg);
-                        }
-                        else
-                        {
-                            logger.WarningPiiWithPrefix(ex, logMsg);
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        string logMsg = $"Background fetch failed with exception.";
-                        logger.WarningPiiWithPrefix(ex, logMsg);
-                    }
-                });
-            }
+            return NeedsRefresh(oldAccessToken, out _);
         }
 
-        private static bool AccessTokenNeedsRefresh(MsalAccessTokenCacheItem msalAccessTokenCacheItem)
+        internal static bool NeedsRefresh(MsalAccessTokenCacheItem oldAccessToken, out DateTimeOffset? refreshOnWithJitter)
+        {
+            refreshOnWithJitter = GetRefreshOnWithJitter(oldAccessToken);
+            if (refreshOnWithJitter.HasValue && refreshOnWithJitter.Value < DateTimeOffset.UtcNow)
+            {
+                return true;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// Fire and forget the fetch action on a background thread.
+        /// Do not change to Task and do not await it.
+        /// </summary>
+        internal static void ProcessFetchInBackground(
+            MsalAccessTokenCacheItem oldAccessToken,
+            Func<Task<AuthenticationResult>> fetchAction,
+            ICoreLogger logger)
+        {
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await fetchAction().ConfigureAwait(false);
+                }
+                catch (MsalServiceException ex)
+                {
+                    string logMsg = $"Background fetch failed with MsalServiceException. Is AAD down? { ex.IsAadUnavailable()}";
+                    if (ex.StatusCode == 400)
+                    {
+                        logger.ErrorPiiWithPrefix(ex, logMsg);
+                    }
+                    else
+                    {
+                        logger.WarningPiiWithPrefix(ex, logMsg);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    string logMsg = $"Background fetch failed with exception.";
+                    logger.WarningPiiWithPrefix(ex, logMsg);
+                }
+            });
+        }
+
+        private static Random s_random = new Random();
+        private static DateTimeOffset? GetRefreshOnWithJitter(MsalAccessTokenCacheItem msalAccessTokenCacheItem)
         {
             if (msalAccessTokenCacheItem.RefreshOn.HasValue)
             {
-                Random r = new Random();
-                int jitter = r.Next(-Constants.DefaultJitterRangeInSeconds, Constants.DefaultJitterRangeInSeconds);
-                DateTimeOffset refreshOnWithJitter = msalAccessTokenCacheItem.RefreshOn.Value + TimeSpan.FromSeconds(jitter);
-                return refreshOnWithJitter < DateTimeOffset.UtcNow;
+                int jitter = s_random.Next(-Constants.DefaultJitterRangeInSeconds, Constants.DefaultJitterRangeInSeconds);
+                var refreshOnWithJitter = msalAccessTokenCacheItem.RefreshOn.Value + TimeSpan.FromSeconds(jitter);
+                return refreshOnWithJitter;
             }
 
-            return false;           
+            
+            return null;           
         }
     }
 }

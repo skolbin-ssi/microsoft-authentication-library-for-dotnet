@@ -5,14 +5,12 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.Identity.Client.Utils;
 using Microsoft.Identity.Client.ApiConfig.Parameters;
-using Microsoft.Identity.Client.TelemetryCore.Internal.Events;
 using Microsoft.Identity.Client.AuthScheme;
+using Microsoft.Identity.Client.Instance;
 using Microsoft.Identity.Client.Internal;
-using System.Net.Http;
-using Microsoft.Identity.Client.AuthScheme.PoP;
-using Microsoft.Identity.Client.AppConfig;
+using Microsoft.Identity.Client.TelemetryCore.Internal.Events;
+using Microsoft.Identity.Client.Utils;
 
 namespace Microsoft.Identity.Client
 {
@@ -24,6 +22,7 @@ namespace Microsoft.Identity.Client
     public abstract class AbstractAcquireTokenParameterBuilder<T>
         where T : AbstractAcquireTokenParameterBuilder<T>
     {
+
         internal IServiceBundle ServiceBundle { get; }
 
         /// <summary>
@@ -39,7 +38,7 @@ namespace Microsoft.Identity.Client
         internal AcquireTokenCommonParameters CommonParameters { get; } = new AcquireTokenCommonParameters();
 
         /// <summary>
-        /// Executes the Token request asynchronously, with a possibility of cancelling the
+        /// Executes the Token request asynchronously, with a possibility of canceling the
         /// asynchronous method.
         /// </summary>
         /// <param name="cancellationToken">Cancellation token. See <see cref="CancellationToken"/> </param>
@@ -51,8 +50,6 @@ namespace Microsoft.Identity.Client
         public abstract Task<AuthenticationResult> ExecuteAsync(CancellationToken cancellationToken);
 
         internal abstract ApiEvent.ApiIds CalculateApiEventId();
-
-        internal abstract ApiTelemetryId ApiTelemetryId { get; }
 
         /// <summary>
         /// Executes the Token request asynchronously.
@@ -89,7 +86,7 @@ namespace Microsoft.Identity.Client
         /// <returns>The builder to chain the .With methods.</returns>
         public T WithExtraQueryParameters(Dictionary<string, string> extraQueryParameters)
         {
-            CommonParameters.ExtraQueryParameters = extraQueryParameters ?? 
+            CommonParameters.ExtraQueryParameters = extraQueryParameters ??
                 new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             return (T)this;
         }
@@ -104,7 +101,6 @@ namespace Microsoft.Identity.Client
         /// <returns>The builder to chain .With methods.</returns>
         public T WithClaims(string claims)
         {
-            CommonParameters.AddApiTelemetryFeature(ApiTelemetryFeature.WithClaims);
             CommonParameters.Claims = claims;
             return (T)this;
         }
@@ -118,7 +114,6 @@ namespace Microsoft.Identity.Client
         /// <returns>The builder to chain .With methods.</returns>
         public T WithExtraQueryParameters(string extraQueryParameters)
         {
-            CommonParameters.AddApiTelemetryFeature(ApiTelemetryFeature.WithExtraQueryParameters);
             if (!string.IsNullOrWhiteSpace(extraQueryParameters))
             {
                 return WithExtraQueryParameters(CoreHelpers.ParseKeyValueList(extraQueryParameters, '&', true, null));
@@ -140,12 +135,6 @@ namespace Microsoft.Identity.Client
         /// <returns>The builder to chain the .With methods.</returns>
         public T WithAuthority(string authorityUri, bool validateAuthority = true)
         {
-            CommonParameters.AddApiTelemetryFeature(ApiTelemetryFeature.WithAuthority);
-            if (validateAuthority)
-            {
-                CommonParameters.AddApiTelemetryFeature(ApiTelemetryFeature.WithValidateAuthority);
-            }
-
             if (string.IsNullOrWhiteSpace(authorityUri))
             {
                 throw new ArgumentNullException(nameof(authorityUri));
@@ -167,12 +156,6 @@ namespace Microsoft.Identity.Client
             Guid tenantId,
             bool validateAuthority = true)
         {
-            CommonParameters.AddApiTelemetryFeature(ApiTelemetryFeature.WithAuthority);
-            if (validateAuthority)
-            {
-                CommonParameters.AddApiTelemetryFeature(ApiTelemetryFeature.WithValidateAuthority);
-            }
-
             if (string.IsNullOrWhiteSpace(cloudInstanceUri))
             {
                 throw new ArgumentNullException(nameof(cloudInstanceUri));
@@ -201,12 +184,6 @@ namespace Microsoft.Identity.Client
             string tenant,
             bool validateAuthority = true)
         {
-            CommonParameters.AddApiTelemetryFeature(ApiTelemetryFeature.WithAuthority);
-            if (validateAuthority)
-            {
-                CommonParameters.AddApiTelemetryFeature(ApiTelemetryFeature.WithValidateAuthority);
-            }
-
             if (string.IsNullOrWhiteSpace(cloudInstanceUri))
             {
                 throw new ArgumentNullException(nameof(cloudInstanceUri));
@@ -230,12 +207,6 @@ namespace Microsoft.Identity.Client
             Guid tenantId,
             bool validateAuthority = true)
         {
-            CommonParameters.AddApiTelemetryFeature(ApiTelemetryFeature.WithAuthority);
-            if (validateAuthority)
-            {
-                CommonParameters.AddApiTelemetryFeature(ApiTelemetryFeature.WithValidateAuthority);
-            }
-
             CommonParameters.AuthorityOverride = AuthorityInfo.FromAadAuthority(azureCloudInstance, tenantId, validateAuthority);
             return (T)this;
         }
@@ -255,12 +226,6 @@ namespace Microsoft.Identity.Client
             string tenant,
             bool validateAuthority = true)
         {
-            CommonParameters.AddApiTelemetryFeature(ApiTelemetryFeature.WithAuthority);
-            if (validateAuthority)
-            {
-                CommonParameters.AddApiTelemetryFeature(ApiTelemetryFeature.WithValidateAuthority);
-            }
-
             CommonParameters.AuthorityOverride = AuthorityInfo.FromAadAuthority(azureCloudInstance, tenant, validateAuthority);
             return (T)this;
         }
@@ -278,12 +243,6 @@ namespace Microsoft.Identity.Client
         /// <returns>The builder to chain the .With methods.</returns>
         public T WithAuthority(AzureCloudInstance azureCloudInstance, AadAuthorityAudience authorityAudience, bool validateAuthority = true)
         {
-            CommonParameters.AddApiTelemetryFeature(ApiTelemetryFeature.WithAuthority);
-            if (validateAuthority)
-            {
-                CommonParameters.AddApiTelemetryFeature(ApiTelemetryFeature.WithValidateAuthority);
-            }
-
             CommonParameters.AuthorityOverride = AuthorityInfo.FromAadAuthority(azureCloudInstance, authorityAudience, validateAuthority);
             return (T)this;
         }
@@ -299,13 +258,44 @@ namespace Microsoft.Identity.Client
         /// <returns>The builder to chain the .With methods.</returns>
         public T WithAuthority(AadAuthorityAudience authorityAudience, bool validateAuthority = true)
         {
-            CommonParameters.AddApiTelemetryFeature(ApiTelemetryFeature.WithAuthority);
-            if (validateAuthority)
+            CommonParameters.AuthorityOverride = AuthorityInfo.FromAadAuthority(authorityAudience, validateAuthority);
+            return (T)this;
+        }
+
+        /// <summary>
+        /// Overrides the tenant ID specified in the authority at the application level. This operation preserves the authority host (environment).
+        /// 
+        /// If an authority was not specified at the application level, the default used is https://login.microsoftonline.com/common.
+        /// </summary>
+        /// <param name="tenantId">The tenant ID, which can be either in GUID format or a domain name. Also known as the Directory ID.</param>
+        /// <returns>The builder to chain the .With methods.</returns>
+        /// <exception cref="ArgumentNullException">Thrown if tenantId is null or an empty string</exception>
+        /// <exception cref="MsalClientException">Thrown if the application was configured with an authority that is not AAD specific (e.g. ADFS or B2C).</exception>
+        /// <remarks>
+        /// The tenant should be more restrictive than the one configured at the application level, e.g. don't use "common".
+        /// Does not affect authority validation, which is specified at the application level.</remarks>
+        public T WithTenantId(string tenantId)
+        {
+            if (string.IsNullOrEmpty(tenantId))
             {
-                CommonParameters.AddApiTelemetryFeature(ApiTelemetryFeature.WithValidateAuthority);
+                throw new ArgumentNullException(nameof(tenantId));
             }
 
-            CommonParameters.AuthorityOverride = AuthorityInfo.FromAadAuthority(authorityAudience, validateAuthority);
+            if (ServiceBundle.Config.Authority.AuthorityInfo.AuthorityType != AuthorityType.Aad)
+            {
+                throw new MsalClientException(
+                    MsalError.TenantOverrideNonAad,
+                    MsalErrorMessage.TenantOverrideNonAad);
+            }
+
+            AadAuthority aadAuthority = (AadAuthority)ServiceBundle.Config.Authority;
+            string tenantedAuthority = aadAuthority.GetTenantedAuthority(tenantId, true);
+            var newAuthorityInfo = AuthorityInfo.FromAadAuthority(
+                tenantedAuthority,
+                ServiceBundle.Config.Authority.AuthorityInfo.ValidateAuthority);
+
+            CommonParameters.AuthorityOverride = newAuthorityInfo;
+
             return (T)this;
         }
 
@@ -314,16 +304,10 @@ namespace Microsoft.Identity.Client
         /// </summary>
         /// <param name="authorityUri">Authority URL for an ADFS server.</param>
         /// <param name="validateAuthority">Whether the authority should be validated against the server metadata.</param>
-        /// <remarks>MSAL.NET will only support ADFS 2019 or later.</remarks>
+        /// <remarks>MSAL.NET supports ADFS 2019 or later.</remarks>
         /// <returns>The builder to chain the .With methods.</returns>
         public T WithAdfsAuthority(string authorityUri, bool validateAuthority = true)
         {
-            CommonParameters.AddApiTelemetryFeature(ApiTelemetryFeature.WithAdfsAuthority);
-            if (validateAuthority)
-            {
-                CommonParameters.AddApiTelemetryFeature(ApiTelemetryFeature.WithValidateAuthority);
-            }
-
             if (string.IsNullOrWhiteSpace(authorityUri))
             {
                 throw new ArgumentNullException(nameof(authorityUri));
@@ -341,8 +325,6 @@ namespace Microsoft.Identity.Client
         /// <returns>The builder to chain the .With methods.</returns>
         public T WithB2CAuthority(string authorityUri)
         {
-            CommonParameters.AddApiTelemetryFeature(ApiTelemetryFeature.WithB2CAuthority);
-
             if (string.IsNullOrWhiteSpace(authorityUri))
             {
                 throw new ArgumentNullException(nameof(authorityUri));
@@ -352,7 +334,8 @@ namespace Microsoft.Identity.Client
         }
 
         /// <summary>
-        /// Sets the correlation id to be used in the authentication request.
+        /// Sets the correlation id to be used in the authentication request. Used to track a request in the logs of both the SDK and the Identity Provider service.
+        /// If not set, a random one will be generated. 
         /// </summary>
         /// <param name="correlationId">Correlation id of the authentication request.</param>
         /// <returns>The builder to chain the .With methods.</returns>
@@ -380,7 +363,6 @@ namespace Microsoft.Identity.Client
         {
             Validate();
             CommonParameters.ApiId = CalculateApiEventId();
-            CommonParameters.ApiTelemId = ApiTelemetryId;
             CommonParameters.CorrelationId = CommonParameters.UseCorrelationIdFromUser ? CommonParameters.UserProvidedCorrelationId : Guid.NewGuid();
         }
 

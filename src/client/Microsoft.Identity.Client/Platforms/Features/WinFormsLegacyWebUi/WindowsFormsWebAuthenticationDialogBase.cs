@@ -7,7 +7,9 @@ using System.Diagnostics;
 using System.Drawing;
 using System.Globalization;
 using System.Runtime.InteropServices;
+using System.Threading;
 using System.Windows.Forms;
+using Microsoft.Identity.Client.Core;
 using Microsoft.Identity.Client.Internal;
 using Microsoft.Identity.Client.Platforms.Features.DesktopOs;
 using Microsoft.Identity.Client.UI;
@@ -262,7 +264,7 @@ namespace Microsoft.Identity.Client.Platforms.Features.WinFormsLegacyWebUi
         /// </summary>
         protected abstract void OnNavigationCanceled(int statusCode);
 
-        internal AuthorizationResult AuthenticateAAD(Uri requestUri, Uri callbackUri)
+        internal AuthorizationResult AuthenticateAAD(Uri requestUri, Uri callbackUri, CancellationToken cancellationToken)
         {
             _desiredCallbackUri = callbackUri;
             Result = null;
@@ -275,14 +277,14 @@ namespace Microsoft.Identity.Client.Platforms.Features.WinFormsLegacyWebUi
             _webBrowser.NavigateError += WebBrowserNavigateErrorHandler;
 
             _webBrowser.Navigate(requestUri);
-            OnAuthenticate();
+            OnAuthenticate(cancellationToken);
 
             return Result;
         }
 
         /// <summary>
         /// </summary>
-        protected virtual void OnAuthenticate()
+        protected virtual void OnAuthenticate(CancellationToken cancellationToken)
         {
         }
 
@@ -297,6 +299,22 @@ namespace Microsoft.Identity.Client.Platforms.Features.WinFormsLegacyWebUi
             if (ownerWindow != null && ownerWindow is Control winFormsControl)
             {
                 winFormsControl.Invoke(action);
+            }
+            else
+            {
+                action();
+            }
+        }
+
+        /// <summary>
+        /// Some calls need to be made on the UI thread and this is the central place to do so and if so, ensure we invoke on that proper thread.
+        /// </summary>
+        /// <param name="action"></param>
+        protected void InvokeOnly(Action action)
+        {
+            if (InvokeRequired)
+            {
+                this.Invoke(action);
             }
             else
             {

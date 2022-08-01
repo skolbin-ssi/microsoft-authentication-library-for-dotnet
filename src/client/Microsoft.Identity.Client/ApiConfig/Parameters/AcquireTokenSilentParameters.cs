@@ -1,4 +1,7 @@
-﻿using Microsoft.Identity.Client.Core;
+﻿// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+using Microsoft.Identity.Client.Core;
 
 namespace Microsoft.Identity.Client.ApiConfig.Parameters
 {
@@ -10,7 +13,7 @@ namespace Microsoft.Identity.Client.ApiConfig.Parameters
         public bool? SendX5C { get; set; } 
 
         /// <inheritdoc />
-        public void LogParameters(ICoreLogger logger)
+        public void LogParameters(ILoggerAdapter logger)
         {
             logger.Info("=== AcquireTokenSilent Parameters ===");
             logger.Info("LoginHint provided: " + !string.IsNullOrEmpty(LoginHint));

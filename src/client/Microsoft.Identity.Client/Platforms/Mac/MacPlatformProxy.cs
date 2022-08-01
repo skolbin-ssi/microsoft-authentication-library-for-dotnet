@@ -24,7 +24,7 @@ namespace Microsoft.Identity.Client.Platforms.Mac
     {
         internal const string IosDefaultRedirectUriTemplate = "msal{0}://auth";
 
-        public MacPlatformProxy(ICoreLogger logger)
+        public MacPlatformProxy(ILoggerAdapter logger)
             : base(logger)
         {
         }
@@ -106,7 +106,7 @@ namespace Microsoft.Identity.Client.Platforms.Mac
         }
 
         protected override IWebUIFactory CreateWebUiFactory() => new MacUIFactory();
-        protected override ICryptographyManager InternalGetCryptographyManager() => new MacCryptographyManager();
+        protected override ICryptographyManager InternalGetCryptographyManager() => new CommonCryptographyManager();
         protected override IPlatformLogger InternalGetPlatformLogger() => new ConsolePlatformLogger();
 
         protected override IFeatureFlags CreateFeatureFlags() => new MacFeatureFlags();

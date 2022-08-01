@@ -22,7 +22,7 @@ namespace Microsoft.Identity.Client.Platforms.iOS
     {
         internal const string IosDefaultRedirectUriTemplate = "msal{0}://auth";
 
-        public iOSPlatformProxy(ICoreLogger logger)
+        public iOSPlatformProxy(ILoggerAdapter logger)
             : base(logger)
         {
         }
@@ -102,7 +102,7 @@ namespace Microsoft.Identity.Client.Platforms.iOS
             return new IosWebUIFactory();
         }
 
-        protected override ICryptographyManager InternalGetCryptographyManager() => new iOSCryptographyManager();
+        protected override ICryptographyManager InternalGetCryptographyManager() => new CommonCryptographyManager();
         protected override IPlatformLogger InternalGetPlatformLogger() => new ConsolePlatformLogger();
 
         protected override IFeatureFlags CreateFeatureFlags() => new iOSFeatureFlags();

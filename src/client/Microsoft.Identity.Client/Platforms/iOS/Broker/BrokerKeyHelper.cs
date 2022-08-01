@@ -18,7 +18,7 @@ namespace Microsoft.Identity.Client.Platforms.iOS
     /// </summary>
     internal static class BrokerKeyHelper
     {
-        internal static byte[] GetOrCreateBrokerKey(ICoreLogger logger)
+        internal static byte[] GetOrCreateBrokerKey(ILoggerAdapter logger)
         {
             if (TryGetBrokerKey(out byte[] brokerKey))
             {
@@ -31,13 +31,13 @@ namespace Microsoft.Identity.Client.Platforms.iOS
             return brokerKey;
         }
 
-        private static byte[] CreateAndStoreBrokerKey(ICoreLogger logger)
+        private static byte[] CreateAndStoreBrokerKey(ILoggerAdapter logger)
         {
             logger.Info("CreateAndStoreBrokerKey - creating a new key");
 
             byte[] brokerKey;
             byte[] rawBytes;
-            using (AesManaged algo = CreateSymmetricAlgorith(null))
+            using (Aes algo = CreateSymmetricAlgorithm(null))
             {
                 algo.GenerateKey();
                 rawBytes = algo.Key;
@@ -105,19 +105,19 @@ namespace Microsoft.Identity.Client.Platforms.iOS
             return false;
         }
 
-        internal static string DecryptBrokerResponse(string encryptedBrokerResponse, ICoreLogger logger)
+        internal static string DecryptBrokerResponse(string encryptedBrokerResponse, ILoggerAdapter logger)
         {
             byte[] outputBytes = Base64UrlHelpers.DecodeBytes(encryptedBrokerResponse);
 
             if (TryGetBrokerKey(out byte[] key))
             {
-                AesManaged algo = null;
+                Aes algo = null;
                 CryptoStream cryptoStream = null;
                 MemoryStream memoryStream = null;
                 try
                 {
                     memoryStream = new MemoryStream(outputBytes);
-                    algo = CreateSymmetricAlgorith(key);
+                    algo = CreateSymmetricAlgorithm(key);
                     cryptoStream = new CryptoStream(
                         memoryStream,
                         algo.CreateDecryptor(),
@@ -141,24 +141,21 @@ namespace Microsoft.Identity.Client.Platforms.iOS
                 MsalErrorMessage.iOSBrokerKeyFetchFailed);
         }
 
-       private static AesManaged CreateSymmetricAlgorith(byte[] key)
+       private static Aes CreateSymmetricAlgorithm(byte[] key)
         {
-            AesManaged algorithm = new AesManaged
-            {
-                //set the mode, padding and block size
-                Padding = PaddingMode.PKCS7,
-                Mode = CipherMode.CBC,
-                KeySize = 256,
-                BlockSize = 128
-            };
+            var aes = Aes.Create();
+            aes.Padding = PaddingMode.PKCS7;
+            aes.Mode = CipherMode.CBC;
+            aes.KeySize = 256;
+            aes.BlockSize = 128;
 
             if (key != null)
             {
-                algorithm.Key = key;
+                aes.Key = key;
             }
 
-            algorithm.IV = new byte[] { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
-            return algorithm;
+            aes.IV = new byte[] { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+            return aes;
         }
     }
 }

@@ -4,6 +4,7 @@
 using System;
 using System.Threading;
 using System.Windows.Forms;
+using Microsoft.Identity.Client.Core;
 using Microsoft.Identity.Client.Internal;
 using Microsoft.Identity.Client.UI;
 
@@ -103,7 +104,7 @@ namespace Microsoft.Identity.Client.Platforms.Features.WinFormsLegacyWebUi
 
                         _threadInitializedEvent.Set();
 
-                        _dialog.AuthenticateAAD(RequestUri, CallbackUri);
+                        _dialog.AuthenticateAAD(RequestUri, CallbackUri, CancellationToken.None);
 
                         // Start and turn control over to the message loop.
                         Application.Run();
@@ -134,7 +135,7 @@ namespace Microsoft.Identity.Client.Platforms.Features.WinFormsLegacyWebUi
         /// UI thread completes.
         /// </summary>
         /// <returns></returns>
-        protected override AuthorizationResult OnAuthenticate()
+        protected override AuthorizationResult OnAuthenticate(CancellationToken cancellationToken)
         {
             if (null == CallbackUri)
             {
@@ -199,7 +200,7 @@ namespace Microsoft.Identity.Client.Platforms.Features.WinFormsLegacyWebUi
         {
             if (_uiException == null)
             {
-                _uiException = e.TransferedException;
+                _uiException = e.TransferredException;
             }
 
 #pragma warning disable 618 // SilentWindowsFormsAuthenticationDialog is marked obsolete

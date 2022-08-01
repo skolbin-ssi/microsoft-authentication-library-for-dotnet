@@ -52,13 +52,15 @@ namespace Microsoft.Identity.Json.Utilities
         public static TimeSpan GetUtcOffset(this DateTime d)
         {
 #if !HAVE_TIME_ZONE_INFO
+#pragma warning disable CS0618 // Type or member is obsolete
             return TimeZone.CurrentTimeZone.GetUtcOffset(d);
+#pragma warning restore CS0618 // Type or member is obsolete
 #else
             return TimeZoneInfo.Local.GetUtcOffset(d);
 #endif
         }
 
-#if !(PORTABLE40 || PORTABLE) || NETSTANDARD1_3
+#if !(PORTABLE40 || PORTABLE) || NETSTANDARD2_0
         public static XmlDateTimeSerializationMode ToSerializationMode(DateTimeKind kind)
         {
             switch (kind)

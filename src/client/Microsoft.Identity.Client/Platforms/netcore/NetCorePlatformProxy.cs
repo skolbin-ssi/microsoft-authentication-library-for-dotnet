@@ -30,7 +30,7 @@ namespace Microsoft.Identity.Client.Platforms.netcore
     /// </summary>
     internal class NetCorePlatformProxy : AbstractPlatformProxy
     {
-        public NetCorePlatformProxy(ICoreLogger logger)
+        public NetCorePlatformProxy(ILoggerAdapter logger)
             : base(logger)
         {
         }
@@ -140,7 +140,7 @@ namespace Microsoft.Identity.Client.Platforms.netcore
         }
 
         protected override IWebUIFactory CreateWebUiFactory() => new NetCoreWebUIFactory();
-        protected override ICryptographyManager InternalGetCryptographyManager() => new NetCoreCryptographyManager();
+        protected override ICryptographyManager InternalGetCryptographyManager() => new CommonCryptographyManager();
         protected override IPlatformLogger InternalGetPlatformLogger() => new EventSourcePlatformLogger();
 
         protected override IFeatureFlags CreateFeatureFlags() => new NetCoreFeatureFlags();

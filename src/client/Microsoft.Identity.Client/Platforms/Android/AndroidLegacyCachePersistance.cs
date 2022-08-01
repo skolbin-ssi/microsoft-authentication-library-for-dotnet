@@ -9,15 +9,19 @@ using Microsoft.Identity.Client.Core;
 
 namespace Microsoft.Identity.Client.Platforms.Android
 {
+#if MAUI
+    [Preserve(AllMembers = true)]
+#else
     [global::Android.Runtime.Preserve(AllMembers = true)]
+#endif
     internal class AndroidLegacyCachePersistence : ILegacyCachePersistence
     {
         private const string SharedPreferencesName = "ActiveDirectoryAuthenticationLibrary";
         private const string SharedPreferencesKey = "cache";
 
-        private readonly ICoreLogger _logger;
+        private readonly ILoggerAdapter _logger;
 
-        public AndroidLegacyCachePersistence(ICoreLogger logger)
+        public AndroidLegacyCachePersistence(ILoggerAdapter logger)
         {
             _logger = logger;
         }

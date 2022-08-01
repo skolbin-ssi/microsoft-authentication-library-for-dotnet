@@ -35,14 +35,14 @@ namespace Microsoft.Identity.Client.Platforms.iOS
         private static SemaphoreSlim s_brokerResponseReady = null;
         private static NSUrl s_brokerResponse = null;
 
-        private readonly ICoreLogger _logger;
+        private readonly ILoggerAdapter _logger;
         private readonly ICryptographyManager _cryptoManager;
         private readonly CoreUIParent _uIParent;
         private string _brokerRequestNonce;
         private bool _brokerV3Installed = false;
         public bool IsPopSupported => false;
 
-        public iOSBroker(ICoreLogger logger, ICryptographyManager cryptoManager, CoreUIParent uIParent)
+        public iOSBroker(ILoggerAdapter logger, ICryptographyManager cryptoManager, CoreUIParent uIParent)
         {
             _logger = logger;
             _cryptoManager = cryptoManager;
@@ -123,12 +123,19 @@ namespace Microsoft.Identity.Client.Platforms.iOS
         {
             var brokerRequest = new Dictionary<string, string>(16);
 
-            brokerRequest.Add(BrokerParameter.Authority, authenticationRequestParameters.Authority.AuthorityInfo.CanonicalAuthority);
+            brokerRequest.Add(BrokerParameter.Authority, authenticationRequestParameters.Authority.AuthorityInfo.CanonicalAuthority.ToString());
             string scopes = EnumerableExtensions.AsSingleString(authenticationRequestParameters.Scope);
             brokerRequest.Add(BrokerParameter.Scope, scopes);
             brokerRequest.Add(BrokerParameter.ClientId, authenticationRequestParameters.AppConfig.ClientId);
             brokerRequest.Add(BrokerParameter.CorrelationId, authenticationRequestParameters.RequestContext.CorrelationId.ToString());
             brokerRequest.Add(BrokerParameter.ClientVersion, MsalIdHelper.GetMsalVersion());
+
+            // EnrollmentId and MamResource values will be present in the keychain after the device is registered and enrolled.
+            var realEnrollmentId = IntuneEnrollmentIdHelper.GetRawEnrollmentId();
+            brokerRequest.Add(BrokerParameter.IntuneEnrollmentIds, realEnrollmentId ?? string.Empty);
+
+            var intuneMamResource = IntuneEnrollmentIdHelper.GetRawMamResources();
+            brokerRequest.Add(BrokerParameter.IntuneMamResource, intuneMamResource ?? string.Empty);
 
             // this needs to be case sensitive because the AppBundle is case sensitive
             brokerRequest.Add(
@@ -415,6 +422,11 @@ namespace Microsoft.Identity.Client.Platforms.iOS
         }
 
         public Task<MsalTokenResponse> AcquireTokenSilentDefaultUserAsync(AuthenticationRequestParameters authenticationRequestParameters, AcquireTokenSilentParameters acquireTokenSilentParameters)
+        {
+            return Task.FromResult<MsalTokenResponse>(null); // nop
+        }
+
+        public Task<MsalTokenResponse> AcquireTokenByUsernamePasswordAsync(AuthenticationRequestParameters authenticationRequestParameters, AcquireTokenByUsernamePasswordParameters acquireTokenByUsernamePasswordParameters)
         {
             return Task.FromResult<MsalTokenResponse>(null); // nop
         }

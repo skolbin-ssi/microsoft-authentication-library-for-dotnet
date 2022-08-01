@@ -23,17 +23,21 @@ using AndroidUri = Android.Net.Uri;
 
 namespace Microsoft.Identity.Client.Platforms.Android.Broker
 {
+#if MAUI
+    [Preserve(AllMembers = true)]
+#else
     [AndroidNative.Runtime.Preserve(AllMembers = true)]
+#endif
     internal class AndroidContentProviderBroker : IBroker
     {
         private readonly AndroidBrokerHelper _brokerHelper;
-        private readonly ICoreLogger _logger;
+        private readonly ILoggerAdapter _logger;
         private readonly Activity _parentActivity;
         private string _negotiatedBrokerProtocolKey = string.Empty;
 
         public bool IsPopSupported => false;
 
-        public AndroidContentProviderBroker(CoreUIParent uiParent, ICoreLogger logger)
+        public AndroidContentProviderBroker(CoreUIParent uiParent, ILoggerAdapter logger)
         {
             _parentActivity = uiParent?.Activity;
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
@@ -388,6 +392,11 @@ namespace Microsoft.Identity.Client.Platforms.Android.Broker
                        MsalErrorMessage.MsalUiRequiredMessage,
                        null,
                        UiRequiredExceptionClassification.AcquireTokenSilentFailed);
+        }
+
+        public Task<MsalTokenResponse> AcquireTokenByUsernamePasswordAsync(AuthenticationRequestParameters authenticationRequestParameters, AcquireTokenByUsernamePasswordParameters acquireTokenByUsernamePasswordParameters)
+        {
+            return Task.FromResult<MsalTokenResponse>(null); // nop
         }
     }
 }

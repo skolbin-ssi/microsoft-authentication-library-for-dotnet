@@ -7,6 +7,7 @@ using System.Linq;
 using System.Security.Cryptography.X509Certificates;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Identity.Client.Extensibility;
 using Microsoft.Identity.Client.Internal;
 using Microsoft.Identity.Client.Internal.ClientCredential;
 
@@ -210,6 +211,7 @@ namespace Microsoft.Identity.Client
         /// This is a delegate that computes a Base-64 encoded JWT for each authentication call.</param>
         /// <returns>The ConfidentialClientApplicationBuilder to chain more .With methods</returns>
         /// <remarks> Callers can use this mechanism to cache their assertions </remarks>
+        [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
         public ConfidentialClientApplicationBuilder WithClientAssertion(Func<string> clientAssertionDelegate)
         {
             if (clientAssertionDelegate == null)
@@ -233,7 +235,26 @@ namespace Microsoft.Identity.Client
         /// This is a delegate that computes a Base-64 encoded JWT for each authentication call.</param>
         /// <returns>The ConfidentialClientApplicationBuilder to chain more .With methods</returns>
         /// <remarks> Callers can use this mechanism to cache their assertions </remarks>
+        [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
         public ConfidentialClientApplicationBuilder WithClientAssertion(Func<CancellationToken, Task<string>> clientAssertionAsyncDelegate)
+        {
+            if (clientAssertionAsyncDelegate == null)
+            {
+                throw new ArgumentNullException(nameof(clientAssertionAsyncDelegate));
+            }
+
+            Config.ClientCredential = new SignedAssertionDelegateClientCredential(clientAssertionAsyncDelegate);
+            return this;
+        }
+
+        /// <summary>
+        /// Configures an async delegate that creates a client assertion. See https://aka.ms/msal-net-client-assertion
+        /// </summary>
+        /// <param name="clientAssertionAsyncDelegate">An async delegate computing the client assertion used to prove the identity of the application to Azure AD.
+        /// This is a delegate that computes a Base-64 encoded JWT for each authentication call.</param>
+        /// <returns>The ConfidentialClientApplicationBuilder to chain more .With methods</returns>
+        /// <remarks> Callers can use this mechanism to cache their assertions </remarks>
+        public ConfidentialClientApplicationBuilder WithClientAssertion(Func<AssertionRequestOptions, Task<string>> clientAssertionAsyncDelegate)
         {
             if (clientAssertionAsyncDelegate == null)
             {
@@ -289,22 +310,6 @@ namespace Microsoft.Identity.Client
         public ConfidentialClientApplicationBuilder WithCacheSynchronization(bool enableCacheSynchronization)
         {
             Config.CacheSynchronizationEnabled = enableCacheSynchronization;
-            return this;
-        }
-
-        /// <summary>
-        /// Allows setting a callback which returns an access token, based on the passed-in parameters.
-        /// MSAL will pass in its authentication parameters to the callback and it is expected that the callback
-        /// will construct a <see cref="TokenProviderResult"/> and return it to MSAL.
-        /// MSAL will cache the token response the same way it does for other authentication results.
-        /// Note: This is only for client credential flows.
-        /// </summary>
-        /// <param name="appTokenProvider">Authentication callback which returns an access token.</param>
-        /// <returns>The builder to chain the .With methods</returns>
-        public ConfidentialClientApplicationBuilder WithAppTokenProvider(Func<AppTokenProviderParameters, Task<TokenProviderResult>> appTokenProvider)
-
-        {
-            Config.AppTokenProvider = appTokenProvider ?? throw new ArgumentNullException(nameof(appTokenProvider));
             return this;
         }
 

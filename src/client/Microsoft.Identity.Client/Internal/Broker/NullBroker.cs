@@ -21,11 +21,11 @@ namespace Microsoft.Identity.Client.Internal.Broker
     /// </summary>
     internal class NullBroker : IBroker
     {
-        private readonly ICoreLogger _logger;
+        private readonly ILoggerAdapter _logger;
 
         public bool IsPopSupported => false;
 
-        public NullBroker(ICoreLogger logger)
+        public NullBroker(ILoggerAdapter logger)
         {
             _logger = logger ?? new NullLogger();
         }
@@ -73,6 +73,12 @@ namespace Microsoft.Identity.Client.Internal.Broker
         {
             _logger.Info("NullBroker - returning empty list on GetAccounts request.");
             return Task.FromResult(CollectionHelpers.GetEmptyReadOnlyList<IAccount>()); // nop
+        }
+
+        public Task<MsalTokenResponse> AcquireTokenByUsernamePasswordAsync(AuthenticationRequestParameters authenticationRequestParameters, AcquireTokenByUsernamePasswordParameters acquireTokenByUsernamePasswordParameters)
+        {
+            _logger.Info("NullBroker - returning null on ROPC request.");
+            return Task.FromResult<MsalTokenResponse>(null);
         }
     }
 }

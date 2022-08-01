@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Net.Http.Headers;
+using Microsoft.Identity.Client.Core;
 using Microsoft.Identity.Client.Internal.Requests;
 
 namespace Microsoft.Identity.Client.OAuth2.Throttling
@@ -39,7 +40,7 @@ namespace Microsoft.Identity.Client.OAuth2.Throttling
 
                 string thumbprint = ThrottleCommon.GetRequestStrictThumbprint(
                     bodyParams,
-                    requestParams.AuthorityInfo.CanonicalAuthority,
+                    requestParams.AuthorityInfo.CanonicalAuthority.ToString(),
                     requestParams.Account?.HomeAccountId?.Identifier);
                 var entry = new ThrottlingCacheEntry(ex, retryAfterTimespan);
 
@@ -62,7 +63,7 @@ namespace Microsoft.Identity.Client.OAuth2.Throttling
 
                 string strictThumbprint = ThrottleCommon.GetRequestStrictThumbprint(
                     bodyParams,
-                    requestParams.AuthorityInfo.CanonicalAuthority,
+                    requestParams.AuthorityInfo.CanonicalAuthority.ToString(),
                     requestParams.Account?.HomeAccountId?.Identifier);
 
                 ThrottleCommon.TryThrowServiceException(strictThumbprint, ThrottlingCache, logger, nameof(RetryAfterProvider));

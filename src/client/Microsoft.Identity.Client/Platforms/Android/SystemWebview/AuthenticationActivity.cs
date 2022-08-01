@@ -14,6 +14,7 @@ using AndroidX.Browser.CustomTabs;
 #else
 using Android.Support.CustomTabs;
 #endif
+using Microsoft.Identity.Client.Core;
 using Microsoft.Identity.Client.Internal;
 using Microsoft.Identity.Client.OAuth2;
 using Uri = Android.Net.Uri;
@@ -23,7 +24,11 @@ namespace Microsoft.Identity.Client.Platforms.Android.SystemWebview
     /// <summary>
     /// </summary>
     [Activity(Name = "microsoft.identity.client.AuthenticationActivity")]
+#if MAUI
+    [Preserve(AllMembers = true)]
+#else
     [global::Android.Runtime.Preserve(AllMembers = true)]
+#endif
     internal class AuthenticationActivity : Activity
     {
         internal static RequestContext RequestContext { get; set; }

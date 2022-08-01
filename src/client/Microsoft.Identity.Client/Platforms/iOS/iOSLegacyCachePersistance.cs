@@ -16,9 +16,9 @@ namespace Microsoft.Identity.Client.Platforms.iOS
         private const string LocalSettingsContainerName = "ActiveDirectoryAuthenticationLibrary";
 
         private string _keychainGroup;
-        private readonly ICoreLogger _logger;
+        private readonly ILoggerAdapter _logger;
 
-        public iOSLegacyCachePersistence(ICoreLogger logger)
+        public iOSLegacyCachePersistence(ILoggerAdapter logger)
         {
             _logger = logger;
         }
@@ -76,7 +76,7 @@ namespace Microsoft.Identity.Client.Platforms.iOS
                 var s = new SecRecord(SecKind.GenericPassword)
                 {
                     Generic = NSData.FromString(LocalSettingsContainerName),
-                    Accessible = SecAccessible.Always,
+                    Accessible = SecAccessible.Always,            
                     Service = NAME + " Service",
                     Account = NAME + " cache",
                     Label = NAME + " Label",

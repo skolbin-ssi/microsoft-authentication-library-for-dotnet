@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 using Microsoft.Identity.Client.Core;
+using Microsoft.Identity.Client.Internal;
 using Microsoft.Identity.Client.Internal.Requests;
 using Microsoft.Identity.Client.PlatformsCommon.Interfaces;
 
@@ -37,7 +38,7 @@ namespace Microsoft.Identity.Client.OAuth2.Throttling
                     $"throttling for {s_uiRequiredExpiration.TotalSeconds} seconds. ");
 
                 var thumbprint = GetRequestStrictThumbprint(bodyParams,
-                    requestParams.AuthorityInfo.CanonicalAuthority,
+                    requestParams.AuthorityInfo.CanonicalAuthority.ToString(),
                     requestParams.RequestContext.ServiceBundle.PlatformProxy.CryptographyManager);
                 var entry = new ThrottlingCacheEntry(ex, s_uiRequiredExpiration);
                 ThrottlingCache.AddAndCleanup(thumbprint, entry, logger);
@@ -57,14 +58,14 @@ namespace Microsoft.Identity.Client.OAuth2.Throttling
 
                 string fullThumbprint = GetRequestStrictThumbprint(
                     bodyParams,
-                    requestParams.AuthorityInfo.CanonicalAuthority,
+                    requestParams.AuthorityInfo.CanonicalAuthority.ToString(),
                     requestParams.RequestContext.ServiceBundle.PlatformProxy.CryptographyManager);
 
                 TryThrowException(fullThumbprint, logger);
             }
         }
 
-        private void TryThrowException(string thumbprint, ICoreLogger logger)
+        private void TryThrowException(string thumbprint, ILoggerAdapter logger)
         {
             if (ThrottlingCache.TryGetOrRemoveExpired(thumbprint, logger, out MsalServiceException ex) &&
                 ex is MsalUiRequiredException uiException)
@@ -118,6 +119,12 @@ namespace Microsoft.Identity.Client.OAuth2.Throttling
                 sb.Append(crypto.CreateSha256Hash(rt) + ThrottleCommon.KeyDelimiter);
             }
 
+            // check mam enrollment id
+            if (bodyParams.TryGetValue(SilentRequestHelper.MamEnrollmentIdKey, out string mamEnrollmentId))
+            {
+                sb.Append(crypto.CreateSha256Hash(mamEnrollmentId) + ThrottleCommon.KeyDelimiter);
+            }
+            
             return sb.ToString();
         }
     }

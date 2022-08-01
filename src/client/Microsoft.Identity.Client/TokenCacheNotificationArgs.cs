@@ -2,7 +2,10 @@
 // Licensed under the MIT License.
 
 using System;
+using System.Collections;
+using System.Collections.Generic;
 using System.Threading;
+using Microsoft.IdentityModel.Abstractions;
 
 namespace Microsoft.Identity.Client
 {
@@ -36,9 +39,13 @@ namespace Microsoft.Identity.Client
                    hasTokens,
                    suggestedCacheExpiry,
                    cancellationToken,
+                   default, 
+                   default, 
+                   default,
+                   null,
                    default)
-        {
-        }
+            {
+            }
 
         /// <summary>
         /// This constructor is for test purposes only. It allows apps to unit test their MSAL token cache implementation code.
@@ -53,7 +60,41 @@ namespace Microsoft.Identity.Client
             bool hasTokens,
             DateTimeOffset? suggestedCacheExpiry,
             CancellationToken cancellationToken,
-            Guid correlationId)
+            Guid correlationId)       
+           : this(tokenCache,
+                   clientId,
+                   account,
+                   hasStateChanged,
+                   isApplicationCache,
+                   suggestedCacheKey,
+                   hasTokens,
+                   suggestedCacheExpiry,
+                   cancellationToken,
+                   correlationId,
+                   default,
+                   default,
+                   null,
+                   default)
+        { 
+        }
+
+        /// <summary>
+        /// This constructor is for test purposes only. It allows apps to unit test their MSAL token cache implementation code.
+        /// </summary>
+        public TokenCacheNotificationArgs(    // only use this constructor in product code
+            ITokenCacheSerializer tokenCache,
+            string clientId,
+            IAccount account,
+            bool hasStateChanged,
+            bool isApplicationCache,
+            string suggestedCacheKey,
+            bool hasTokens,
+            DateTimeOffset? suggestedCacheExpiry,
+            CancellationToken cancellationToken,
+            Guid correlationId, 
+            IEnumerable<string> requestScopes,
+            string requestTenantId)
+            
         {
             TokenCache = tokenCache;
             ClientId = clientId;
@@ -64,7 +105,45 @@ namespace Microsoft.Identity.Client
             HasTokens = hasTokens;
             CancellationToken = cancellationToken;
             CorrelationId = correlationId;
+            RequestScopes = requestScopes;
+            RequestTenantId = requestTenantId;
             SuggestedCacheExpiry = suggestedCacheExpiry;
+        }
+
+        /// <summary>
+        /// This constructor is for test purposes only. It allows apps to unit test their MSAL token cache implementation code.
+        /// </summary>
+        public TokenCacheNotificationArgs(    // only use this constructor in product code
+            ITokenCacheSerializer tokenCache,
+            string clientId,
+            IAccount account,
+            bool hasStateChanged,
+            bool isApplicationCache,
+            string suggestedCacheKey,
+            bool hasTokens,
+            DateTimeOffset? suggestedCacheExpiry,
+            CancellationToken cancellationToken,
+            Guid correlationId,
+            IEnumerable<string> requestScopes,
+            string requestTenantId,
+            IIdentityLogger identityLogger,
+            bool piiLoggingEnabled)
+
+        {
+            TokenCache = tokenCache;
+            ClientId = clientId;
+            Account = account;
+            HasStateChanged = hasStateChanged;
+            IsApplicationCache = isApplicationCache;
+            SuggestedCacheKey = suggestedCacheKey;
+            HasTokens = hasTokens;
+            CancellationToken = cancellationToken;
+            CorrelationId = correlationId;
+            RequestScopes = requestScopes;
+            RequestTenantId = requestTenantId;
+            SuggestedCacheExpiry = suggestedCacheExpiry;
+            IdentityLogger = identityLogger;
+            PiiLoggingEnabled = piiLoggingEnabled;
         }
 
         /// <summary>
@@ -135,12 +214,39 @@ namespace Microsoft.Identity.Client
         public Guid CorrelationId { get; }
 
         /// <summary>
+        /// Scopes specified in the AcquireToken* method. 
+        /// </summary>
+        /// <remarks>
+        /// Note that Azure Active Directory may return more scopes than requested, however this property will only contain the scopes requested.
+        /// </remarks>
+        public IEnumerable<string> RequestScopes { get; }
+
+        /// <summary>
+        /// Tenant Id specified in the AcquireToken* method, if any.         
+        /// </summary>
+        /// <remarks>
+        /// Note that if "common" or "organizations" is specified, Azure Active Directory discovers the host tenant for the user, and the tokens 
+        /// are associated with it. This property is not impacted.</remarks>
+        public string RequestTenantId { get; }
+
+        /// <summary>
         /// Suggested value of the expiry, to help determining the cache eviction time. 
         /// This value is <b>only</b> set on the <code>OnAfterAccess</code> delegate, on a cache write
         /// operation (that is when <code>args.HasStateChanged</code> is <code>true</code>) and when the cache write 
         /// is triggered from the <code>AcquireTokenForClient</code> method. In all other cases it's <code>null</code>, as there is a refresh token, and therefore the
         /// access tokens are refreshable.
         /// </summary> 
-        public DateTimeOffset? SuggestedCacheExpiry { get; private set; }
+        public DateTimeOffset? SuggestedCacheExpiry { get; }
+
+        /// <summary>
+        /// Identity Logger provided at the time of application creation Via WithLogging(IIdentityLogger, bool)/>
+        /// Calling the log function will automatically add MSAL formatting to the message. For details see https://aka.ms/msal-net-logging
+        /// </summary>
+        public IIdentityLogger IdentityLogger { get; }
+
+        /// <summary>
+        /// Boolean used to determine if Personally Identifiable Information (PII) logging is enabled.
+        /// </summary>
+        public bool PiiLoggingEnabled { get; }
     }
 }

@@ -23,12 +23,12 @@ namespace Microsoft.Identity.Client.Platforms.Features.WamBroker
         internal static void AddMsalParamsToRequest(
           AuthenticationRequestParameters authenticationRequestParameters,
           WebTokenRequest webTokenRequest,
-          ICoreLogger logger,
-          string overridenAuthority = null)
+          ILoggerAdapter logger,
+          string overriddenAuthority = null)
         {
             AddExtraParamsToRequest(webTokenRequest, authenticationRequestParameters.ExtraQueryParameters);
-            string authority = overridenAuthority ??
-                 authenticationRequestParameters.AuthorityManager.OriginalAuthority.AuthorityInfo.CanonicalAuthority;
+            string authority = overriddenAuthority ??
+                 authenticationRequestParameters.AuthorityManager.OriginalAuthority.AuthorityInfo.CanonicalAuthority.ToString();
             bool validate = authenticationRequestParameters.AuthorityInfo.ValidateAuthority;
             AddAuthorityParamToRequest(authority, validate, webTokenRequest);
 
@@ -39,7 +39,7 @@ namespace Microsoft.Identity.Client.Platforms.Features.WamBroker
          IWebTokenRequestResultWrapper wamResponse,
          IWamPlugin wamPlugin,
          string clientId,
-         ICoreLogger logger,
+         ILoggerAdapter logger,
          bool isInteractive)
         {
             string internalErrorCode = null;
@@ -144,7 +144,7 @@ namespace Microsoft.Identity.Client.Platforms.Features.WamBroker
             }
         }
 
-        private static void AddTelemetryPropertiesToRequest(WebTokenRequest request, ICoreLogger logger)
+        private static void AddTelemetryPropertiesToRequest(WebTokenRequest request, ILoggerAdapter logger)
         {
             if (s_telemetryHeaders == null)
             {

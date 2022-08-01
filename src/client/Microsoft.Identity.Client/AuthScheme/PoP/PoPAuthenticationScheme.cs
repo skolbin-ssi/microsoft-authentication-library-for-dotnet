@@ -115,7 +115,7 @@ namespace Microsoft.Identity.Client.AuthScheme.PoP
         private static string CreateSimpleNonce()
         {
             // Guid with no hyphens
-#if NETSTANDARD || WINDOWS_APP
+#if WINDOWS_APP
             return Guid.NewGuid().ToString("N");
 #else
             return Guid.NewGuid().ToString("N", CultureInfo.InvariantCulture);
@@ -134,12 +134,12 @@ namespace Microsoft.Identity.Client.AuthScheme.PoP
         /// strict, AAD support for PoP requires that we use the base64 encoded JWK thumbprint, as described by 
         /// https://tools.ietf.org/html/rfc7638
         /// </summary>
-        private static byte[] ComputeThumbprint(string cannonicalJwk)
+        private static byte[] ComputeThumbprint(string canonicalJwk)
         {
             // Cannot be easily generalized in UAP and NetStandard 1.3
             using (SHA256 hash = SHA256.Create())
             {
-                return hash.ComputeHash(Encoding.UTF8.GetBytes(cannonicalJwk));
+                return hash.ComputeHash(Encoding.UTF8.GetBytes(canonicalJwk));
             }
         }
 

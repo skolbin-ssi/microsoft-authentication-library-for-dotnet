@@ -12,6 +12,8 @@ using Microsoft.Identity.Client.Http;
 using Microsoft.Identity.Client.Core;
 using System.Text;
 using Microsoft.Identity.Client.Internal;
+using System.Diagnostics.Tracing;
+using Microsoft.Identity.Client.Extensibility;
 
 namespace Microsoft.Identity.Client.OAuth2
 {
@@ -120,6 +122,7 @@ namespace Microsoft.Identity.Client.OAuth2
                     AccountUserId = homeAcctId != null ? AccountId.ParseFromString(homeAcctId).ObjectId : null,
                     TenantId = homeAcctId != null ?  AccountId.ParseFromString(homeAcctId).TenantId : null,
                     Upn = (metadataDictionary?.ContainsKey(TokenResponseClaim.Upn) ?? false) ? metadataDictionary[TokenResponseClaim.Upn] : null,
+                    CorrelationId = responseDictionary.ContainsKey(BrokerResponseConst.CorrelationId) ? responseDictionary[BrokerResponseConst.CorrelationId] : null,
                 };
             }
 
@@ -152,7 +155,7 @@ namespace Microsoft.Identity.Client.OAuth2
             return response;
         }
 
-        internal static MsalTokenResponse CreateFromAppProviderResponse(TokenProviderResult tokenProviderResponse)
+        internal static MsalTokenResponse CreateFromAppProviderResponse(AppTokenProviderResult tokenProviderResponse)
         {
             ValidateTokenProviderResult(tokenProviderResponse);
 
@@ -173,7 +176,7 @@ namespace Microsoft.Identity.Client.OAuth2
             return response;
         }
 
-        private static void ValidateTokenProviderResult(TokenProviderResult TokenProviderResult)
+        private static void ValidateTokenProviderResult(AppTokenProviderResult TokenProviderResult)
         {
             if (string.IsNullOrEmpty(TokenProviderResult.AccessToken))
             {
@@ -183,11 +186,6 @@ namespace Microsoft.Identity.Client.OAuth2
             if (TokenProviderResult.ExpiresInSeconds == 0 || TokenProviderResult.ExpiresInSeconds < 0)
             {
                 HandleInvalidExternalValueError(nameof(TokenProviderResult.ExpiresInSeconds));
-            }
-
-            if (string.IsNullOrEmpty(TokenProviderResult.TenantId))
-            {
-                HandleInvalidExternalValueError(nameof(TokenProviderResult.TenantId));
             }
         }
 
@@ -240,7 +238,7 @@ namespace Microsoft.Identity.Client.OAuth2
             return msalTokenResponse;
         }
 
-        public void Log(ICoreLogger logger, LogLevel logLevel)
+        public void Log(ILoggerAdapter logger, LogLevel logLevel)
         {
             if (logger.IsLoggingEnabled(logLevel))
             {

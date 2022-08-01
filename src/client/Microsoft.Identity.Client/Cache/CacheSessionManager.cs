@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading.Tasks;
 using Microsoft.Identity.Client.Cache.Items;
+using Microsoft.Identity.Client.Core;
 using Microsoft.Identity.Client.Internal;
 using Microsoft.Identity.Client.Internal.Requests;
 using Microsoft.Identity.Client.OAuth2;
@@ -117,14 +118,18 @@ namespace Microsoft.Identity.Client.Cache
                                 var args = new TokenCacheNotificationArgs(
                                   TokenCacheInternal,
                                   _requestParams.AppConfig.ClientId,
-                                  _requestParams.Account,
+                                  _requestParams.Account,                                  
                                   hasStateChanged: false,
                                   isApplicationCache: TokenCacheInternal.IsApplicationCache,
                                   suggestedCacheKey: key,
                                   hasTokens: TokenCacheInternal.HasTokensNoLocks(),
                                   cancellationToken: _requestParams.RequestContext.UserCancellationToken,
                                   suggestedCacheExpiry: null,
-                                  correlationId: _requestParams.RequestContext.CorrelationId);
+                                  correlationId: _requestParams.RequestContext.CorrelationId, 
+                                  requestScopes: _requestParams.Scope, 
+                                  requestTenantId: _requestParams.AuthorityManager.OriginalAuthority.TenantId,
+                                  identityLogger: _requestParams.RequestContext.Logger.IdentityLogger,
+                                  piiLoggingEnabled: _requestParams.RequestContext.Logger.PiiLoggingEnabled);
 
                                 stopwatch.Start();
                                 await TokenCacheInternal.OnBeforeAccessAsync(args).ConfigureAwait(false);
@@ -146,7 +151,11 @@ namespace Microsoft.Identity.Client.Cache
                                   hasTokens: TokenCacheInternal.HasTokensNoLocks(),
                                   cancellationToken: _requestParams.RequestContext.UserCancellationToken,
                                   suggestedCacheExpiry: null,
-                                  correlationId: _requestParams.RequestContext.CorrelationId);
+                                  correlationId: _requestParams.RequestContext.CorrelationId,
+                                  requestScopes: _requestParams.Scope,
+                                  requestTenantId: _requestParams.AuthorityManager.OriginalAuthority.TenantId,
+                                  identityLogger: _requestParams.RequestContext.Logger.IdentityLogger,
+                                  piiLoggingEnabled: _requestParams.RequestContext.Logger.PiiLoggingEnabled);
 
                                 await TokenCacheInternal.OnAfterAccessAsync(args).ConfigureAwait(false);
                                 RequestContext.ApiEvent.DurationInCacheInMs += stopwatch.ElapsedMilliseconds;

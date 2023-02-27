@@ -74,13 +74,44 @@ namespace Microsoft.Identity.Client.Http
         }
 
         /// <summary>
+        /// Performs the GET request just like <see cref="SendGetAsync(Uri, IDictionary{string, string}, ILoggerAdapter, bool, CancellationToken)"/>
+        /// but does not throw a ServiceUnavailable service exception. Instead, it returns the <see cref="HttpResponse"/> associated
+        /// with the request.
+        /// </summary>
+        public async Task<HttpResponse> SendGetForceResponseAsync(
+            Uri endpoint,
+            IDictionary<string, string> headers,
+            ILoggerAdapter logger,
+            bool retry = true,
+            CancellationToken cancellationToken = default)
+        {
+            return await ExecuteWithRetryAsync(endpoint, headers, null, HttpMethod.Get, logger, retry: retry, doNotThrow: true, cancellationToken: cancellationToken).ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// Performs the POST request just like <see cref="SendPostAsync(Uri, IDictionary{string, string}, IDictionary{String, String}, ILoggerAdapter, CancellationToken)"/>
+        /// but does not throw a ServiceUnavailable service exception. Instead, it returns the <see cref="HttpResponse"/> associated
+        /// with the request.
+        /// </summary>
+        public async Task<HttpResponse> SendPostForceResponseAsync(
+            Uri uri,
+            IDictionary<string, string> headers,
+            IDictionary<string, string> bodyParameters,
+            ILoggerAdapter logger,
+            CancellationToken cancellationToken = default)
+        {
+            HttpContent body = bodyParameters == null ? null : new FormUrlEncodedContent(bodyParameters);
+            return await ExecuteWithRetryAsync(uri, headers, body, HttpMethod.Post, logger, doNotThrow: true, cancellationToken: cancellationToken).ConfigureAwait(false);
+        }
+
+        /// <summary>
         /// Performs the POST request just like <see cref="SendPostAsync(Uri, IDictionary{string, string}, HttpContent, ILoggerAdapter, CancellationToken)"/>
         /// but does not throw a ServiceUnavailable service exception. Instead, it returns the <see cref="HttpResponse"/> associated
         /// with the request.
         /// </summary>
         public async Task<HttpResponse> SendPostForceResponseAsync(
             Uri uri,
-            Dictionary<string, string> headers,
+            IDictionary<string, string> headers,
             StringContent body,
             ILoggerAdapter logger,
             CancellationToken cancellationToken = default)
@@ -114,10 +145,10 @@ namespace Microsoft.Identity.Client.Http
             CancellationToken cancellationToken = default)
         {
             Exception timeoutException = null;
-            bool isRetryable = false;
-            bool is5xxError = false;
+            bool isRetryableStatusCode = false;
             HttpResponse response = null;
-
+            bool isRetryable;
+            
             try
             {
                 HttpContent clonedBody = body;
@@ -138,12 +169,12 @@ namespace Microsoft.Identity.Client.Http
                     return response;
                 }
 
-                logger.Info(string.Format(CultureInfo.InvariantCulture,
+                logger.Info(() => string.Format(CultureInfo.InvariantCulture,
                     MsalErrorMessage.HttpRequestUnsuccessful,
                     (int)response.StatusCode, response.StatusCode));
 
-                is5xxError = (int)response.StatusCode >= 500 && (int)response.StatusCode < 600;
-                isRetryable = is5xxError && _retryConfig && !HasRetryAfterHeader(response);
+                isRetryableStatusCode = IsRetryableStatusCode((int)response.StatusCode);
+                isRetryable = isRetryableStatusCode && _retryConfig && !HasRetryAfterHeader(response);
             }
             catch (TaskCanceledException exception)
             {
@@ -169,7 +200,8 @@ namespace Microsoft.Identity.Client.Http
                     method,
                     logger,
                     doNotThrow,
-                    retry: false).ConfigureAwait(false);
+                    retry: false,
+                    cancellationToken: cancellationToken).ConfigureAwait(false);
             }
 
             logger.Warning("Request retry failed.");
@@ -186,7 +218,8 @@ namespace Microsoft.Identity.Client.Http
                 return response;
             }
 
-            if (is5xxError)
+            // package 500 errors in a "service not available" exception
+            if (isRetryableStatusCode)
             {
                 throw MsalServiceExceptionFactory.FromHttpResponse(
                     MsalError.ServiceNotAvailable,
@@ -218,8 +251,8 @@ namespace Microsoft.Identity.Client.Http
                 requestMessage.Content = body;
 
                 logger.VerbosePii(
-                    $"[HttpManager] Sending request. Method: {method}. URI: {(endpoint == null ? "NULL" : $"{endpoint.Scheme}://{endpoint.Authority}{endpoint.AbsolutePath}")}. ",
-                    $"[HttpManager] Sending request. Method: {method}. Host: {(endpoint == null ? "NULL" : $"{endpoint.Scheme}://{endpoint.Authority}")}. ");
+                    () => $"[HttpManager] Sending request. Method: {method}. URI: {(endpoint == null ? "NULL" : $"{endpoint.Scheme}://{endpoint.Authority}{endpoint.AbsolutePath}")}. ",
+                    () => $"[HttpManager] Sending request. Method: {method}. Host: {(endpoint == null ? "NULL" : $"{endpoint.Scheme}://{endpoint.Authority}")}. ");
 
                 Stopwatch sw = Stopwatch.StartNew();
 
@@ -229,7 +262,7 @@ namespace Microsoft.Identity.Client.Http
                     await client.SendAsync(requestMessage, cancellationToken).ConfigureAwait(false))
                 {
                     LastRequestDurationInMs = sw.ElapsedMilliseconds;
-                    logger.Verbose($"[HttpManager] Received response. Status code: {responseMessage.StatusCode}. ");
+                    logger.Verbose(()=>$"[HttpManager] Received response. Status code: {responseMessage.StatusCode}. ");
 
                     HttpResponse returnValue = await CreateResponseAsync(responseMessage).ConfigureAwait(false);
                     returnValue.UserAgent = requestMessage.Headers.UserAgent.ToString();
@@ -277,6 +310,15 @@ namespace Microsoft.Identity.Client.Http
 #endif
 
             return clone;
+        }
+
+        /// <summary>
+        /// In HttpManager, the retry policy is based on this simple condition.
+        /// Avoid changing this, as it's breaking change.
+        /// </summary>
+        private static bool IsRetryableStatusCode(int statusCode)
+        {
+            return statusCode >= 500 && statusCode < 600;                
         }
     }
 }

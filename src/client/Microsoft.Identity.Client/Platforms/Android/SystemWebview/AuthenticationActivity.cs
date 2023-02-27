@@ -23,7 +23,7 @@ namespace Microsoft.Identity.Client.Platforms.Android.SystemWebview
 {
     /// <summary>
     /// </summary>
-    [Activity(Name = "microsoft.identity.client.AuthenticationActivity")]
+    [Activity(Name = "microsoft.identity.client.AuthenticationActivity", Exported=true)]
 #if MAUI
     [Preserve(AllMembers = true)]
 #else
@@ -131,7 +131,7 @@ namespace Microsoft.Identity.Client.Platforms.Android.SystemWebview
             }
             else
             {
-                RequestContext.Logger.Info(
+                RequestContext.Logger.Info(() =>
                     string.Format(
                     CultureInfo.CurrentCulture,
                     "Browser with custom tabs package available. Using {0}. ",

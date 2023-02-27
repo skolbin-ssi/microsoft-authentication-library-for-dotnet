@@ -1,4 +1,4 @@
-# Microsoft Authentication Library (MSAL) for .NET, UWP, NetCore, Xamarin Android and iOS
+# Microsoft Authentication Library (MSAL) for .NET, UWP, NetCore, MAUI, Xamarin Android and iOS
 
 The MSAL library for .NET is part of the [Microsoft identity platform for developers](https://aka.ms/aaddevv2) (formerly named Azure AD) v2.0. It enables you to acquire security tokens to call protected APIs. It uses industry standard OAuth2 and OpenID Connect. The library also supports [Azure AD B2C](https://azure.microsoft.com/services/active-directory-b2c/).
 
@@ -38,12 +38,12 @@ MSAL.NET became Generally Available with MSAL.NET 3.0.8. Since MSAL.NET moved to
 
 ## Using MSAL.NET
 
-- The conceptual documentation is currently available from the [Microsoft identity platform documentation](https://docs.microsoft.com/en-us/azure/active-directory/develop/msal-overview) and our [Wiki pages](https://aka.ms/msal-net)
-- The reference documentation is available from the .NET APIs reference in [docs.microsoft.com](https://docs.microsoft.com/dotnet/api/microsoft.identity.client?view=azure-dotnet)
+- The conceptual documentation is currently available from the [Microsoft identity platform documentation](https://learn.microsoft.com/azure/active-directory/develop/msal-overview) and our [Wiki pages](https://aka.ms/msal-net)
+- The reference documentation is available from the .NET APIs reference on [learn.microsoft.com](https://learn.microsoft.com/dotnet/api/microsoft.identity.client?view=msal-dotnet-latest)
 - A number of quickstarts are available for:
-  - [.NET desktop application](https://docs.microsoft.com/en-us/azure/active-directory/develop/quickstart-v2-windows-desktop)
-  - [Universal Windows Platform (UWP)](https://docs.microsoft.com/en-us/azure/active-directory/develop/quickstart-v2-uwp)
-  - [.NET Core daemon console](https://docs.microsoft.com/en-us/azure/active-directory/develop/quickstart-v2-netcore-daemon)
+  - [.NET desktop application](https://learn.microsoft.com/azure/active-directory/develop/desktop-app-quickstart?pivots=devlang-windows-desktop)
+  - [Universal Windows Platform (UWP)](https://learn.microsoft.com/azure/active-directory/develop/desktop-app-quickstart?pivots=devlang-uwp)
+  - [.NET Core daemon console](https://learn.microsoft.com/azure/active-directory/develop/console-app-quickstart?pivots=devlang-dotnet-core)
 - Code samples are available from [Samples](https://aka.ms/aaddevsamplesv2)
 
 ## Where do I file issues
@@ -63,6 +63,9 @@ Platform of choice:
 * UAP 10.0
 * Xamarin.iOS 10
 * Xamarin.Mac 2.0
+* Net6.0-android
+* Net6.0-ios
+* WINUI3
  
 ## Community Help and Support
 
@@ -87,7 +90,7 @@ This library controls how users sign-in and access services. We recommend you al
 
 ## Security Reporting
 
-If you find a security issue with our libraries or services please report it to [secure@microsoft.com](mailto:secure@microsoft.com) with as much detail as possible. Your submission may be eligible for a bounty through the [Microsoft Bounty](http://aka.ms/bugbounty) program. Please do not post security issues to GitHub Issues or any other public site. We will contact you shortly upon receiving the information. We encourage you to get notifications of when security incidents occur by visiting [this page](https://technet.microsoft.com/en-us/security/dd252948) and subscribing to Security Advisory Alerts.
+If you find a security issue with our libraries or services please report it to [secure@microsoft.com](mailto:secure@microsoft.com) with as much detail as possible. Your submission may be eligible for a bounty through the [Microsoft Bounty](https://aka.ms/bugbounty) program. Please do not post security issues to GitHub Issues or any other public site. We will contact you shortly upon receiving the information. We encourage you to get notifications of when security incidents occur by visiting the [Microsoft Technical Security Notifications page](https://www.microsoft.com/msrc/technical-security-notifications?rtc=1) and subscribing to Security Advisory Alerts.
 
 ## Data Collection. 
 

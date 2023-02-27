@@ -82,7 +82,7 @@ namespace Microsoft.Identity.Client.Internal.Requests
 
             ApiEvent apiEvent = InitializeApiEvent(AuthenticationRequestParameters.Account?.HomeAccountId?.Identifier);
             AuthenticationRequestParameters.RequestContext.ApiEvent = apiEvent;
-            MsalTelemetryEventDetails telemetryEventDetails = new MsalTelemetryEventDetails();
+            MsalTelemetryEventDetails telemetryEventDetails = new MsalTelemetryEventDetails(TelemetryConstants.AcquireTokenEventName);
             ITelemetryClient[] telemetryClients = AuthenticationRequestParameters.RequestContext.ServiceBundle.Config.TelemetryClients;
 
             using (AuthenticationRequestParameters.RequestContext.CreateTelemetryHelper(apiEvent))
@@ -104,6 +104,7 @@ namespace Microsoft.Identity.Client.Internal.Requests
                 {
                     apiEvent.ApiErrorCode = ex.ErrorCode;
                     AuthenticationRequestParameters.RequestContext.Logger.ErrorPii(ex);
+                    LogErrorTelemetryToClient(ex.ErrorCode, telemetryEventDetails, telemetryClients);
                     throw;
                 }
                 catch (Exception ex)
@@ -116,6 +117,15 @@ namespace Microsoft.Identity.Client.Internal.Requests
                 {
                     telemetryClients.TrackEvent(telemetryEventDetails);
                 }
+            }
+        }
+
+        private void LogErrorTelemetryToClient(string errorCode, MsalTelemetryEventDetails telemetryEventDetails, ITelemetryClient[] telemetryClients)
+        {
+            if (telemetryClients.HasEnabledClients(TelemetryConstants.AcquireTokenEventName))
+            {
+                telemetryEventDetails.SetProperty(TelemetryConstants.Succeeded, false);
+                telemetryEventDetails.SetProperty(TelemetryConstants.ErrorCode, errorCode);
             }
         }
 
@@ -137,19 +147,22 @@ namespace Microsoft.Identity.Client.Internal.Requests
 
         private static void LogMetricsFromAuthResult(AuthenticationResult authenticationResult, ILoggerAdapter logger)
         {
-            var sb = new StringBuilder(250);
-            sb.AppendLine();
-            sb.Append("[LogMetricsFromAuthResult] Cache Refresh Reason: ");
-            sb.AppendLine(authenticationResult.AuthenticationResultMetadata.CacheRefreshReason.ToString());
-            sb.Append("[LogMetricsFromAuthResult] DurationInCacheInMs: ");
-            sb.AppendLine(authenticationResult.AuthenticationResultMetadata.DurationInCacheInMs.ToString());
-            sb.Append("[LogMetricsFromAuthResult] DurationTotalInMs: ");
-            sb.AppendLine(authenticationResult.AuthenticationResultMetadata.DurationTotalInMs.ToString());
-            sb.Append("[LogMetricsFromAuthResult] DurationInHttpInMs: ");
-            sb.AppendLine(authenticationResult.AuthenticationResultMetadata.DurationInHttpInMs.ToString());
-            logger.Always(sb.ToString());
-            logger.AlwaysPii($"[LogMetricsFromAuthResult] TokenEndpoint: {authenticationResult.AuthenticationResultMetadata.TokenEndpoint ?? ""}",
-                                "TokenEndpoint: ****");
+            if (logger.IsLoggingEnabled(LogLevel.Always))
+            {
+                var sb = new StringBuilder(250);
+                sb.AppendLine();
+                sb.Append("[LogMetricsFromAuthResult] Cache Refresh Reason: ");
+                sb.AppendLine(authenticationResult.AuthenticationResultMetadata.CacheRefreshReason.ToString());
+                sb.Append("[LogMetricsFromAuthResult] DurationInCacheInMs: ");
+                sb.AppendLine(authenticationResult.AuthenticationResultMetadata.DurationInCacheInMs.ToString());
+                sb.Append("[LogMetricsFromAuthResult] DurationTotalInMs: ");
+                sb.AppendLine(authenticationResult.AuthenticationResultMetadata.DurationTotalInMs.ToString());
+                sb.Append("[LogMetricsFromAuthResult] DurationInHttpInMs: ");
+                sb.AppendLine(authenticationResult.AuthenticationResultMetadata.DurationInHttpInMs.ToString());
+                logger.Always(sb.ToString());
+                logger.AlwaysPii($"[LogMetricsFromAuthResult] TokenEndpoint: {authenticationResult.AuthenticationResultMetadata.TokenEndpoint ?? ""}",
+                                    "TokenEndpoint: ****");
+            }
         }
 
         private static void UpdateTelemetry(Stopwatch sw, ApiEvent apiEvent, AuthenticationResult authenticationResult)
@@ -179,6 +192,7 @@ namespace Microsoft.Identity.Client.Internal.Requests
             apiEvent.IsTokenCacheSerialized = AuthenticationRequestParameters.CacheSessionManager.TokenCacheInternal.IsExternalSerializationConfiguredByUser();
             apiEvent.IsLegacyCacheEnabled = AuthenticationRequestParameters.RequestContext.ServiceBundle.Config.LegacyCacheCompatibilityEnabled;
             apiEvent.CacheInfo = CacheRefreshReason.NotApplicable;
+            apiEvent.TokenType = AuthenticationRequestParameters.AuthenticationScheme.TelemetryTokenType;
 
             // Give derived classes the ability to add or modify fields in the telemetry as needed.
             EnrichTelemetryApiEvent(apiEvent);
@@ -251,7 +265,7 @@ namespace Microsoft.Identity.Client.Internal.Requests
             AuthenticationRequestParameters.RequestContext.Logger.ErrorPii(
                 string.Format(
                     CultureInfo.InvariantCulture,
-                    "Returned user identifiers (uid:{0} utid:{1}) does not match the sent user identifier (uid:{2} utid:{3})",
+                    "User identifier returned by AAD (uid:{0} utid:{1}) does not match the user identifier sent. (uid:{2} utid:{3})",
                     fromServer.UniqueObjectIdentifier,
                     fromServer.UniqueTenantIdentifier,
                     AuthenticationRequestParameters.Account.HomeAccountId.ObjectId,
@@ -379,7 +393,7 @@ namespace Microsoft.Identity.Client.Internal.Requests
                 authenticationRequestParameters.RequestContext.Logger.InfoPii(messageWithPii, messageWithoutPii);
             }
 
-            if (authenticationRequestParameters.IsConfidentialClient &&
+            if (authenticationRequestParameters.AppConfig.IsConfidentialClient &&
                 !authenticationRequestParameters.IsClientCredentialRequest &&
                 !CacheManager.TokenCacheInternal.IsAppSubscribedToSerializationEvents())
             {
@@ -397,9 +411,9 @@ namespace Microsoft.Identity.Client.Internal.Requests
                 
                 AuthenticationRequestParameters.RequestContext.Logger.Info("\n\t=== Token Acquisition finished successfully:");
                 AuthenticationRequestParameters.RequestContext.Logger.InfoPii(
-                        $" AT expiration time: {result.ExpiresOn}, scopes: {scopes}. " +
+                       () => $" AT expiration time: {result.ExpiresOn}, scopes: {scopes}. " +
                             $"source: {result.AuthenticationResultMetadata.TokenSource}",
-                        $" AT expiration time: {result.ExpiresOn}, scopes: {scopes}. " +
+                       () => $" AT expiration time: {result.ExpiresOn}, scopes: {scopes}. " +
                             $"source: {result.AuthenticationResultMetadata.TokenSource}");
 
                 if (result.AuthenticationResultMetadata.TokenSource != TokenSource.Cache)
@@ -407,8 +421,8 @@ namespace Microsoft.Identity.Client.Internal.Requests
                     Uri canonicalAuthority = AuthenticationRequestParameters.AuthorityInfo.CanonicalAuthority;
 
                     AuthenticationRequestParameters.RequestContext.Logger.InfoPii(
-                        $"Fetched access token from host {canonicalAuthority.Host}. Endpoint: {canonicalAuthority}. ",
-                        $"Fetched access token from host {canonicalAuthority.Host}. ");
+                        () => $"Fetched access token from host {canonicalAuthority.Host}. Endpoint: {canonicalAuthority}. ",
+                        () => $"Fetched access token from host {canonicalAuthority.Host}. ");
                 }
             }
         }
@@ -416,10 +430,10 @@ namespace Microsoft.Identity.Client.Internal.Requests
         internal async Task<AuthenticationResult> HandleTokenRefreshErrorAsync(MsalServiceException e, MsalAccessTokenCacheItem cachedAccessTokenItem)
         {
             var logger = AuthenticationRequestParameters.RequestContext.Logger;
-            bool isAadUnavailable = e.IsAadUnavailable();
-            logger.Warning($"Fetching a new AT failed. Is AAD down? {isAadUnavailable}. Is there an AT in the cache that is usable? {cachedAccessTokenItem != null}");
+            
+            logger.Warning($"Fetching a new AT failed. Is exception retry-able? {e.IsRetryable}. Is there an AT in the cache that is usable? {cachedAccessTokenItem != null}");
 
-            if (cachedAccessTokenItem != null && isAadUnavailable)
+            if (cachedAccessTokenItem != null && e.IsRetryable)
             {
                 logger.Info("Returning existing access token. It is not expired, but should be refreshed. ");
 

@@ -10,6 +10,8 @@ namespace Microsoft.Identity.Client.Utils
 {
     internal static class ScopeHelper
     {
+        private const string DefaultSuffix = "/.default";
+
         public static bool ScopeContains(ISet<string> outerSet, IEnumerable<string> possibleContainedSet)
         {
             foreach (string key in possibleContainedSet)
@@ -26,6 +28,27 @@ namespace Microsoft.Identity.Client.Utils
         public static HashSet<string> GetMsalScopes(HashSet<string> userScopes)
         {
             return new HashSet<string>(userScopes.Concat(OAuth2Value.ReservedScopes));
+        }
+
+        public static string GetMsalRuntimeScopes()
+        {
+            return string.Join(" ", OAuth2Value.ReservedScopes);
+        }
+
+        public static bool HasNonMsalScopes(HashSet<string> userScopes)
+        {
+            if (userScopes == null)
+                return false;
+
+            foreach (var userScope in userScopes)
+            {
+                if (!string.IsNullOrWhiteSpace(userScope) && 
+                    !OAuth2Value.ReservedScopes.Contains(userScope))
+                {
+                    return true;
+                }
+            }
+            return false;
         }
 
         public static HashSet<string> ConvertStringToScopeSet(string singleString)
@@ -48,6 +71,26 @@ namespace Microsoft.Identity.Client.Utils
             }
 
             return new HashSet<string>(input, StringComparer.OrdinalIgnoreCase);
-        }    
+        }
+
+        public static string ScopesToResource(string[] scopes)
+        {
+            if (scopes == null)
+            {
+                throw new MsalClientException(MsalError.ExactlyOneScopeExpected, MsalErrorMessage.ManagedIdentityExactlyOneScopeExpected);
+            }
+
+            if (scopes.Length != 1)
+            {
+                throw new MsalClientException(MsalError.ExactlyOneScopeExpected, MsalErrorMessage.ManagedIdentityExactlyOneScopeExpected);
+            }
+
+            if (!scopes[0].EndsWith(DefaultSuffix, StringComparison.Ordinal))
+            {
+                return scopes[0];
+            }
+
+            return scopes[0].Remove(scopes[0].LastIndexOf(DefaultSuffix, StringComparison.Ordinal));
+        }
     }
 }

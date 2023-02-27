@@ -21,7 +21,7 @@ namespace Microsoft.Identity.Client.Internal
 
         internal static async Task<MsalTokenResponse> RefreshAccessTokenAsync(MsalRefreshTokenCacheItem msalRefreshTokenItem, RequestBase request, AuthenticationRequestParameters authenticationRequestParameters, CancellationToken cancellationToken)
         {
-            authenticationRequestParameters.RequestContext.Logger.Verbose("Refreshing access token...");
+            authenticationRequestParameters.RequestContext.Logger.Verbose(() => "Refreshing access token...");
             await authenticationRequestParameters.AuthorityManager.RunInstanceDiscoveryAndValidationAsync().ConfigureAwait(false);
 
             var dict = GetBodyParameters(msalRefreshTokenItem.Secret);
@@ -89,7 +89,7 @@ namespace Microsoft.Identity.Client.Internal
                 }
                 catch (MsalServiceException ex)
                 {
-                    string logMsg = $"Background fetch failed with MsalServiceException. Is AAD down? { ex.IsAadUnavailable()}";
+                    string logMsg = $"Background fetch failed with MsalServiceException. Is exception retryable? { ex.IsRetryable}";
                     if (ex.StatusCode == 400)
                     {
                         logger.ErrorPiiWithPrefix(ex, logMsg);

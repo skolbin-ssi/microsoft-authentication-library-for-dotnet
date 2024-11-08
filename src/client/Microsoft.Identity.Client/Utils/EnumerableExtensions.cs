@@ -49,9 +49,7 @@ namespace Microsoft.Identity.Client.Utils
                 list = list.Where(predicate).ToList();
             }
 
-
             logger.Verbose(() => $"{logPrefix} - item count after: {list.Count} ");
-
 
             return list;
         }
@@ -60,13 +58,18 @@ namespace Microsoft.Identity.Client.Utils
             this IDictionary<TKey, TValue> source,
             IDictionary<TKey, TValue> other)
         {
-            other?.ToList().ForEach(x =>
+            if (source == null || other == null)
             {
-                if (!source.ContainsKey(x.Key))
+                return;
+            }
+
+            foreach (var item in other)
+            {
+                if (!source.ContainsKey(item.Key))
                 {
-                    source[x.Key] = x.Value;
+                    source[item.Key] = item.Value;
                 }
-            });
+            }
         }
     }
 }

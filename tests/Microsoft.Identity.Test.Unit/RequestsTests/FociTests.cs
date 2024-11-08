@@ -63,7 +63,7 @@ namespace Microsoft.Identity.Test.Unit.RequestsTests
                 await AssertAccountsAsync().ConfigureAwait(false);
 
                 // Make sure smth reloads the cache before using the Accessor from the other app (GetAccounts will)
-                Assert.AreEqual(2, _appA.UserTokenCacheInternal.Accessor.GetAllAppMetadata().Count());
+                Assert.AreEqual(2, _appA.UserTokenCacheInternal.Accessor.GetAllAppMetadata().Count);
                 Assert.IsTrue(_appA.UserTokenCacheInternal.Accessor.GetAllAppMetadata().All(am => am.FamilyId == "1"));
                 Assert.AreEqual("1", _appA.UserTokenCacheInternal.Accessor.GetAllRefreshTokens().Single().FamilyId);
             }
@@ -82,7 +82,7 @@ namespace Microsoft.Identity.Test.Unit.RequestsTests
                 // Act
                 await InteractiveAsync(_appA, ServerTokenResponse.FociToken).ConfigureAwait(false);
 
-                // B cannot acquire a token interactivelty, but will try to use FRT
+                // B cannot acquire a token interactively, but will try to use FRT
                 var ex = await AssertException.TaskThrowsAsync<MsalUiRequiredException>(
                     () => SilentAsync(_appB, ServerTokenResponse.ErrorClientMismatch)).ConfigureAwait(false);
                 Assert.AreEqual(MsalError.NoTokensFoundError, ex.ErrorCode);
@@ -113,9 +113,10 @@ namespace Microsoft.Identity.Test.Unit.RequestsTests
                 // Act
                 await InteractiveAsync(_appA, ServerTokenResponse.FociToken).ConfigureAwait(false);
 
-                // B cannot acquire a token interactivelty, but will try to use FRT
+                // B cannot acquire a token interactively, but will try to use FRT
                 var ex = await AssertException.TaskThrowsAsync<MsalUiRequiredException>(
                     () => SilentAsync(_appB, ServerTokenResponse.OtherError)).ConfigureAwait(false);
+
                 Assert.AreEqual(MsalError.InvalidGrantError, ex.ErrorCode);
                 Assert.IsTrue(!String.IsNullOrEmpty(ex.CorrelationId));
 

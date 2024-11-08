@@ -14,8 +14,8 @@ namespace Microsoft.Identity.Client
         /// <summary>
         /// Standard OAuth2 protocol error code. It indicates that the application needs to expose the UI to the user
         /// so that the user does an interactive action in order to get a new token.
-        /// <para>Mitigation:</para> If your application is a <see cref="T:IPublicClientApplication"/> call <c>AcquireTokenInteractive</c>
-        /// perform an interactive authentication. If your application is a <see cref="T:ConfidentialClientApplication"/> chances are that the Claims member
+        /// <para>Mitigation:</para> If your application is a <see cref="IPublicClientApplication"/> call <c>AcquireTokenInteractive</c>
+        /// perform an interactive authentication. If your application is a <see cref="ConfidentialClientApplication"/> chances are that the Claims member
         /// of the exception is not empty. See <see cref="P:MsalServiceException.Claims"/> for the right mitigation
         /// </summary>
         public const string InvalidGrantError = "invalid_grant";
@@ -23,9 +23,9 @@ namespace Microsoft.Identity.Client
         /// <summary>
         /// Standard OAuth2 protocol error code. It indicates that the application needs to expose the UI to the user
         /// so the user can do an interactive log-in to get a token with updated claims.
-        /// <para>Mitigation:</para> If your application is a <see cref="T:IPublicClientApplication"/> call <c>AcquireTokenInteractive</c>
-        /// perform an interactive authentication. If your application is a <see cref="T:ConfidentialClientApplication"/> chances are that the Claims member
-        /// of the exception is not empty. See <see cref="P:MsalServiceException.Claims"/> for the right mitigation
+        /// <para>Mitigation:</para> If your application is a <see cref="IPublicClientApplication"/> call <c>AcquireTokenInteractive</c>
+        /// perform an interactive authentication. If your application is a <see cref="ConfidentialClientApplication"/> chances are that the Claims member
+        /// of the exception is not empty. See <see cref="MsalServiceException.Claims"/> for the right mitigation
         /// </summary>
         public const string InteractionRequired = "interaction_required";
 
@@ -128,7 +128,7 @@ namespace Microsoft.Identity.Client
 
         /// <summary>
         /// loginHint should be a UPN
-        /// <para>What happens?</para> An override of a token acquisition operation was called in <see cref="T:IPublicClientApplication"/> which
+        /// <para>What happens?</para> An override of a token acquisition operation was called in <see cref="IPublicClientApplication"/> which
         /// takes a <c>loginHint</c> as a parameters, but this login hint was not using the UserPrincipalName (UPN) format, e.g. <c>john.doe@contoso.com</c>
         /// expected by the service
         /// <para>Remediation</para> Make sure in your code that you enforce <c>loginHint</c> to be a UPN
@@ -725,7 +725,7 @@ namespace Microsoft.Identity.Client
         internal const string TokenExpired = "token_expired";
 
         /// <summary>
-        /// Internal to MSALs. Needed in ios/android to complete the end-to-end true MAM flow. This suberror code is re-mapped to a different top level error code (IntuneAppProtectionPoliciesRequired), and not InteractionRequired
+        /// Internal to MSALs. Needed in ios/android to complete the end-to-end true MAM flow. This sub-error code is re-mapped to a different top level error code (IntuneAppProtectionPoliciesRequired), and not InteractionRequired
         /// </summary>
         internal const string ProtectionPolicyRequired = "protection_policy_required";
 
@@ -762,12 +762,6 @@ namespace Microsoft.Identity.Client
         /// <para>Mitigation</para>Use the application ID (a GUID) from the application portal as client ID in this SDK
         /// </summary>
         public const string NoClientId = "no_client_id";
-
-        /// <summary>
-        /// <para>What happens?</para>You've specified a client ID that is not a <see cref="Guid"/>
-        /// <para>Mitigation</para>Use the application ID (a GUID) from the application portal as client ID in this SDK
-        /// </summary>
-        public const string ClientIdMustBeAGuid = "client_id_must_be_guid";
 
         /// <summary>
         /// <para>What happens?</para>You have configured both a telemetry callback and a telemetry config. 
@@ -861,6 +855,12 @@ namespace Microsoft.Identity.Client
         public const string CertWithoutPrivateKey = "cert_without_private_key";
 
         /// <summary>
+        /// <para>What happens?</para>The certificate provided is not of type RSA.
+        /// <para>Mitigation</para>Please use an RSA certificate.
+        /// </summary>
+        public const string CertificateNotRsa = "certificate_not_rsa";
+
+        /// <summary>
         /// Device certificate not found.
         /// </summary>
         public const string DeviceCertificateNotFound = "device_certificate_not_found";
@@ -883,21 +883,14 @@ namespace Microsoft.Identity.Client
         public const string RegionDiscoveryNotEnabled = "region_discovery_unavailable";
 
         /// <summary>
-        /// <para>What happens?</para>MSAL cannot use the certificate for signing.
-        /// <para>Mitigation</para>Possible cause: use of CNG certificates with .Net classic 4.6 or lower. Either target a higher version of .NET desktop - 4.6.1 and above, or use a different certificate type (non-CNG) 
-        /// or sign your own assertion as described at https://aka.ms/msal-net-signed-assertion
-        /// </summary>
-        public const string CryptoNet45 = "crypto_net45";
-
-        /// <summary>
-        /// <para>What happens?</para>The request has broker enabled and proof of possession configured but the broker does not support proof of possession
-        /// <para>Mitigation</para>only configure proof of possession for public clients on windows.
+        /// <para>What happens?</para>The request has broker enabled and Proof-of-Possession configured but the broker does not support Proof-of-Possession
+        /// <para>Mitigation</para>only configure Proof-of-Possession for public clients on windows.
         /// </summary>
         public const string BrokerDoesNotSupportPop = "broker_does_not_support_pop";
 
         /// <summary>
-        /// <para>What happens?</para>The request has proof of possession configured but does not have broker enabled. Broker is required for proof of possession on public clients
-        /// <para>Mitigation</para>Enable the broker when proof of possession is configured.
+        /// <para>What happens?</para>The request has Proof-of-Possession configured but does not have broker enabled. Broker is required to use Proof-of-Possession on public clients
+        /// <para>Mitigation</para>Enable the broker when Proof-of-Possession is configured.
         /// </summary>
         public const string BrokerRequiredForPop = "broker_required_for_pop";
 
@@ -908,8 +901,8 @@ namespace Microsoft.Identity.Client
         public const string AdfsNotSupportedWithBroker = "adfs_not_supported_with_broker";
 
         /// <summary>
-        /// <para>What happens?</para>The request has proof of possession configured but does not have a nonce configured. A nonce is required for proof of possession on public clients
-        /// <para>Mitigation</para>Provide a nonce when proof of possession is configured for public clients.
+        /// <para>What happens?</para>The request has Proof-of-Possession configured but does not have a nonce configured. A nonce is required for Proof-of-Possession on public clients
+        /// <para>Mitigation</para>Provide a nonce when Proof-of-Possession is configured for public clients.
         /// </summary>
         public const string NonceRequiredForPopOnPCA = "nonce_required_for_pop_on_pca";
 #if iOS
@@ -1029,8 +1022,8 @@ namespace Microsoft.Identity.Client
 
         /// <summary>
         /// <para>What happens?</para>The embedded browser cannot be started because a runtime component is missing.
-        /// <para>Mitigation</para>"The embedded browser needs WebView2 runtime to be installed. An end user of the app can download and install the WebView2 runtime from https://go.microsoft.com/fwlink/p/?LinkId=2124703 and restart the app.
-        ///  or the app developer can install the WebView2 runtime https://docs.microsoft.com/en-us/microsoft-edge/webview2/concepts/distribution
+        /// <para>Mitigation</para>The embedded browser needs WebView2 runtime to be installed. An end user of the app can download and install the WebView2 runtime from https://go.microsoft.com/fwlink/p/?LinkId=2124703 and restart the app.
+        ///  The app developer can <see href="https://learn.microsoft.com/microsoft-edge/webview2/concepts/distribution">get the distributable version of the WebView2 runtime</see>.
         /// </summary>
         public const string WebView2NotInstalled = "webview2_runtime_not_installed";
 
@@ -1074,7 +1067,7 @@ namespace Microsoft.Identity.Client
         /// <summary>
         /// <para>What happens?</para>You configured WithTenant at the request level, but the application is using a non-AAD authority
         /// These are mutually exclusive.
-        /// <para>Mitigation</para> WithTenantId can only be used in conjunction with AAD authorities
+        /// <para>Mitigation</para> WithTenantId can only be used in conjunction with AAD authorities.
         /// </summary>
         public const string TenantOverrideNonAad = "tenant_override_non_aad";
 
@@ -1113,6 +1106,11 @@ namespace Microsoft.Identity.Client
         public const string ManagedIdentityRequestFailed = "managed_identity_request_failed";
 
         /// <summary>
+        /// Managed Identity endpoint is not reachable.
+        /// </summary>
+        public const string ManagedIdentityUnreachableNetwork = "managed_identity_unreachable_network";
+
+        /// <summary>
         /// Unknown error response received.
         /// </summary>
         public const string UnknownManagedIdentityError = "unknown_managed_identity_error";
@@ -1141,5 +1139,15 @@ namespace Microsoft.Identity.Client
         /// Using combined flat storage, like a file, to store both app and user tokens is not supported. Use a partitioned token cache (for ex. distributed cache like Redis) or separate files for app and user token caches. See https://aka.ms/msal-net-token-cache-serialization .
         /// </summary>
         public const string CombinedUserAppCacheNotSupported = "combined_user_app_cache_not_supported";
+
+        /// <summary>
+        /// Setting the CIAM authority (ex. "{tenantName}.ciamlogin.com") at the request level is not supported. The CIAM authority must be set during application creation.
+        /// </summary>
+        public const string SetCiamAuthorityAtRequestLevelNotSupported = "set_ciam_authority_at_request_level_not_supported";
+
+        /// <summary>
+        /// A cryptographic exception occurred when trying to use the provided certificate
+        /// </summary>
+        public const string CryptographicError = "cryptographic_error";
     }
 }

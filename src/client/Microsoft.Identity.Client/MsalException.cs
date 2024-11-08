@@ -2,11 +2,15 @@
 // Licensed under the MIT License.
 
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using Microsoft.Identity.Client.Internal;
 using Microsoft.Identity.Client.PlatformsCommon.Factories;
 using Microsoft.Identity.Client.Utils;
 #if SUPPORTS_SYSTEM_TEXT_JSON
+using System.Text.Json;
+using System.Text.Encodings.Web;
+using System.Text.Unicode;
 using JObject = System.Text.Json.Nodes.JsonObject;
 #else
 using Microsoft.Identity.Json;
@@ -24,6 +28,31 @@ namespace Microsoft.Identity.Client
     /// </remarks>
     public class MsalException : Exception
     {
+        /// <summary>
+        /// An <see cref="AdditionalExceptionData"/> property key, available when using desktop brokers.
+        /// </summary>
+        public const string BrokerErrorContext = "BrokerErrorContext";
+        /// <summary>
+        /// An <see cref="AdditionalExceptionData"/> property key, available when using desktop brokers.
+        /// </summary>
+        public const string BrokerErrorTag = "BrokerErrorTag";
+        /// <summary>
+        /// An <see cref="AdditionalExceptionData"/> property key, available when using desktop brokers.
+        /// </summary>
+        public const string BrokerErrorStatus = "BrokerErrorStatus";
+        /// <summary>
+        /// An <see cref="AdditionalExceptionData"/> property key, available when using desktop brokers.
+        /// </summary>
+        public const string BrokerErrorCode = "BrokerErrorCode";
+        /// <summary>
+        /// An <see cref="AdditionalExceptionData"/> property key, available when using desktop brokers.
+        /// </summary>
+        public const string BrokerTelemetry = "BrokerTelemetry";
+        /// <summary>
+        /// An <see cref="AdditionalExceptionData"/> property key, available when using managed identity.
+        /// </summary>
+        public const string ManagedIdentitySource = "ManagedIdentitySource";
+
         private string _errorCode;
 
         /// <summary>
@@ -114,6 +143,17 @@ namespace Microsoft.Identity.Client
         }
 
         /// <summary>
+        /// An ID that can used to piece up a single authentication flow.
+        /// </summary>
+        public string CorrelationId { get; set; }
+
+        /// <summary>
+        /// A property bag with extra details for this exception.
+        /// </summary>
+        public IReadOnlyDictionary<string, string> AdditionalExceptionData { get; set; }
+            = CollectionHelpers.GetEmptyDictionary<string, string>();
+
+        /// <summary>
         /// Creates and returns a string representation of the current exception.
         /// </summary>
         /// <returns>A string representation of the current exception.</returns>
@@ -124,36 +164,104 @@ namespace Microsoft.Identity.Client
 
             string innerExceptionContents = InnerException == null
                 ? string.Empty
-                : string.Format(CultureInfo.InvariantCulture, "\nInner Exception: {0}", InnerException.ToString());
+                : $"\nInner Exception: {InnerException}";
 
-            return string.Format(
-                CultureInfo.InvariantCulture,
-                "{0}.{1}.{2}: \n\tErrorCode: {3}\n{4}{5}",
-                msalProductName,
-                msalVersion,
-                GetType().Name,
-                ErrorCode,
-                base.ToString(),
-                innerExceptionContents);
+            return $"""
+                    {msalProductName}.{msalVersion}.{GetType().Name}:
+                    	ErrorCode: {ErrorCode}
+                    {base.ToString()}{innerExceptionContents}
+                    """;
         }
 
-        #region SERIALIZATION
-
-        // DEPRECATE / OBSOLETE - this functionality is not used and should be removed in a next major version
-
-        private const string ExceptionTypeKey = "type";
-        private const string ErrorCodeKey = "error_code";
-        private const string ErrorDescriptionKey = "error_description";
-
-        internal virtual void PopulateJson(JObject jobj)
+        #region Serialization
+        private class ExceptionSerializationKey
         {
-            jobj[ExceptionTypeKey] = GetType().Name;
-            jobj[ErrorCodeKey] = ErrorCode;
-            jobj[ErrorDescriptionKey] = Message;
+            internal const string ExceptionTypeKey = "type";
+            internal const string ErrorCodeKey = "error_code";
+            internal const string ErrorDescriptionKey = "error_description";
+            internal const string AdditionalExceptionData = "additional_exception_data";
+            internal const string BrokerErrorContext = "broker_error_context";
+            internal const string BrokerErrorTag = "broker_error_tag";
+            internal const string BrokerErrorStatus = "broker_error_status";
+            internal const string BrokerErrorCode = "broker_error_code";
+            internal const string BrokerTelemetry = "broker_telemetry";
+            internal const string ManagedIdentitySource = "managed_identity_source";
         }
 
-        internal virtual void PopulateObjectFromJson(JObject jobj)
+        internal virtual void PopulateJson(JObject jObject)
         {
+            jObject[ExceptionSerializationKey.ExceptionTypeKey] = GetType().Name;
+            jObject[ExceptionSerializationKey.ErrorCodeKey] = ErrorCode;
+            jObject[ExceptionSerializationKey.ErrorDescriptionKey] = Message;
+
+            // Populate JSON string with broker exception data
+            var exceptionData = new JObject();
+
+            if (AdditionalExceptionData.TryGetValue(BrokerErrorContext, out string brokerErrorContext))
+            {
+                exceptionData[ExceptionSerializationKey.BrokerErrorContext] = brokerErrorContext;
+            }
+            if (AdditionalExceptionData.TryGetValue(BrokerErrorTag, out string brokerErrorTag))
+            {
+                exceptionData[ExceptionSerializationKey.BrokerErrorTag] = brokerErrorTag;
+            }
+            if (AdditionalExceptionData.TryGetValue(BrokerErrorStatus, out string brokerErrorStatus))
+            {
+                exceptionData[ExceptionSerializationKey.BrokerErrorStatus] = brokerErrorStatus;
+            }
+            if (AdditionalExceptionData.TryGetValue(BrokerErrorCode, out string brokerErrorCode))
+            {
+                exceptionData[ExceptionSerializationKey.BrokerErrorCode] = brokerErrorCode;
+            }
+            if (AdditionalExceptionData.TryGetValue(BrokerTelemetry, out string brokerTelemetry))
+            {
+                exceptionData[ExceptionSerializationKey.BrokerTelemetry] = brokerTelemetry;
+            }
+            if(AdditionalExceptionData.TryGetValue(ManagedIdentitySource, out string managedIdentitySource))
+            {
+                exceptionData[ExceptionSerializationKey.ManagedIdentitySource] = managedIdentitySource;
+            }
+
+            jObject[ExceptionSerializationKey.AdditionalExceptionData] = exceptionData;
+        }
+
+        internal virtual void PopulateObjectFromJson(JObject jObject)
+        {
+            // Populate this exception instance with broker exception data from JSON
+            var exceptionData = JsonHelper.ExtractInnerJsonAsDictionary(jObject, ExceptionSerializationKey.AdditionalExceptionData);
+
+            if (exceptionData.TryGetValue(ExceptionSerializationKey.BrokerErrorContext, out string brokerErrorContext))
+            {
+                exceptionData[BrokerErrorContext] = brokerErrorContext;
+                exceptionData.Remove(ExceptionSerializationKey.BrokerErrorContext);
+            }
+            if (exceptionData.TryGetValue(ExceptionSerializationKey.BrokerErrorTag, out string brokerErrorTag))
+            {
+                exceptionData[BrokerErrorTag] = brokerErrorTag;
+                exceptionData.Remove(ExceptionSerializationKey.BrokerErrorTag);
+            }
+            if (exceptionData.TryGetValue(ExceptionSerializationKey.BrokerErrorStatus, out string brokerErrorStatus))
+            {
+                exceptionData[BrokerErrorStatus] = brokerErrorStatus;
+                exceptionData.Remove(ExceptionSerializationKey.BrokerErrorStatus);
+            }
+            if (exceptionData.TryGetValue(ExceptionSerializationKey.BrokerErrorCode, out string brokerErrorCode))
+            {
+                exceptionData[BrokerErrorCode] = brokerErrorCode;
+                exceptionData.Remove(ExceptionSerializationKey.BrokerErrorCode);
+            }
+            if (exceptionData.TryGetValue(ExceptionSerializationKey.BrokerTelemetry, out string brokerTelemetry))
+            {
+                exceptionData[BrokerTelemetry] = brokerTelemetry;
+                exceptionData.Remove(ExceptionSerializationKey.BrokerTelemetry);
+            }
+            if(exceptionData.TryGetValue(ExceptionSerializationKey.ManagedIdentitySource, out string managedIdentitySource))
+            {
+                exceptionData[ManagedIdentitySource] = managedIdentitySource;
+                exceptionData.Remove(ExceptionSerializationKey.ManagedIdentitySource);
+            }
+
+            AdditionalExceptionData = (IReadOnlyDictionary<string, string>)exceptionData;
         }
 
         /// <summary>
@@ -162,9 +270,21 @@ namespace Microsoft.Identity.Client
         /// <returns></returns>
         public string ToJsonString()
         {
-            JObject jobj = new JObject();
-            PopulateJson(jobj);
-            return jobj.ToString();
+            JObject jObject = new JObject();
+            PopulateJson(jObject);
+
+#if SUPPORTS_SYSTEM_TEXT_JSON
+            // By default, STJ is more restrictive (escapes more characters) than Newtonsoft,
+            // so the telemetry string is less readable.
+            // Relax the encoding rules to match Newtonsoft behavior.
+            return jObject.ToJsonString(new JsonSerializerOptions()
+            {
+                WriteIndented = true,
+                Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+            });
+#else
+            return jObject.ToString();
+#endif
         }
 
         /// <summary>
@@ -174,11 +294,11 @@ namespace Microsoft.Identity.Client
         /// <returns></returns>
         public static MsalException FromJsonString(string json)
         {
-            JObject jobj = JsonHelper.ParseIntoJsonObject(json);
-            string type = JsonHelper.GetValue<string>(jobj[ExceptionTypeKey]);
+            JObject jObject = JsonHelper.ParseIntoJsonObject(json);
+            string type = JsonHelper.GetValue<string>(jObject[ExceptionSerializationKey.ExceptionTypeKey]);
 
-            string errorCode = JsonHelper.GetExistingOrEmptyString(jobj, ErrorCodeKey);
-            string errorMessage = JsonHelper.GetExistingOrEmptyString(jobj, ErrorDescriptionKey);
+            string errorCode = JsonHelper.GetExistingOrEmptyString(jObject, ExceptionSerializationKey.ErrorCodeKey);
+            string errorMessage = JsonHelper.GetExistingOrEmptyString(jObject, ExceptionSerializationKey.ErrorDescriptionKey);
 
             MsalException ex = type switch
             {
@@ -189,10 +309,10 @@ namespace Microsoft.Identity.Client
                 _ => throw new MsalClientException(MsalError.JsonParseError, MsalErrorMessage.MsalExceptionFailedToParse),
             };
 
-            ex.PopulateObjectFromJson(jobj);
+            ex.PopulateObjectFromJson(jObject);
             return ex;
         }
 
-        #endregion // SERIALIZATION
+        #endregion
     }
 }

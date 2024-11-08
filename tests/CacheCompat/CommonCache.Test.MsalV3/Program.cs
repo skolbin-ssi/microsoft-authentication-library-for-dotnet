@@ -21,7 +21,7 @@ namespace CommonCache.Test.MsalV2
 
         private class MsalV3CacheExecutor : AbstractCacheExecutor
         {
-            /// <inheritdoc />
+            /// <inheritdoc/>
             protected override async Task<IEnumerable<CacheExecutorAccountResult>> InternalExecuteAsync(TestInputData testInputData)
             {
                 string resource = TestInputData.MsGraph;
@@ -46,7 +46,6 @@ namespace CommonCache.Test.MsalV2
                     FileBasedTokenCacheHelper.ConfigureUserCache(
                         testInputData.StorageType,
                         app.UserTokenCache,
-                        CommonCacheTestUtils.AdalV3CacheFilePath,
                         CommonCacheTestUtils.MsalV2CacheFilePath,
                         CommonCacheTestUtils.MsalV3CacheFilePath);
 
@@ -57,8 +56,7 @@ namespace CommonCache.Test.MsalV2
                     try
                     {
                         var result = await app
-                            .AcquireTokenSilent(scopes, accountToReference)
-                            .WithAuthority(app.Authority)
+                            .AcquireTokenSilent(scopes, accountToReference)                            
                             .WithForceRefresh(false)
                             .ExecuteAsync(CancellationToken.None)
                             .ConfigureAwait(false);

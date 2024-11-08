@@ -4,37 +4,37 @@
 using System;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Text;
 using Microsoft.Identity.Client.Core;
+using Microsoft.Identity.Client.OAuth2;
 using Microsoft.Identity.Client.PlatformsCommon.Factories;
+using Microsoft.Identity.Client.Utils;
 using Microsoft.IdentityModel.Abstractions;
 
 namespace Microsoft.Identity.Client.Internal.Logger
 {
     internal class LoggerHelper
     {
-        private static Lazy<string> s_msalVersionLazy = new Lazy<string>(() => MsalIdHelper.GetMsalVersion());
+        private static Lazy<string> s_msalVersionLazy = new Lazy<string>(MsalIdHelper.GetMsalVersion);
         private static Lazy<string> s_runtimeVersionLazy = new Lazy<string>(() => PlatformProxyFactory.CreatePlatformProxy(null).GetRuntimeVersion());
         private static readonly Lazy<ILoggerAdapter> s_nullLogger = new Lazy<ILoggerAdapter>(() => new NullLogger());
 
         public static string GetClientInfo(string clientName, string clientVersion)
         {
-            string clientInformation = string.Empty;
-            if (!string.IsNullOrEmpty(clientName) && !ApplicationConfiguration.DefaultClientName.Equals(clientName))
+            if (!string.IsNullOrEmpty(clientName))
             {
                 // space is intentional for formatting of the message
                 if (string.IsNullOrEmpty(clientVersion))
                 {
-                    clientInformation = string.Format(CultureInfo.InvariantCulture, " ({0})", clientName);
+                    return $" ({clientName})";
                 }
-                else
-                {
-                    clientInformation = string.Format(CultureInfo.InvariantCulture, " ({0}: {1})", clientName, clientVersion);
-                }
+
+                return $" ({clientName}: {clientVersion})";
             }
 
-            return clientInformation;
+            return string.Empty;
         }
 
         public static ILoggerAdapter CreateLogger(
@@ -51,11 +51,7 @@ namespace Microsoft.Identity.Client.Internal.Logger
                 return CallbackIdentityLoggerAdapter.Create(correlationId, config);
             }
 
-#if XAMARINMAC20
-            throw new NotImplementedException();
-#else
             return IdentityLoggerAdapter.Create(correlationId, config);
-#endif
         }
 
         public static ILoggerAdapter NullLogger => s_nullLogger.Value;
@@ -96,33 +92,46 @@ namespace Microsoft.Identity.Client.Internal.Logger
 
         internal static string GetPiiScrubbedExceptionDetails(Exception ex)
         {
-            var sb = new StringBuilder();
-            if (ex != null)
+            if (ex == null)
             {
-                sb.AppendLine(string.Format(CultureInfo.InvariantCulture, "Exception type: {0}", ex.GetType()));
+                return string.Empty;
+            }
 
-                if (ex is MsalException msalException)
-                {
-                    sb.AppendLine(string.Format(CultureInfo.InvariantCulture, ", ErrorCode: {0}", msalException.ErrorCode));
-                }
+            var sb = new StringBuilder();
+            sb.AppendLine(string.Format(CultureInfo.InvariantCulture, "Exception type: {0}", ex.GetType()));
 
-                if (ex is MsalServiceException msalServiceException)
-                {
-                    sb.AppendLine(string.Format(CultureInfo.InvariantCulture, "HTTP StatusCode {0}", msalServiceException.StatusCode));
-                    sb.AppendLine(string.Format(CultureInfo.InvariantCulture, "CorrelationId {0}", msalServiceException.CorrelationId));
-                }
+            if (ex is MsalException msalException)
+            {
+                sb.AppendLine($", ErrorCode: {msalException.ErrorCode}");
+            }
 
-                if (ex.InnerException != null)
+            if (ex is MsalServiceException msalServiceException)
+            {
+                sb.AppendLine(string.Format(CultureInfo.InvariantCulture, "HTTP StatusCode {0}", msalServiceException.StatusCode));
+                sb.AppendLine($"CorrelationId {msalServiceException.CorrelationId}");
+                if (msalServiceException.ErrorCodes is {Length: > 0})
                 {
-                    sb.AppendLine("---> Inner Exception Details");
-                    sb.AppendLine(GetPiiScrubbedExceptionDetails(ex.InnerException));
-                    sb.AppendLine("=== End of inner exception stack trace ===");
+                    sb.AppendLine($"Microsoft Entra ID Error Code AADSTS{string.Join(" ", msalServiceException.ErrorCodes)}");
                 }
+            }
 
-                if (ex.StackTrace != null)
-                {
-                    sb.Append(Environment.NewLine + ex.StackTrace);
-                }
+            if (ex.InnerException != null)
+            {
+                sb.AppendLine("---> Inner Exception Details");
+                sb.AppendLine(GetPiiScrubbedExceptionDetails(ex.InnerException));
+                sb.AppendLine("=== End of inner exception stack trace ===");
+            }
+
+            if (ex is MsalClaimsChallengeException)
+            {
+                sb.AppendLine(MsalErrorMessage.ClaimsChallenge);
+            }
+
+            sb.AppendLine("To see full exception details, enable PII Logging. See https://aka.ms/msal-net-logging");
+
+            if (ex.StackTrace != null)
+            {
+                sb.AppendLine(ex.StackTrace);
             }
 
             return sb.ToString();

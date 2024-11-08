@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using Microsoft.Identity.Client.ApiConfig.Parameters;
 using Microsoft.Identity.Client.Cache.Items;
 using Microsoft.Identity.Client.Core;
+using Microsoft.Identity.Client.Instance;
 using Microsoft.Identity.Client.OAuth2;
 using Microsoft.Identity.Client.TelemetryCore.Internal.Events;
 using Microsoft.Identity.Client.Utils;
@@ -41,7 +42,22 @@ namespace Microsoft.Identity.Client.Internal.Requests
             var logger = AuthenticationRequestParameters.RequestContext.Logger;
             AuthenticationResult authResult = null;
 
+            if (AuthenticationRequestParameters.Authority is AadAuthority aadAuthority &&
+                    aadAuthority.IsCommonOrOrganizationsTenant())
+            {
+                logger.Error(MsalErrorMessage.OnBehalfOfWrongAuthority);
+            }
+
             CacheRefreshReason cacheInfoTelemetry = CacheRefreshReason.NotApplicable;
+
+            //Check if initiating a long running process
+            if (AuthenticationRequestParameters.ApiId == ApiEvent.ApiIds.InitiateLongRunningObo && !_onBehalfOfParameters.SearchInCacheForLongRunningObo)
+            {
+                //Long running OBO doesn't search in cache by default
+                logger.Info("[OBO Request] Initiating long running process. Fetching OBO token from ESTS.");
+                return await FetchNewAccessTokenAsync(cancellationToken).ConfigureAwait(false);
+            }
+
             if (!_onBehalfOfParameters.ForceRefresh && string.IsNullOrEmpty(AuthenticationRequestParameters.Claims))
             {
                 // look for access token in the cache first.
@@ -73,7 +89,9 @@ namespace Microsoft.Identity.Client.Internal.Requests
                                                             AuthenticationRequestParameters.RequestContext.CorrelationId,
                                                             TokenSource.Cache,
                                                             AuthenticationRequestParameters.RequestContext.ApiEvent,
-                                                            account);
+                                                            account, 
+                                                            spaAuthCode: null,
+                                                            additionalResponseParameters: null);
                 }
                 else
                 {
@@ -94,7 +112,7 @@ namespace Microsoft.Identity.Client.Internal.Requests
                 AuthenticationRequestParameters.RequestContext.ApiEvent.CacheInfo = cacheInfoTelemetry;
             }
 
-            // No AT in the cache or AT needs to be refreshed
+            // No access token or cached access token needs to be refreshed 
             try
             {
                 if (cachedAccessToken == null)
@@ -105,14 +123,21 @@ namespace Microsoft.Identity.Client.Internal.Requests
                 {
                     var shouldRefresh = SilentRequestHelper.NeedsRefresh(cachedAccessToken);
 
-                    // may fire a request to get a new token in the background
+                    // If needed, refreshes token in the background
                     if (shouldRefresh)
                     {
                         AuthenticationRequestParameters.RequestContext.ApiEvent.CacheInfo = CacheRefreshReason.ProactivelyRefreshed;
 
                         SilentRequestHelper.ProcessFetchInBackground(
                         cachedAccessToken,
-                        () => RefreshRtOrFetchNewAccessTokenAsync(cancellationToken), logger);
+                        () =>
+                        {
+                            // Use a linked token source, in case the original cancellation token source is disposed before this background task completes.
+                            using var tokenSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                            return RefreshRtOrFetchNewAccessTokenAsync(tokenSource.Token);
+                        }, logger, ServiceBundle, AuthenticationRequestParameters.RequestContext.ApiEvent.ApiId,
+                        AuthenticationRequestParameters.RequestContext.ApiEvent.CallerSdkApiId,
+                        AuthenticationRequestParameters.RequestContext.ApiEvent.CallerSdkVersion);
                     }
                 }
 
@@ -128,9 +153,9 @@ namespace Microsoft.Identity.Client.Internal.Requests
         {
             var logger = AuthenticationRequestParameters.RequestContext.Logger;
             
-            if (IsLongRunningObo())
+            if (ApiEvent.IsLongRunningObo(AuthenticationRequestParameters.ApiId))
             {
-                AuthenticationRequestParameters.RequestContext.Logger.Info("[OBO request] Long-running OBO flow, trying to refresh using an refresh token flow.");
+                AuthenticationRequestParameters.RequestContext.Logger.Info("[OBO request] Long-running OBO flow, trying to refresh using a refresh token flow.");
 
                 // Look for a refresh token
                 MsalRefreshTokenCacheItem cachedRefreshToken = await CacheManager.FindRefreshTokenAsync().ConfigureAwait(false);
@@ -158,27 +183,20 @@ namespace Microsoft.Identity.Client.Internal.Requests
                     return await CacheTokenResponseAndCreateAuthenticationResultAsync(msalTokenResponse).ConfigureAwait(false);
                 }
 
-                if (AcquireTokenInLongRunningOboWasCalled())
+                if (AuthenticationRequestParameters.ApiId == ApiEvent.ApiIds.AcquireTokenInLongRunningObo)
                 {
                     AuthenticationRequestParameters.RequestContext.Logger.Error("[OBO request] AcquireTokenInLongRunningProcess was called and no access or refresh tokens were found in the cache.");
                     throw new MsalClientException(MsalError.OboCacheKeyNotInCacheError, MsalErrorMessage.OboCacheKeyNotInCache);
                 }
 
-                AuthenticationRequestParameters.RequestContext.Logger.Info("[OBO request] No Refresh Token was found in the cache. Fetching OBO token from ESTS");
+                AuthenticationRequestParameters.RequestContext.Logger.Info("[OBO request] No refresh token was found in the cache. Fetching OBO tokens from ESTS.");
             }
             else
             {
-                logger.Info("[OBO request] Normal OBO flow, skipping to fetching access token via OBO flow.");
+                logger.Info("[OBO request] Fetching tokens via normal OBO flow.");
             }
 
             return await FetchNewAccessTokenAsync(cancellationToken).ConfigureAwait(false);
-        }
-
-        // Returns whether AcquireTokenInLongRunningProcess was called (user assertion is null in this case)
-        private bool AcquireTokenInLongRunningOboWasCalled()
-        {
-            return AuthenticationRequestParameters.UserAssertion == null &&
-                !string.IsNullOrEmpty(AuthenticationRequestParameters.LongRunningOboCacheKey);
         }
 
         private async Task<AuthenticationResult> FetchNewAccessTokenAsync(CancellationToken cancellationToken)
@@ -186,7 +204,7 @@ namespace Microsoft.Identity.Client.Internal.Requests
             var msalTokenResponse = await SendTokenRequestAsync(GetBodyParameters(), cancellationToken).ConfigureAwait(false);
 
             // We always retrieve a refresh token in OBO but we don't want to cache it for normal OBO flow, only for long-running OBO
-            if (!IsLongRunningObo())
+            if (!ApiEvent.IsLongRunningObo(AuthenticationRequestParameters.ApiId))
             {
                 msalTokenResponse.RefreshToken = null;
             }
@@ -221,11 +239,6 @@ namespace Microsoft.Identity.Client.Internal.Requests
             }
 
             return new KeyValuePair<string, string>(Constants.CcsRoutingHintHeader, _ccsRoutingHint);
-        }
-
-        private bool IsLongRunningObo()
-        {
-            return !string.IsNullOrEmpty(AuthenticationRequestParameters.LongRunningOboCacheKey);
         }
     }
 }

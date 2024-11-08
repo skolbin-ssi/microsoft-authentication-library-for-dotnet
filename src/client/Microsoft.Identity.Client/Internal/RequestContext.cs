@@ -2,11 +2,13 @@
 // Licensed under the MIT License.
 
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using Microsoft.Identity.Client.Core;
 using Microsoft.Identity.Client.Internal.Logger;
 using Microsoft.Identity.Client.TelemetryCore;
 using Microsoft.Identity.Client.TelemetryCore.Internal.Events;
+using Microsoft.Identity.Client.TelemetryCore.TelemetryClient;
 using Microsoft.IdentityModel.Abstractions;
 
 namespace Microsoft.Identity.Client.Internal
@@ -30,13 +32,6 @@ namespace Microsoft.Identity.Client.Internal
             Logger = LoggerHelper.CreateLogger(correlationId, ServiceBundle.Config);
             CorrelationId = correlationId;
             UserCancellationToken = cancellationToken;
-        }
-
-        public TelemetryHelper CreateTelemetryHelper(ApiEvent eventToStart)
-        {
-            return new TelemetryHelper(
-                ServiceBundle.HttpTelemetryManager,
-                eventToStart);
-        }
+        }       
     }
 }

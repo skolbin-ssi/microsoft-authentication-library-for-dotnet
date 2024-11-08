@@ -4,12 +4,16 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Net.Http;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Identity.Client.Cache.Items;
 using Microsoft.Identity.Client.Core;
 using Microsoft.Identity.Client.Internal;
 using Microsoft.Identity.Client.Internal.Requests;
 using Microsoft.Identity.Client.OAuth2;
+using Microsoft.Identity.Client.TelemetryCore.TelemetryClient;
+using Microsoft.Identity.Client.Utils;
 
 namespace Microsoft.Identity.Client.Cache
 {
@@ -44,9 +48,9 @@ namespace Microsoft.Identity.Client.Cache
             return await TokenCacheInternal.FindAccessTokenAsync(_requestParams).ConfigureAwait(false);
         }
 
-        public async Task<Tuple<MsalAccessTokenCacheItem, MsalIdTokenCacheItem, Account>> SaveTokenResponseAsync(MsalTokenResponse tokenResponse)
+        public Task<Tuple<MsalAccessTokenCacheItem, MsalIdTokenCacheItem, Account>> SaveTokenResponseAsync(MsalTokenResponse tokenResponse)
         {
-            return await TokenCacheInternal.SaveTokenResponseAsync(_requestParams, tokenResponse).ConfigureAwait(false);
+            return TokenCacheInternal.SaveTokenResponseAsync(_requestParams, tokenResponse);
         }
 
         public async Task<Account> GetAccountAssociatedWithAccessTokenAsync(MsalAccessTokenCacheItem msalAccessTokenCacheItem)
@@ -106,7 +110,7 @@ namespace Microsoft.Identity.Client.Cache
                     await TokenCacheInternal.Semaphore.WaitAsync(_requestParams.RequestContext.UserCancellationToken).ConfigureAwait(false);
                     _requestParams.RequestContext.Logger.Verbose(()=>"[Cache Session Manager] Entered cache semaphore");
 
-                    Stopwatch stopwatch = new Stopwatch();
+                    TelemetryData telemetryData = new TelemetryData();
                     try
                     {
                         if (!_cacheRefreshedForRead) // double check locking
@@ -129,36 +133,36 @@ namespace Microsoft.Identity.Client.Cache
                                   requestScopes: _requestParams.Scope, 
                                   requestTenantId: _requestParams.AuthorityManager.OriginalAuthority.TenantId,
                                   identityLogger: _requestParams.RequestContext.Logger.IdentityLogger,
-                                  piiLoggingEnabled: _requestParams.RequestContext.Logger.PiiLoggingEnabled);
+                                  piiLoggingEnabled: _requestParams.RequestContext.Logger.PiiLoggingEnabled,
+                                  telemetryData: telemetryData);
 
-                                stopwatch.Start();
-                                await TokenCacheInternal.OnBeforeAccessAsync(args).ConfigureAwait(false);
-                                RequestContext.ApiEvent.DurationInCacheInMs += stopwatch.ElapsedMilliseconds;
+                                var measureDurationResult = await TokenCacheInternal.OnBeforeAccessAsync(args).MeasureAsync().ConfigureAwait(false);
+                                RequestContext.ApiEvent.DurationInCacheInMs += measureDurationResult.Milliseconds;
                             }
                             finally
                             {
+                                var measureDurationResult = await StopwatchService.MeasureCodeBlockAsync(async () =>
+                                {
+                                    var args = new TokenCacheNotificationArgs(
+                                      TokenCacheInternal,
+                                      _requestParams.AppConfig.ClientId,
+                                      _requestParams.Account,
+                                      hasStateChanged: false,
+                                      isApplicationCache: TokenCacheInternal.IsApplicationCache,
+                                      suggestedCacheKey: key,
+                                      hasTokens: TokenCacheInternal.HasTokensNoLocks(),
+                                      cancellationToken: _requestParams.RequestContext.UserCancellationToken,
+                                      suggestedCacheExpiry: null,
+                                      correlationId: _requestParams.RequestContext.CorrelationId,
+                                      requestScopes: _requestParams.Scope,
+                                      requestTenantId: _requestParams.AuthorityManager.OriginalAuthority.TenantId,
+                                      identityLogger: _requestParams.RequestContext.Logger.IdentityLogger,
+                                      piiLoggingEnabled: _requestParams.RequestContext.Logger.PiiLoggingEnabled,
+                                      telemetryData: telemetryData);
 
-                                stopwatch.Reset();
-                                stopwatch.Start();
-
-                                var args = new TokenCacheNotificationArgs(
-                                  TokenCacheInternal,
-                                  _requestParams.AppConfig.ClientId,
-                                  _requestParams.Account,
-                                  hasStateChanged: false,
-                                  isApplicationCache: TokenCacheInternal.IsApplicationCache,
-                                  suggestedCacheKey: key,
-                                  hasTokens: TokenCacheInternal.HasTokensNoLocks(),
-                                  cancellationToken: _requestParams.RequestContext.UserCancellationToken,
-                                  suggestedCacheExpiry: null,
-                                  correlationId: _requestParams.RequestContext.CorrelationId,
-                                  requestScopes: _requestParams.Scope,
-                                  requestTenantId: _requestParams.AuthorityManager.OriginalAuthority.TenantId,
-                                  identityLogger: _requestParams.RequestContext.Logger.IdentityLogger,
-                                  piiLoggingEnabled: _requestParams.RequestContext.Logger.PiiLoggingEnabled);
-
-                                await TokenCacheInternal.OnAfterAccessAsync(args).ConfigureAwait(false);
-                                RequestContext.ApiEvent.DurationInCacheInMs += stopwatch.ElapsedMilliseconds;
+                                    await TokenCacheInternal.OnAfterAccessAsync(args).ConfigureAwait(false);
+                                }).ConfigureAwait(false);
+                                RequestContext.ApiEvent.DurationInCacheInMs += measureDurationResult.Milliseconds;
 
                             }
 
@@ -170,8 +174,12 @@ namespace Microsoft.Identity.Client.Cache
                     {
                         TokenCacheInternal.Semaphore.Release();
                         _requestParams.RequestContext.Logger.Verbose(()=>"[Cache Session Manager] Released cache semaphore");
+                        RequestContext.ApiEvent.CacheLevel = telemetryData.CacheLevel;
                     }
                 }
+            } else
+            {
+                RequestContext.ApiEvent.CacheLevel = CacheLevel.L1Cache;
             }
         }
     }

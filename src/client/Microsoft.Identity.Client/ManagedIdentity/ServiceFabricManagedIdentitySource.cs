@@ -9,45 +9,82 @@ using Microsoft.Identity.Client.Internal;
 
 namespace Microsoft.Identity.Client.ManagedIdentity
 {
-    /// <summary>
-    /// Original source of code: https://github.com/Azure/azure-sdk-for-net/blob/main/sdk/identity/Azure.Identity/src/ServiceFabricManagedIdentitySource.cs
-    /// </summary>
-    internal class ServiceFabricManagedIdentitySource : ManagedIdentitySource
+    internal class ServiceFabricManagedIdentitySource : AbstractManagedIdentity
     {
         private const string ServiceFabricMsiApiVersion = "2019-07-01-preview";
-
         private readonly Uri _endpoint;
         private readonly string _identityHeaderValue;
-        private readonly string _userAssignedId;
+        internal static Lazy<HttpClient> _httpClientLazy;
 
-        public static ManagedIdentitySource TryCreate(RequestContext requestContext)
+        public static AbstractManagedIdentity Create(RequestContext requestContext)
         {
             string identityEndpoint = EnvironmentVariables.IdentityEndpoint;
-            string identityHeader = EnvironmentVariables.IdentityHeader;
-            string identityServerThumbprint = EnvironmentVariables.IdentityServerThumbprint;
 
-            if (string.IsNullOrEmpty(identityEndpoint) || string.IsNullOrEmpty(identityHeader) || string.IsNullOrEmpty(identityServerThumbprint))
-            {
-                requestContext.Logger.Verbose(() => "[Managed Identity] Service Fabric managed identity unavailable.");
-                return null;
-            }
+            requestContext.Logger.Info(() => "[Managed Identity] Service fabric managed identity is available.");
 
             if (!Uri.TryCreate(identityEndpoint, UriKind.Absolute, out Uri endpointUri))
             {
-                throw new MsalClientException(MsalError.InvalidManagedIdentityEndpoint, string.Format(CultureInfo.InvariantCulture, MsalErrorMessage.ManagedIdentityEndpointInvalidUriError, "IDENTITY_ENDPOINT", identityEndpoint, "Service Fabric"));
+                string errorMessage = string.Format(CultureInfo.InvariantCulture, MsalErrorMessage.ManagedIdentityEndpointInvalidUriError,
+                        "IDENTITY_ENDPOINT", identityEndpoint, "Service Fabric");
+
+                // Use the factory to create and throw the exception
+                var exception = MsalServiceExceptionFactory.CreateManagedIdentityException(
+                    MsalError.InvalidManagedIdentityEndpoint,
+                    errorMessage,
+                    null, 
+                    ManagedIdentitySource.ServiceFabric,
+                    null); 
+
+                throw exception;
             }
 
             requestContext.Logger.Verbose(() => "[Managed Identity] Creating Service Fabric managed identity. Endpoint URI: " + identityEndpoint);
-            return new ServiceFabricManagedIdentitySource(requestContext, endpointUri, identityHeader);
+            return new ServiceFabricManagedIdentitySource(requestContext, endpointUri, EnvironmentVariables.IdentityHeader);
         }
 
-        private ServiceFabricManagedIdentitySource(RequestContext requestContext, Uri endpoint, string identityHeaderValue) : base(requestContext)
+        internal override HttpClient GetHttpClientWithSslValidation(RequestContext requestContext)
+        {
+            if (_httpClientLazy == null)
+            {
+                _httpClientLazy = new Lazy<HttpClient>(() =>
+                {
+                    HttpClientHandler handler = CreateHandlerWithSslValidation(requestContext.Logger);
+                    return new HttpClient(handler);
+                });
+            }
+
+            return _httpClientLazy.Value;
+        }
+
+        internal HttpClientHandler CreateHandlerWithSslValidation(ILoggerAdapter logger)
+        {
+#if NET471_OR_GREATER || NETSTANDARD || NET
+            logger.Info(() => "[Managed Identity] Setting up server certificate validation callback.");
+            return new HttpClientHandler
+            {
+                ServerCertificateCustomValidationCallback = (message, certificate, chain, sslPolicyErrors) =>
+                {
+                    if (sslPolicyErrors != System.Net.Security.SslPolicyErrors.None)
+                    {
+                        return 0 == string.Compare(certificate.Thumbprint, EnvironmentVariables.IdentityServerThumbprint, StringComparison.OrdinalIgnoreCase);
+                    }
+                    return true;
+                }
+            };
+#else
+            logger.Warning("[Managed Identity] Server certificate validation callback is not supported on .NET Framework.");
+            return new HttpClientHandler();
+#endif
+        }
+
+
+        private ServiceFabricManagedIdentitySource(RequestContext requestContext, Uri endpoint, string identityHeaderValue) : 
+        base(requestContext, ManagedIdentitySource.ServiceFabric)
         {
             _endpoint = endpoint;
             _identityHeaderValue = identityHeaderValue;
-            _userAssignedId = requestContext.ServiceBundle.Config.ManagedIdentityUserAssignedId;
 
-            if (!string.IsNullOrEmpty(_userAssignedId))
+            if (requestContext.ServiceBundle.Config.ManagedIdentityId.IsUserAssigned)
             {
                 requestContext.Logger.Warning(MsalErrorMessage.ManagedIdentityUserAssignedNotConfigurableAtRuntime);
             }
@@ -62,18 +99,22 @@ namespace Microsoft.Identity.Client.ManagedIdentity
             request.QueryParameters["api-version"] = ServiceFabricMsiApiVersion;
             request.QueryParameters["resource"] = resource;
 
-            if (!string.IsNullOrEmpty(_userAssignedId))
+            switch (_requestContext.ServiceBundle.Config.ManagedIdentityId.IdType)
             {
-                if (Guid.TryParse(_userAssignedId, out _))
-                {
+                case AppConfig.ManagedIdentityIdType.ClientId:
                     _requestContext.Logger.Info("[Managed Identity] Adding user assigned client id to the request.");
-                    request.QueryParameters[Constants.ManagedIdentityClientId] = _userAssignedId;
-                }
-                else
-                {
+                    request.QueryParameters[Constants.ManagedIdentityClientId] = _requestContext.ServiceBundle.Config.ManagedIdentityId.UserAssignedId;
+                    break;
+
+                case AppConfig.ManagedIdentityIdType.ResourceId:
                     _requestContext.Logger.Info("[Managed Identity] Adding user assigned resource id to the request.");
-                    request.QueryParameters[Constants.ManagedIdentityResourceId] = _userAssignedId;
-                }
+                    request.QueryParameters[Constants.ManagedIdentityResourceId] = _requestContext.ServiceBundle.Config.ManagedIdentityId.UserAssignedId;
+                    break;
+
+                case AppConfig.ManagedIdentityIdType.ObjectId:
+                    _requestContext.Logger.Info("[Managed Identity] Adding user assigned object id to the request.");
+                    request.QueryParameters[Constants.ManagedIdentityObjectId] = _requestContext.ServiceBundle.Config.ManagedIdentityId.UserAssignedId;
+                    break;
             }
 
             return request;

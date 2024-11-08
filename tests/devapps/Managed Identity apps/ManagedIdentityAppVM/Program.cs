@@ -2,12 +2,12 @@
 // Licensed under the MIT License.
 
 using Microsoft.Identity.Client;
+using Microsoft.Identity.Client.AppConfig;
 using Microsoft.IdentityModel.Abstractions;
 
 IIdentityLogger identityLogger = new IdentityLogger();
 
-IConfidentialClientApplication cca = ConfidentialClientApplicationBuilder.Create("00bedee1-0e09-4a8d-81a0-0679c5a64a83")
-                .WithExperimentalFeatures()
+IManagedIdentityApplication mi = ManagedIdentityApplicationBuilder.Create(ManagedIdentityId.SystemAssigned)
                 .WithLogging(identityLogger, true)
                 .Build();
 
@@ -19,8 +19,8 @@ do
 
     try
     {
-        var result = await cca.AcquireTokenForClient(new string[] { scope })
-            .WithManagedIdentity().ExecuteAsync().ConfigureAwait(false);
+        var result = await mi.AcquireTokenForManagedIdentity(scope)
+            .ExecuteAsync().ConfigureAwait(false);
 
         Console.WriteLine("Success");
         Console.ReadLine();

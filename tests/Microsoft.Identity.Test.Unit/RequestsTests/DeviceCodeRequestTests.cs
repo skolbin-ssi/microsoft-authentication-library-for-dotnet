@@ -222,7 +222,7 @@ namespace Microsoft.Identity.Test.Unit.RequestsTests
                 var parameters = CreateAuthenticationParametersAndSetupMocks(
                     harness,
                     NumberOfAuthorizationPendingRequestsToInject,
-                    out HashSet<string> expectedScopes);
+                    out HashSet<string> _);
 
                 var cancellationSource = new CancellationTokenSource();
 
@@ -278,17 +278,16 @@ namespace Microsoft.Identity.Test.Unit.RequestsTests
                 var parameters = CreateAuthenticationParametersAndSetupMocks(
                     harness,
                     NumberOfAuthorizationPendingRequestsToInject,
-                    out HashSet<string> expectedScopes);
+                    out HashSet<string> _);
 
                 var deviceCodeParameters = new AcquireTokenWithDeviceCodeParameters
                 {
-                    DeviceCodeResultCallback = result => Task.FromResult(0)
+                    DeviceCodeResultCallback = _ => Task.FromResult(0)
                 };
 
                 var request = new DeviceCodeRequest(harness.ServiceBundle, parameters, deviceCodeParameters);
 
                 await request.RunAsync(CancellationToken.None).ConfigureAwait(false);
-                
 
                 // Ensure we got logs so the log callback is working.
                 Assert.IsTrue(logCallbacks.Count > 0, "There should be data in logCallbacks");

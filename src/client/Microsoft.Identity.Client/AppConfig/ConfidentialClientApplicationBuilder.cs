@@ -3,15 +3,15 @@
 
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Linq;
 using System.Security.Cryptography.X509Certificates;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.Identity.Client.Extensibility;
+using Microsoft.Identity.Client.AppConfig;
+using Microsoft.Identity.Client.Instance;
 using Microsoft.Identity.Client.Internal;
 using Microsoft.Identity.Client.Internal.ClientCredential;
-using Microsoft.Identity.Client.TelemetryCore;
-using Microsoft.Identity.Client.TelemetryCore.TelemetryClient;
 using Microsoft.IdentityModel.Abstractions;
 
 namespace Microsoft.Identity.Client
@@ -23,11 +23,14 @@ namespace Microsoft.Identity.Client
 #endif
     public class ConfidentialClientApplicationBuilder : AbstractApplicationBuilder<ConfidentialClientApplicationBuilder>
     {
-        /// <inheritdoc />
+        internal const string ForceRegionEnvVariable = "MSAL_FORCE_REGION";
+        internal const string DisableForceRegion = "DisableMsalForceRegion";
+
+        /// <inheritdoc/>
         internal ConfidentialClientApplicationBuilder(ApplicationConfiguration configuration)
             : base(configuration)
         {
-            ClientApplicationBase.GuardMobileFrameworks();
+            ApplicationBase.GuardMobileFrameworks();
         }
 
         /// <summary>
@@ -43,9 +46,9 @@ namespace Microsoft.Identity.Client
         public static ConfidentialClientApplicationBuilder CreateWithApplicationOptions(
             ConfidentialClientApplicationOptions options)
         {
-            ClientApplicationBase.GuardMobileFrameworks();
+            ApplicationBase.GuardMobileFrameworks();
 
-            var config = new ApplicationConfiguration(isConfidentialClient: true);
+            var config = new ApplicationConfiguration(MsalClientType.ConfidentialClient);
             var builder = new ConfidentialClientApplicationBuilder(config).WithOptions(options);
 
             if (!string.IsNullOrWhiteSpace(options.ClientSecret))
@@ -76,12 +79,11 @@ namespace Microsoft.Identity.Client
 #endif
         public static ConfidentialClientApplicationBuilder Create(string clientId)
         {
-            ClientApplicationBase.GuardMobileFrameworks();
+            ApplicationBase.GuardMobileFrameworks();
 
-            var config = new ApplicationConfiguration(isConfidentialClient: true);
+            var config = new ApplicationConfiguration(MsalClientType.ConfidentialClient);
             return new ConfidentialClientApplicationBuilder(config)
-                .WithClientId(clientId)
-                .WithCacheSynchronization(false);
+                .WithClientId(clientId);
         }
 
         /// <summary>
@@ -196,6 +198,9 @@ namespace Microsoft.Identity.Client
         /// </summary>
         /// <param name="signedClientAssertion">The client assertion used to prove the identity of the application to Azure AD. This is a Base-64 encoded JWT.</param>
         /// <returns></returns>
+        [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
+        [Obsolete("This method is not recommended. Use overload with Func<AssertionRequestOptions, Task<string>> instead, and return a non-expired assertion, which can be a Federated Credential. See https://aka.ms/msal-net-client-assertion", false)]
+
         public ConfidentialClientApplicationBuilder WithClientAssertion(string signedClientAssertion)
         {
             if (string.IsNullOrWhiteSpace(signedClientAssertion))
@@ -214,7 +219,7 @@ namespace Microsoft.Identity.Client
         /// This is a delegate that computes a Base-64 encoded JWT for each authentication call.</param>
         /// <returns>The ConfidentialClientApplicationBuilder to chain more .With methods</returns>
         /// <remarks> Callers can use this mechanism to cache their assertions </remarks>
-        [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
+        [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]        
         public ConfidentialClientApplicationBuilder WithClientAssertion(Func<string> clientAssertionDelegate)
         {
             if (clientAssertionDelegate == null)
@@ -238,7 +243,7 @@ namespace Microsoft.Identity.Client
         /// This is a delegate that computes a Base-64 encoded JWT for each authentication call.</param>
         /// <returns>The ConfidentialClientApplicationBuilder to chain more .With methods</returns>
         /// <remarks> Callers can use this mechanism to cache their assertions </remarks>
-        [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
+        [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]        
         public ConfidentialClientApplicationBuilder WithClientAssertion(Func<CancellationToken, Task<string>> clientAssertionAsyncDelegate)
         {
             if (clientAssertionAsyncDelegate == null)
@@ -251,10 +256,10 @@ namespace Microsoft.Identity.Client
         }
 
         /// <summary>
-        /// Configures an async delegate that creates a client assertion. See https://aka.ms/msal-net-client-assertion
+        /// Configures an async delegate that creates a client assertion. The delegate is invoked only when a token cannot be retrieved from the cache.
+        /// See https://aka.ms/msal-net-client-assertion
         /// </summary>
-        /// <param name="clientAssertionAsyncDelegate">An async delegate computing the client assertion used to prove the identity of the application to Azure AD.
-        /// This is a delegate that computes a Base-64 encoded JWT for each authentication call.</param>
+        /// <param name="clientAssertionAsyncDelegate">An async delegate that returns the client assertion. Assertion lifetime is the responsibility of the caller.</param>
         /// <returns>The ConfidentialClientApplicationBuilder to chain more .With methods</returns>
         /// <remarks> Callers can use this mechanism to cache their assertions </remarks>
         public ConfidentialClientApplicationBuilder WithClientAssertion(Func<AssertionRequestOptions, Task<string>> clientAssertionAsyncDelegate)
@@ -269,19 +274,20 @@ namespace Microsoft.Identity.Client
         }
 
         /// <summary>
-        /// Instructs MSAL.NET to use an Azure regional token service. This feature is currently available to 
-        /// first party applications only. 
+        /// Instructs MSAL to use an Azure regional token service. This feature is currently available to 
+        /// first-party applications only. 
         /// </summary>
         /// <param name="azureRegion">Either the string with the region (preferred) or        
-        /// use <see cref="ConfidentialClientApplication.AttemptRegionDiscovery"/> and MSAL.NET will attempt to auto-detect the region.                
+        /// use <see cref="ConfidentialClientApplication.AttemptRegionDiscovery"/> and MSAL will attempt to auto-detect the region.                
         /// </param>
         /// <remarks>
-        /// The region value should be short region name for the region where the service is deployed. 
-        /// For example "centralus" is short name for region Central US.
-        /// Service To Service (client credential flow) tokens can be obtained from the regional service.
+        /// The region value should be a short region name for the region where the service is deployed. 
+        /// For example, "centralus" is short name for region Central US.
+        /// Currently only tokens for the client credential flow can be obtained from the regional service.
         /// Requires configuration at the tenant level.
         /// Auto-detection works on a limited number of Azure artifacts (VMs, Azure functions). 
         /// If auto-detection fails, the non-regional endpoint will be used.
+        /// If a specific region was provided and the token web request failed, verify that the region name is valid.
         /// See https://aka.ms/msal-net-region-discovery for more details.        
         /// </remarks>
         /// <returns>The builder to chain the .With methods</returns>
@@ -300,12 +306,12 @@ namespace Microsoft.Identity.Client
         /// <summary>
         /// When set to <c>true</c>, MSAL will lock cache access at the <see cref="ConfidentialClientApplication"/> level, i.e.
         /// the block of code between BeforeAccessAsync and AfterAccessAsync callbacks will be synchronized. 
-        /// Apps can set this flag to <c>false</c> to enable an optimistic cache locking strategy, which may result in better performance, especially 
-        /// when ConfidentialClientApplication objects are reused.
+        /// Apps can set this flag to <c>false</c> to enable an optimistic cache locking strategy, which may result in better performance
+        /// at the cost of cache consistency. 
+        /// Setting this flag to <c>false</c> is only recommended for apps which create a new <see cref="ConfidentialClientApplication"/> per request.
         /// </summary>
         /// <remarks>
-        /// False by default.
-        /// Not recommended for apps that call RemoveAsync
+        /// This flag is <c>true</c> by default. The default behavior is recommended.
         /// </remarks>
         public ConfidentialClientApplicationBuilder WithCacheSynchronization(bool enableCacheSynchronization)
         {
@@ -314,49 +320,44 @@ namespace Microsoft.Identity.Client
         }
 
         /// <summary>
-        /// Sets telemetry client for the application.
+        /// Call <see cref="WithOidcAuthority(string)"/> instead.
         /// </summary>
-        /// <param name="telemetryClients">List of telemetry clients to add telemetry logs.</param>
-        /// <returns>The builder to chain the .With methods</returns>
-        public ConfidentialClientApplicationBuilder WithTelemetryClient(params ITelemetryClient[] telemetryClients)
+        /// <param name="authorityUri"></param>
+        /// <returns></returns>
+        [Obsolete("This method has been renamed to WithOidcAuthority.", false)]
+        [EditorBrowsable(EditorBrowsableState.Never)]
+        public ConfidentialClientApplicationBuilder WithGenericAuthority(string authorityUri)
         {
-            ValidateUseOfExperimentalFeature("ITelemetryClient");
+            return WithOidcAuthority(authorityUri);
+        }
 
-            if (telemetryClients == null)
-            {
-                throw new ArgumentNullException(nameof(telemetryClients));
-            }
-
-            if (telemetryClients.Length > 0)
-            {
-                foreach (var telemetryClient in telemetryClients)
-                {
-                    if (telemetryClient == null)
-                    {
-                        throw new ArgumentNullException(nameof(telemetryClient));
-                    }
-
-                    telemetryClient.Initialize();
-                }
-
-                Config.TelemetryClients = telemetryClients;
-            }
-
-            TelemetryClientLogMsalVersion();
+        /// <summary>
+        /// Adds a known authority corresponding to a generic OpenIdConnect Identity Provider. 
+        /// MSAL will append ".well-known/openid-configuration" to the authority and retrieve the OIDC 
+        /// metadata from there, to figure out the endpoints.
+        /// See https://openid.net/specs/openid-connect-core-1_0.html#Terminology
+        /// </summary>
+        /// <remarks>
+        /// Do not use this method with Entra ID authorities (e.g. https://login.microsfoftonline.com/common).
+        /// Use WithAuthority(string) instead.
+        /// </remarks>
+        public ConfidentialClientApplicationBuilder WithOidcAuthority(string authorityUri)
+        {
+            var authorityInfo = AuthorityInfo.FromGenericAuthority(authorityUri);
+            Config.Authority = Authority.CreateAuthority(authorityInfo);
 
             return this;
         }
 
-        private void TelemetryClientLogMsalVersion()
+        /// <summary>
+        /// This method is obsolete. See https://aka.ms/msal-net-telemetry
+        /// </summary>
+        [Obsolete("Telemetry is sent automatically by MSAL.NET. See https://aka.ms/msal-net-telemetry.", true)]
+        [EditorBrowsable(EditorBrowsableState.Never)]
+        public ConfidentialClientApplicationBuilder WithTelemetryClient(params ITelemetryClient[] telemetryClients)
         {
-            if (Config.TelemetryClients.HasEnabledClients(TelemetryConstants.ConfigurationUpdateEventName))
-            {
-                MsalTelemetryEventDetails telemetryEventDetails = new MsalTelemetryEventDetails(TelemetryConstants.ConfigurationUpdateEventName);
-                telemetryEventDetails.SetProperty(TelemetryConstants.MsalVersion, MsalIdHelper.GetMsalVersion());
-
-                Config.TelemetryClients.TrackEvent(telemetryEventDetails);
-            }
-        }
+            return this;           
+        }       
 
         internal ConfidentialClientApplicationBuilder WithAppTokenCacheInternalForTest(ITokenCacheInternal tokenCacheInternal)
         {
@@ -364,7 +365,7 @@ namespace Microsoft.Identity.Client
             return this;
         }
 
-        /// <inheritdoc />
+        /// <inheritdoc/>
         internal override void Validate()
         {
             base.Validate();
@@ -374,30 +375,43 @@ namespace Microsoft.Identity.Client
                 Config.RedirectUri = Constants.DefaultConfidentialClientRedirectUri;
             }
 
-            if (!Uri.TryCreate(Config.RedirectUri, UriKind.Absolute, out Uri uriResult))
+            if (!Uri.TryCreate(Config.RedirectUri, UriKind.Absolute, out Uri _))
             {
                 throw new InvalidOperationException(MsalErrorMessage.InvalidRedirectUriReceived(Config.RedirectUri));
             }
 
-            if (!string.IsNullOrEmpty(Config.AzureRegion) && (Config.CustomInstanceDiscoveryMetadata != null || Config.CustomInstanceDiscoveryMetadataUri != null))
+            if (!string.IsNullOrEmpty(Config.AzureRegion) && 
+                (Config.CustomInstanceDiscoveryMetadata != null || Config.CustomInstanceDiscoveryMetadataUri != null))
             {
                 throw new MsalClientException(MsalError.RegionDiscoveryWithCustomInstanceMetadata, MsalErrorMessage.RegionDiscoveryWithCustomInstanceMetadata);
+            }
+
+            // use regional if MSAL_FORCE_REGION is used, as per #4930
+            if (string.Equals(Config.AzureRegion, DisableForceRegion, StringComparison.OrdinalIgnoreCase))
+            {
+                Config.AzureRegion = null;
+            }
+            else if (Config.AzureRegion == null)
+            {
+                string forcedRegion = Environment.GetEnvironmentVariable(ForceRegionEnvVariable);
+                if (!string.IsNullOrEmpty(forcedRegion))
+                {
+                    Config.AzureRegion = forcedRegion;
+                }
             }
         }
 
         /// <summary>
-        /// Builds the ConfidentialClientApplication from the parameters set
-        /// in the builder
+        /// Builds an instance of <see cref="IConfidentialClientApplication"/> 
+        /// from the parameters set in the <see cref="ConfidentialClientApplicationBuilder"/>.
         /// </summary>
-        /// <returns></returns>
+        /// <exception cref="MsalClientException">Thrown when errors occur locally in the library itself (for example, because of incorrect configuration).</exception>
+        /// <returns>An instance of <see cref="IConfidentialClientApplication"/></returns>
         public IConfidentialClientApplication Build()
         {
             return BuildConcrete();
         }
 
-        /// <summary>
-        /// </summary>
-        /// <returns></returns>
         internal ConfidentialClientApplication BuildConcrete()
         {
             return new ConfidentialClientApplication(BuildConfiguration());

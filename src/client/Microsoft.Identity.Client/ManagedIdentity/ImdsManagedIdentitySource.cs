@@ -7,6 +7,7 @@ using System.Net.Http;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Identity.Client.ApiConfig.Parameters;
 using Microsoft.Identity.Client.Core;
 using Microsoft.Identity.Client.Extensibility;
 using Microsoft.Identity.Client.Http;
@@ -14,10 +15,7 @@ using Microsoft.Identity.Client.Internal;
 
 namespace Microsoft.Identity.Client.ManagedIdentity
 {
-    /// <summary>
-    /// Original source of code: https://github.com/Azure/azure-sdk-for-net/blob/main/sdk/identity/Azure.Identity/src/ImdsManagedIdentitySource.cs
-    /// </summary>
-    internal class ImdsManagedIdentitySource : ManagedIdentitySource
+    internal class ImdsManagedIdentitySource : AbstractManagedIdentity
     {
         // IMDS constants. Docs for IMDS are available here https://docs.microsoft.com/azure/active-directory/managed-identities-azure-resources/how-to-use-vm-token#get-a-token-using-http
         private static readonly Uri s_imdsEndpoint = new("http://169.254.169.254/metadata/identity/oauth2/token");
@@ -26,14 +24,20 @@ namespace Microsoft.Identity.Client.ManagedIdentity
         private const string ImdsApiVersion = "2018-02-01";
         private const string DefaultMessage = "[Managed Identity] Service request failed.";
 
-        internal const string IdentityUnavailableError = "[Managed Identity] Authentication unavailable. The requested identity has not been assigned to this resource.";
+        internal const string IdentityUnavailableError = "[Managed Identity] Authentication unavailable. " +
+            "Either the requested identity has not been assigned to this resource, or other errors could " +
+            "be present. Ensure the identity is correctly assigned and check the inner exception for more " +
+            "details. For more information, visit https://aka.ms/msal-managed-identity.";
+
         internal const string GatewayError = "[Managed Identity] Authentication unavailable. The request failed due to a gateway error.";
 
-        private readonly string _userAssignedId;
         private readonly Uri _imdsEndpoint;
 
-        internal ImdsManagedIdentitySource(RequestContext requestContext) : base(requestContext)
+        internal ImdsManagedIdentitySource(RequestContext requestContext) : 
+            base(requestContext, ManagedIdentitySource.Imds)
         {
+            requestContext.Logger.Info(() => "[Managed Identity] Defaulting to IMDS endpoint for managed identity.");
+
             if (!string.IsNullOrEmpty(EnvironmentVariables.PodIdentityEndpoint))
 			{
                 requestContext.Logger.Verbose(() => "[Managed Identity] Environment variable AZURE_POD_IDENTITY_AUTHORITY_HOST for IMDS returned endpoint: " + EnvironmentVariables.PodIdentityEndpoint);
@@ -49,8 +53,6 @@ namespace Microsoft.Identity.Client.ManagedIdentity
             	_imdsEndpoint = s_imdsEndpoint;
 			}
 
-            _userAssignedId = requestContext.ServiceBundle.Config.ManagedIdentityUserAssignedId;
-
             requestContext.Logger.Verbose(() => "[Managed Identity] Creating IMDS managed identity source. Endpoint URI: " + _imdsEndpoint);
         }
 
@@ -62,26 +64,29 @@ namespace Microsoft.Identity.Client.ManagedIdentity
             request.QueryParameters["api-version"] = ImdsApiVersion;
             request.QueryParameters["resource"] = resource;
 
-            if (!string.IsNullOrEmpty(_userAssignedId))
+            switch (_requestContext.ServiceBundle.Config.ManagedIdentityId.IdType)
             {
-                if (Guid.TryParse(_userAssignedId, out _))
-                {
+                case AppConfig.ManagedIdentityIdType.ClientId:
                     _requestContext.Logger.Info("[Managed Identity] Adding user assigned client id to the request.");
-                    request.QueryParameters[Constants.ManagedIdentityClientId] = _userAssignedId;
-                }
-                else
-                {
-                    _requestContext.Logger.Info("[Managed Identity] Adding user assigned resource id to the request.");
-                    request.QueryParameters[Constants.ManagedIdentityResourceId] = _userAssignedId;
-                }
+                    request.QueryParameters[Constants.ManagedIdentityClientId] = _requestContext.ServiceBundle.Config.ManagedIdentityId.UserAssignedId;
+                    break;
 
+                case AppConfig.ManagedIdentityIdType.ResourceId:
+                    _requestContext.Logger.Info("[Managed Identity] Adding user assigned resource id to the request.");
+                    request.QueryParameters[Constants.ManagedIdentityResourceId] = _requestContext.ServiceBundle.Config.ManagedIdentityId.UserAssignedId;
+                    break;
+
+                case AppConfig.ManagedIdentityIdType.ObjectId:
+                    _requestContext.Logger.Info("[Managed Identity] Adding user assigned object id to the request.");
+                    request.QueryParameters[Constants.ManagedIdentityObjectId] = _requestContext.ServiceBundle.Config.ManagedIdentityId.UserAssignedId;
+                    break;
             }
 
             return request;
         }
 
         protected override async Task<ManagedIdentityResponse> HandleResponseAsync(
-            AppTokenProviderParameters parameters, 
+            AcquireTokenForManagedIdentityParameters parameters,
             HttpResponse response,
             CancellationToken cancellationToken)
         {
@@ -91,7 +96,7 @@ namespace Microsoft.Identity.Client.ManagedIdentity
                 HttpStatusCode.BadRequest => IdentityUnavailableError,
                 HttpStatusCode.BadGateway => GatewayError,
                 HttpStatusCode.GatewayTimeout => GatewayError,
-                _ => default(string)
+                _ => default
             };
 
             if (baseMessage != null)
@@ -103,7 +108,15 @@ namespace Microsoft.Identity.Client.ManagedIdentity
                 message = message + Environment.NewLine + errorContentMessage;
 
                 _requestContext.Logger.Error($"Error message: {message} Http status code: {response.StatusCode}");
-                throw new MsalServiceException(MsalError.ManagedIdentityRequestFailed, message);
+
+                var exception = MsalServiceExceptionFactory.CreateManagedIdentityException(
+                    MsalError.ManagedIdentityRequestFailed,
+                    message,
+                    null,
+                    ManagedIdentitySource.Imds,
+                    null);
+
+                throw exception;
             }
 
             // Default behavior to handle successful scenario and general errors.

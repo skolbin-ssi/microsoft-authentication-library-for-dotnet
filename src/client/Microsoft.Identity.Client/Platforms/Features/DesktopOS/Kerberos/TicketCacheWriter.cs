@@ -8,12 +8,10 @@ using Microsoft.Identity.Client.PlatformsCommon.Interfaces;
 namespace Microsoft.Identity.Client.Platforms.Features.DesktopOs.Kerberos
 {
 
-#pragma warning disable 618 // This workaround required for Native Win32 API call
-
     /// <summary>
     /// Provides a layer to interact with the LSA functions used to create logon sessions and manipulate the ticket caches.
     /// </summary>
-    public class TicketCacheWriter : IDisposable
+    internal class TicketCacheWriter : IDisposable
     {
         private const string _kerberosPackageName = "Kerberos";
         private const string _negotiatePackageName = "Negotiate";
@@ -134,7 +132,7 @@ namespace Microsoft.Identity.Client.Platforms.Features.DesktopOs.Kerberos
                     pBuffer,
                     bufferSize,
                     out returnBuffer,
-                    out int returnBufferLength,
+                    out int _,
                     out int protocolStatus
                 );
 
@@ -168,13 +166,11 @@ namespace Microsoft.Identity.Client.Platforms.Features.DesktopOs.Kerberos
             Dispose(disposing: false);
         }
 
-        /// <inheritdoc />
+        /// <inheritdoc/>
         public void Dispose()
         {
             Dispose(disposing: true);
             GC.SuppressFinalize(this);
         }
     }
-
-#pragma warning restore 618
 }

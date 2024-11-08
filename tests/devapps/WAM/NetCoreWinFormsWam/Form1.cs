@@ -8,23 +8,23 @@ using System.Data;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Net;
 using System.Reflection;
+using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using Microsoft.Identity.Client;
-using Microsoft.Identity.Client.Broker;
-
-#if NETCOREAPP3_1
+using Microsoft.Identity.Client.AuthScheme.PoP;
 using Microsoft.Identity.Client.Desktop;
-#endif
+using Microsoft.Identity.Client.Extensibility;
+using Microsoft.Identity.Client.SSHCertificates;
+using Microsoft.Identity.Client.Utils;
 
 namespace NetDesktopWinForms
 {
     public partial class Form1 : Form
     {
-        private static readonly Uri s_downstreamApi = new Uri("https://www.contoso.com/path1/path2");
+
         private readonly SynchronizationContext _syncContext;
 
         private static List<ClientEntry> s_clients = new List<ClientEntry>()
@@ -106,8 +106,9 @@ namespace NetDesktopWinForms
             bool msaPt = IsMsaPassthroughConfigured();
 
             var builder = PublicClientApplicationBuilder
-                .Create(clientId)                
+                .Create(clientId)
                 .WithRedirectUri("http://localhost")
+                .WithClientCapabilities(new[] { "cp1" })
                 .WithMultiCloudSupport(cbxMultiCloud2.Checked)
                 .WithAuthority(authority);
 
@@ -117,46 +118,30 @@ namespace NetDesktopWinForms
             switch (authMethod)
             {
                 case AuthMethod.WAM:
-                    builder = ToggleOldBroker(builder, true);
-                    break;
                 case AuthMethod.WAMRuntime:
-                    builder = BrokerExtension.WithWindowsBroker(builder);
+                    builder = builder.WithBroker(new BrokerOptions(BrokerOptions.OperatingSystems.Windows)
+                    {
+                        ListOperatingSystemAccounts = cbxListOsAccounts.Checked,
+                        MsaPassthrough = cbxMsaPt.Checked,
+                        Title = "MSAL Dev App .NET FX"
+                    });
                     break;
                 case AuthMethod.SystemBrowser:
-                    builder = BrokerExtension.WithWindowsBroker(builder, false);
-                    builder = ToggleOldBroker(builder, false);
+                    builder.WithBroker(new BrokerOptions(BrokerOptions.OperatingSystems.None));
                     break;
                 case AuthMethod.EmbeddedBrowser:
-                    builder = BrokerExtension.WithWindowsBroker(builder, false);
-                    builder = ToggleOldBroker(builder, false);
-
+                    builder.WithWindowsEmbeddedBrowserSupport();
                     break;
                 default:
                     throw new NotImplementedException();
             }
 
-            builder = builder.WithWindowsBrokerOptions(new WindowsBrokerOptions()
-            {
-                ListWindowsWorkAndSchoolAccounts = cbxListOsAccounts.Checked,
-                MsaPassthrough = cbxMsaPt.Checked,
-                HeaderText = "MSAL Dev App .NET FX"
-            })
-            .WithLogging((x, y, z) => Debug.WriteLine($"{x} {y}"), LogLevel.Verbose, true, true);
+            builder.WithLogging((x, y, z) => Debug.WriteLine($"{x} {y}"), LogLevel.Verbose, true, true);
 
             var pca = builder.Build();
 
             BindCache(pca.UserTokenCache, UserCacheFile);
             return pca;
-        }
-
-        private static PublicClientApplicationBuilder ToggleOldBroker(PublicClientApplicationBuilder builder, bool enable)
-        {
-#if NETCOREAPP3_1
-            builder = WamExtension.WithWindowsBroker(builder, enable);
-#else
-            builder = builder.WithBroker(enable);
-#endif
-            return builder;
         }
 
         private static void BindCache(ITokenCache tokenCache, string file)
@@ -214,8 +199,9 @@ namespace NetDesktopWinForms
                 if (cbxPOP.Checked)
                 {
                     builder = builder.WithProofOfPossession(
-                        "some_nonce", 
-                        System.Net.Http.HttpMethod.Get, s_downstreamApi);
+                        Guid.NewGuid().ToString(),
+                        System.Net.Http.HttpMethod.Get,
+                        GetRandomDownstreamUri());
                 }
 
                 return await builder.ExecuteAsync(GetAutocancelToken()).ConfigureAwait(false);
@@ -237,6 +223,7 @@ namespace NetDesktopWinForms
                     {
                         var msaAuthority = $"{publicCloudEnv}{msaTenantIdPublicCloud}";
 
+#pragma warning disable CS0618 // Type or member is obsolete
                         builder = builder.WithAuthority(msaAuthority);
                     }
                 }
@@ -244,10 +231,19 @@ namespace NetDesktopWinForms
                 {
                     builder = builder.WithAuthority(reqAuthority);
                 }
+#pragma warning restore CS0618 // Type or member is obsolete
 
                 if (cbxPOP.Checked)
                 {
-                    builder = builder.WithProofOfPossession("some_nonce", System.Net.Http.HttpMethod.Get, new Uri(pca.Authority));
+                    builder = builder.WithProofOfPossession(
+                        Guid.NewGuid().ToString(),
+                    System.Net.Http.HttpMethod.Get,
+                    GetRandomDownstreamUri());
+                }
+
+                if (cbxWithForceRefresh.Checked)
+                {
+                    builder = builder.WithForceRefresh(true);
                 }
 
                 Log($"ATS with IAccount for {acc?.Username ?? acc.HomeAccountId.ToString() ?? "null"}");
@@ -269,7 +265,7 @@ namespace NetDesktopWinForms
 
             cbxScopes.Invoke((MethodInvoker)delegate
             {
-                if(!string.IsNullOrWhiteSpace(cbxScopes.Text))
+                if (!string.IsNullOrWhiteSpace(cbxScopes.Text))
                     result = cbxScopes.Text.Split(' ');
             });
 
@@ -311,7 +307,8 @@ namespace NetDesktopWinForms
                 $"Source {ar.AuthenticationResultMetadata.TokenSource}" + Environment.NewLine +
                 $"Scopes {string.Join(" ", ar.Scopes)}" + Environment.NewLine +
                 $"AccessToken: {ar.AccessToken} " + Environment.NewLine +
-                $"IdToken {ar.IdToken}" + Environment.NewLine;
+                $"IdToken {ar.IdToken}" + Environment.NewLine +
+                $"TokenType {ar.TokenType}" + Environment.NewLine;
 
             Log(message);
 
@@ -319,7 +316,7 @@ namespace NetDesktopWinForms
 
             Log("Refreshing accounts");
 
-            if(refreshAccounts)
+            if (refreshAccounts)
                 await RefreshAccountsAsync().ConfigureAwait(true);
         }
 
@@ -359,19 +356,30 @@ namespace NetDesktopWinForms
             var scopes = GetScopes();
             var guid = Guid.NewGuid();
             var builder = pca.AcquireTokenInteractive(scopes)
-                .WithUseEmbeddedWebView(true)
+                             .WithParentActivityOrWindow(this.Handle);
+
+            if (GetAuthMethod() == AuthMethod.SystemBrowser)
+            {
+                builder.WithSystemWebViewOptions(new SystemWebViewOptions() { HtmlMessageSuccess = "Successful login! You can close the tab." });
+            }
+            else
+            {
+                builder.WithUseEmbeddedWebView(true)
                 //.WithExtraQueryParameters("domain_hint=live.com") -- will force AAD login with browser
                 //.WithExtraQueryParameters("msafed=0")             -- will force MSA login with browser
                 .WithEmbeddedWebViewOptions(
                 new EmbeddedWebViewOptions()
                 {
                     Title = "Hello world",
-                })
-                .WithParentActivityOrWindow(this.Handle);
+                });
+            }
 
             if (cbxPOP.Checked)
             {
-                builder = builder.WithProofOfPossession("nonce", System.Net.Http.HttpMethod.Get, s_downstreamApi);
+                builder = builder.WithProofOfPossession(
+                    Guid.NewGuid().ToString(),
+                    System.Net.Http.HttpMethod.Get,
+                    GetRandomDownstreamUri());
             }
 
             Prompt? prompt = GetPrompt();
@@ -388,7 +396,7 @@ namespace NetDesktopWinForms
             else if (cbxAccount.SelectedIndex > 0)
             {
                 var acc = (cbxAccount.SelectedItem as AccountModel).Account;
-                Log($"ATI WithAccount for account {acc?.Username ?? "null" }");
+                Log($"ATI WithAccount for account {acc?.Username ?? "null"}");
                 builder = builder.WithAccount(acc);
             }
             else
@@ -404,6 +412,13 @@ namespace NetDesktopWinForms
             result = await builder.ExecuteAsync(GetAutocancelToken()).ConfigureAwait(false);
 
             return result;
+        }
+
+        private static Uri GetRandomDownstreamUri()
+        {
+            Uri downstreamApi = new Uri($"https://www.contoso.com/path1/path2/{Guid.NewGuid()}");
+
+            return downstreamApi;
         }
 
         private string GetLoginHint()
@@ -574,12 +589,15 @@ namespace NetDesktopWinForms
 
             AuthenticationResult result = null;
             var scopes = GetScopes();
-            
+
             var builder = pca.AcquireTokenByUsernamePassword(scopes, username, password);
 
             if (cbxPOP.Checked)
             {
-                builder = builder.WithProofOfPossession("nonce", System.Net.Http.HttpMethod.Get, s_downstreamApi);
+                builder = builder.WithProofOfPossession(
+                    Guid.NewGuid().ToString(),
+                    System.Net.Http.HttpMethod.Get,
+                    GetRandomDownstreamUri());
             }
 
             if (cbxBackgroundThread.Checked)
@@ -758,6 +776,131 @@ namespace NetDesktopWinForms
                 Log("Exception: " + ex);
             }
         }
+
+        private async void btn_ATSDeviceCodeFlow_Click(object sender, EventArgs e)
+        {
+            try
+            {
+                var cancellationTokenSource = new CancellationTokenSource();
+
+                var pca = CreatePca(GetAuthMethod());
+                AuthenticationResult authenticationResult = await pca
+                .AcquireTokenWithDeviceCode(
+                        GetScopes(),
+                        dcr =>
+                        {
+                            BeginInvoke(new MethodInvoker(() => resultTbx.Text = dcr.Message));
+                            return Task.FromResult(0);
+                        })
+                    .ExecuteAsync(cancellationTokenSource.Token)
+                    .ConfigureAwait(true);
+
+                await LogResultAndRefreshAccountsAsync(authenticationResult).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                Log("Exception: " + ex);
+            }
+        }
+
+        private string CreateJwk()
+        {
+            RSACryptoServiceProvider rsa = new RSACryptoServiceProvider(2048);
+            RSAParameters rsaKeyInfo = rsa.ExportParameters(false);
+
+            string modulus = Base64UrlHelpers.Encode(rsaKeyInfo.Modulus);
+            string exp = Base64UrlHelpers.Encode(rsaKeyInfo.Exponent);
+            string jwk = $"{{\"kty\":\"RSA\", \"n\":\"{modulus}\", \"e\":\"{exp}\"}}";
+
+            return jwk;
+        }
+        private async void atiSshBtn_Click(object sender, EventArgs e)
+        {
+            try
+            {
+                var pca = CreatePca(GetAuthMethod());
+                AuthenticationResult result = await RunAtiSshBtnAsync(pca).ConfigureAwait(false);
+
+                await LogResultAndRefreshAccountsAsync(result).ConfigureAwait(false);
+
+            }
+            catch (Exception ex)
+            {
+                Log("Exception: " + ex);
+            }
+        }
+
+        private async Task<AuthenticationResult> RunAtiSshBtnAsync(IPublicClientApplication pca)
+        {
+            string loginHint = GetLoginHint();
+            if (!string.IsNullOrEmpty(loginHint) && cbxAccount.SelectedIndex > 0)
+            {
+                throw new InvalidOperationException("[TEST APP FAILURE] Please use either the login hint or the account, but not both");
+            }
+
+            AuthenticationResult result = null; 
+            var scopes = GetScopes();
+            var guid = Guid.NewGuid();
+            string jwk = CreateJwk();
+            var builder = pca.AcquireTokenInteractive(scopes)
+                             .WithParentActivityOrWindow(this.Handle)
+                             .WithSSHCertificateAuthenticationScheme(jwk, "key1");
+
+            if (GetAuthMethod() == AuthMethod.SystemBrowser)
+            {
+                builder.WithSystemWebViewOptions(new SystemWebViewOptions() { HtmlMessageSuccess = "Successful login! You can close the tab." });
+            }
+            else
+            {
+                builder.WithUseEmbeddedWebView(true)
+                //.WithExtraQueryParameters("domain_hint=live.com") -- will force AAD login with browser
+                //.WithExtraQueryParameters("msafed=0")             -- will force MSA login with browser
+                .WithEmbeddedWebViewOptions(
+                new EmbeddedWebViewOptions()
+                {
+                    Title = "Hello world",
+                });
+            }
+
+            if (cbxPOP.Checked)
+            {
+                builder = builder.WithProofOfPossession(
+                    Guid.NewGuid().ToString(),
+                    System.Net.Http.HttpMethod.Get,
+                    GetRandomDownstreamUri());
+            }
+
+            Prompt? prompt = GetPrompt();
+            if (prompt.HasValue)
+            {
+                builder = builder.WithPrompt(prompt.Value);
+            }
+
+            if (!string.IsNullOrEmpty(loginHint))
+            {
+                Log($"ATI WithLoginHint  {loginHint}");
+                builder = builder.WithLoginHint(loginHint);
+            }
+            else if (cbxAccount.SelectedIndex > 0)
+            {
+                var acc = (cbxAccount.SelectedItem as AccountModel).Account;
+                Log($"ATI WithAccount for account {acc?.Username ?? "null"}");
+                builder = builder.WithAccount(acc);
+            }
+            else
+            {
+                Log($"ATI without login_hint or account. It should display the account picker");
+            }
+
+            if (cbxBackgroundThread.Checked)
+            {
+                await Task.Delay(500).ConfigureAwait(false);
+            }
+
+            result = await builder.ExecuteAsync(GetAutocancelToken()).ConfigureAwait(false);
+
+            return result;
+        }
     }
 
     public class ClientEntry
@@ -779,8 +922,10 @@ namespace NetDesktopWinForms
                 "" :
                 $"({Account.Environment})";
             string homeTenantId = account?.HomeAccountId?.TenantId?.Substring(0, 5);
+            var accountObj = account as Account;
+            string accountSource = accountObj?.AccountSource;
 
-            DisplayValue = displayValue ?? $"{Account.Username} {env} {homeTenantId}";
+            DisplayValue = displayValue ?? $"{Account.Username} {env} {homeTenantId} {accountSource}";
         }
     }
 
@@ -791,6 +936,8 @@ namespace NetDesktopWinForms
         public string Environment => "";
 
         public AccountId HomeAccountId => null;
+
+        public string AccountSource => null;
     }
 
     public enum AuthMethod

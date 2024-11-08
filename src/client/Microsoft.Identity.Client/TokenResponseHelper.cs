@@ -1,11 +1,7 @@
 ﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using Microsoft.Identity.Client.Core;
 using Microsoft.Identity.Client.Instance;
 using Microsoft.Identity.Client.Internal;
@@ -38,7 +34,13 @@ namespace Microsoft.Identity.Client
             }
 
             return idToken.PreferredUsername.NullIfWhiteSpace() ??
-                   idToken.Upn.NullIfWhiteSpace() ??                     
+                   idToken.Upn.NullIfWhiteSpace() ??
+
+#if !iOS // on iOS the username is used for caching, so better not to change this
+
+                   idToken.Email.NullIfWhiteSpace() ??
+                   idToken.Name.NullIfWhiteSpace() ??
+#endif
                    NullPreferredUsernameDisplayLabel;
         }
 
@@ -49,7 +51,7 @@ namespace Microsoft.Identity.Client
 
             if (homeAccountId == null)
             {
-                requestParams.RequestContext.Logger.Info("Cannot determine home account id - or id token or no client info and no subject ");
+                requestParams.RequestContext.Logger.Info("Cannot determine home account ID - or id token or no client info and no subject ");
             }
             return homeAccountId;
         }

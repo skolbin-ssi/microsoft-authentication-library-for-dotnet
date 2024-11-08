@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 using System;
-using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
@@ -15,12 +14,10 @@ using Microsoft.Identity.Client.AuthScheme.PoP;
 using Microsoft.Identity.Client.Cache;
 using Microsoft.Identity.Client.Core;
 using Microsoft.Identity.Client.Internal;
-using Microsoft.Identity.Client.Internal.Broker;
 using Microsoft.Identity.Client.Platforms.Features.DesktopOs;
 using Microsoft.Identity.Client.Platforms.Shared.NetStdCore;
 using Microsoft.Identity.Client.PlatformsCommon.Interfaces;
 using Microsoft.Identity.Client.PlatformsCommon.Shared;
-using Microsoft.Identity.Client.TelemetryCore.Internal;
 using Microsoft.Identity.Client.UI;
 
 namespace Microsoft.Identity.Client.Platforms.netcore
@@ -81,9 +78,33 @@ namespace Microsoft.Identity.Client.Platforms.netcore
             return DesktopOsHelper.IsWindows() ? WindowsNativeMethods.GetProcessorArchitecture() : null;
         }
 
+        /// <summary>
+        /// The name of the operating system is important to the STS, as some CA policies 
+        /// will look at x-client-os; as such the name of the OS should be parseable by the STS. 
+        /// Do not use RID, as the format is not standardized across platforms.
+        /// Do not use OSDescription, as it can be very long and non-standard, e.g. 
+        /// Darwin 23.1.0 Darwin Kernel Version 23.1.0: Mon Oct 9 21:27:27 PDT 2023; root:xnu-10002.41.9~6/RELEASE_X86_64
+        /// </summary>
+        /// <returns></returns>
         protected override string InternalGetOperatingSystem()
         {
-            return System.Runtime.InteropServices.RuntimeInformation.OSDescription;
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                return RuntimeInformation.OSDescription;
+            }
+            
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+            {
+                return MacOsDescriptionForSTS;
+            }
+
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+            {
+                return LinuxOSDescriptionForSTS;
+            }
+
+            // All other cases (FreeBSD?) - return the OS description
+            return RuntimeInformation.OSDescription;
         }
 
         protected override string InternalGetDeviceModel()
@@ -91,7 +112,7 @@ namespace Microsoft.Identity.Client.Platforms.netcore
             return null;
         }
 
-        /// <inheritdoc />
+        /// <inheritdoc/>
         public override string GetDefaultRedirectUri(string clientId, bool useRecommendedRedirectUri = false)
         {
             if (useRecommendedRedirectUri)
@@ -140,7 +161,7 @@ namespace Microsoft.Identity.Client.Platforms.netcore
         }
 
         protected override IWebUIFactory CreateWebUiFactory() => new NetCoreWebUIFactory();
-        protected override ICryptographyManager InternalGetCryptographyManager() => new CommonCryptographyManager();
+        protected override ICryptographyManager InternalGetCryptographyManager() => new CommonCryptographyManager(Logger);
         protected override IPlatformLogger InternalGetPlatformLogger() => new EventSourcePlatformLogger();
 
         protected override IFeatureFlags CreateFeatureFlags() => new NetCoreFeatureFlags();
@@ -241,7 +262,7 @@ namespace Microsoft.Identity.Client.Platforms.netcore
 
         public override IPoPCryptoProvider GetDefaultPoPCryptoProvider()
         {
-            return PoPProviderFactory.GetOrCreateProvider();
+            return PoPCryptoProviderFactory.GetOrCreateProvider();
         }
 
         public override bool BrokerSupportsWamAccounts => true;
@@ -272,6 +293,9 @@ namespace Microsoft.Identity.Client.Platforms.netcore
             return false;
         }
 
-        public override IDeviceAuthManager CreateDeviceAuthManager() => new NetCoreDeviceAuthManager();
+        public override IDeviceAuthManager CreateDeviceAuthManager()
+        {
+            return new DeviceAuthManager(CryptographyManager);
+        }
     }
 }

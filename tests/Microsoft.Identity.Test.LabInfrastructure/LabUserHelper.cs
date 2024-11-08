@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 using System;
-using System.Collections.Generic;
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Threading.Tasks;
 
@@ -11,8 +11,8 @@ namespace Microsoft.Identity.Test.LabInfrastructure
     public static class LabUserHelper
     {
         private static readonly LabServiceApi s_labService;
-        private static readonly IDictionary<UserQuery, LabResponse> s_userCache =
-            new Dictionary<UserQuery, LabResponse>();
+        private static readonly ConcurrentDictionary<UserQuery, LabResponse> s_userCache =
+            new ConcurrentDictionary<UserQuery, LabResponse>();
 
         public static KeyVaultSecretsProvider KeyVaultSecretsProviderMsal { get; }
         public static KeyVaultSecretsProvider KeyVaultSecretsProviderMsid { get; }
@@ -38,22 +38,41 @@ namespace Microsoft.Identity.Test.LabInfrastructure
                 throw new LabUserNotFoundException(query, "Found no users for the given query.");
             }
 
-            s_userCache.Add(query, response);
+            bool added = s_userCache.TryAdd(query, response);
             Debug.WriteLine("User cache miss. Returning user from lab: " + response.User.Upn);
+            Debug.WriteLine("User cache updated: " + added);
 
             return response;
         }
 
-        // only set up for this format of query: {URI-scheme}://{URI-host}/{resource-path}/UPN
-        public static async Task<LabResponse> GetLabUserDataForSpecificUserAsync(string upn)
+        [Obsolete("Use GetSpecificUserAsync instead", true)]
+        public static Task<LabResponse> GetLabUserDataForSpecificUserAsync(string upn)
         {
-            string result = await s_labService.GetLabResponseAsync(LabApiConstants.LabEndPoint + "/" + upn).ConfigureAwait(false);
-            return s_labService.CreateLabResponseFromResultStringAsync(result).Result;
+            throw new NotSupportedException();
         }
 
+        public static async Task<string> GetMSIEnvironmentVariablesAsync(string uri)
+        {
+            string result = await s_labService.GetLabResponseAsync(uri).ConfigureAwait(false);
+            return result;
+        }
+
+        /// <summary>
+        /// Returns the AAD cloud user idlab1@msidlab4.onmicrosoft.com
+        /// </summary>
+        /// <returns></returns>
         public static Task<LabResponse> GetDefaultUserAsync()
         {
             return GetLabUserDataAsync(UserQuery.PublicAadUserQuery);
+        }
+
+        /// <summary>
+        /// Returns the AAD cloud user idlab@msidlab4.onmicrosoft.com
+        /// </summary>
+        /// <returns></returns>
+        public static Task<LabResponse> GetDefaultUser2Async()
+        {
+            return GetLabUserDataAsync(UserQuery.PublicAadUser2Query);
         }
 
         public static Task<LabResponse> GetMsaUserAsync()
@@ -94,7 +113,7 @@ namespace Microsoft.Identity.Test.LabInfrastructure
 
         public static Task<LabResponse> GetSpecificUserAsync(string upn)
         {
-            return GetLabUserDataForSpecificUserAsync(upn);
+            return GetLabUserDataAsync(new UserQuery() { Upn = upn });
         }
 
         public static Task<LabResponse> GetArlingtonUserAsync()
@@ -116,9 +135,12 @@ namespace Microsoft.Identity.Test.LabInfrastructure
 
         public static Task<LabResponse> GetAdfsUserAsync(FederationProvider federationProvider, bool federated = true)
         {
-            var query = UserQuery.PublicAadUserQuery;
-            query.FederationProvider = federationProvider;
-            query.UserType = federated ? UserType.Federated : UserType.Cloud;
+            var query = new UserQuery()
+            {
+                AzureEnvironment = LabInfrastructure.AzureEnvironment.azurecloud,
+                FederationProvider = federationProvider,
+                UserType = federated ? UserType.Federated : UserType.Cloud
+            };
 
             if (!federated &&
                 federationProvider != FederationProvider.ADFSv2019)

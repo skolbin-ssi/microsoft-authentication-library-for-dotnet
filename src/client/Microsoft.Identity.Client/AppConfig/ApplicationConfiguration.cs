@@ -5,15 +5,14 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Security.Cryptography.X509Certificates;
-using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Identity.Client.AppConfig;
 using Microsoft.Identity.Client.Cache;
 using Microsoft.Identity.Client.Core;
 using Microsoft.Identity.Client.Extensibility;
 using Microsoft.Identity.Client.Http;
 using Microsoft.Identity.Client.Instance;
 using Microsoft.Identity.Client.Instance.Discovery;
-using Microsoft.Identity.Client.Internal;
 using Microsoft.Identity.Client.Internal.Broker;
 using Microsoft.Identity.Client.Internal.ClientCredential;
 using Microsoft.Identity.Client.Kerberos;
@@ -25,40 +24,50 @@ namespace Microsoft.Identity.Client
 {
     internal sealed class ApplicationConfiguration : IAppConfig
     {
-        public ApplicationConfiguration(bool isConfidentialClient) 
+        public ApplicationConfiguration(MsalClientType applicationType) 
         {
-            IsConfidentialClient = isConfidentialClient;
+            switch (applicationType)
+            {
+                case MsalClientType.ConfidentialClient: 
+                    IsConfidentialClient = true;
+                    break;
+
+                case MsalClientType.ManagedIdentityClient:
+                    IsManagedIdentity = true;
+                    break;
+            }
         }
-        
-        public const string DefaultClientName = "UnknownClient";
-        public const string DefaultClientVersion = "0.0.0.0";
 
         // For telemetry, the ClientName of the application.
-        private string _clientName = DefaultClientName;
+        private string _clientName;
         public string ClientName
         {
             get => _clientName;
-            internal set { _clientName = string.IsNullOrWhiteSpace(value) ? DefaultClientName : value; }
+            internal set { _clientName = string.IsNullOrWhiteSpace(value) ? string.Empty : value; }
+
         }
 
         // For telemetry, the ClientVersion of the application.
-        private string _clientVersion = DefaultClientVersion;
+        private string _clientVersion;
         public string ClientVersion
         {
             get => _clientVersion;
-            internal set { _clientVersion = string.IsNullOrWhiteSpace(value) ? DefaultClientVersion : value; }
-        }
+            internal set { _clientVersion = string.IsNullOrWhiteSpace(value) ? string.Empty : value; }
 
-        public ITelemetryClient[] TelemetryClients { get; internal set; } = new ITelemetryClient[0];
+        }
 
         public Func<object> ParentActivityOrWindowFunc { get; internal set; }
 
-        public bool UseCorporateNetwork { get; internal set; }
         public string IosKeychainSecurityGroup { get; internal set; }
 
         public bool IsBrokerEnabled { get; internal set; }
 
-        public WindowsBrokerOptions WindowsBrokerOptions { get; set; }
+        /// <summary>
+        /// Applicable to only public client applications to enforce SSO policy with embedded webview.
+        /// </summary>
+        public bool IsWebviewSsoPolicyEnabled { get; internal set; }
+
+        public BrokerOptions BrokerOptions { get; set; }
 
         public Func<CoreUIParent, ApplicationConfiguration, ILoggerAdapter, IBroker> BrokerCreatorFunc { get; set; }
         public Func<IWebUIFactory> WebUiFactoryCreator { get; set; }
@@ -107,9 +116,11 @@ namespace Microsoft.Identity.Client
 
         public bool RetryOnServerErrors { get; set; } = true;
 
-        public bool UseManagedIdentity { get; internal set; }
+        public ManagedIdentityId ManagedIdentityId { get; internal set; }
 
-        public string ManagedIdentityUserAssignedId {  get; internal set; }
+        public bool IsManagedIdentity { get; }
+        public bool IsConfidentialClient { get; }
+        public bool IsPublicClient => !IsConfidentialClient && !IsManagedIdentity;
 
         public Func<AppTokenProviderParameters, Task<AppTokenProviderResult>> AppTokenProvider;
 
@@ -148,7 +159,6 @@ namespace Microsoft.Identity.Client
                 return null;
             }
         }
-
 #endregion
 
 #region Region
@@ -191,8 +201,7 @@ namespace Microsoft.Identity.Client
         public ITokenCacheInternal UserTokenCacheInternalForTest { get; set; }
         public ITokenCacheInternal AppTokenCacheInternalForTest { get; set; }
 
-        public IDeviceAuthManager DeviceAuthManagerForTest { get; set; }
-        public bool IsConfidentialClient { get; }
+        public IDeviceAuthManager DeviceAuthManagerForTest { get; set; }        
         public bool IsInstanceDiscoveryEnabled { get; internal set; } = true;
         #endregion
 

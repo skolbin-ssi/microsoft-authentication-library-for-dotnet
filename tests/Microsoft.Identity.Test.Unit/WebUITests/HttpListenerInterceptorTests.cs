@@ -31,7 +31,7 @@ namespace Microsoft.Identity.Test.Unit.WebUITests
             Task<Uri> listenTask = listenerInterceptor.ListenToSingleRequestAndRespondAsync(
                 port,
                 string.Empty,
-                (u) => { return new MessageAndHttpCode(HttpStatusCode.OK, "OK"); },
+                (_) => { return new MessageAndHttpCode(HttpStatusCode.OK, "OK"); },
                 CancellationToken.None);
 
             // Issue an HTTP request on the main thread
@@ -61,7 +61,7 @@ namespace Microsoft.Identity.Test.Unit.WebUITests
                 () => listenerInterceptor.ListenToSingleRequestAndRespondAsync(
                     port,
                     string.Empty,
-                    (u) => { return new MessageAndHttpCode(HttpStatusCode.OK, "OK"); },
+                    (_) => { return new MessageAndHttpCode(HttpStatusCode.OK, "OK"); },
                     cts.Token))
                 .ConfigureAwait(false);
         }
@@ -75,14 +75,14 @@ namespace Microsoft.Identity.Test.Unit.WebUITests
             CancellationTokenSource cts = new CancellationTokenSource();
             int port = FindFreeLocalhostPort();
 
-            listenerInterceptor.TestBeforeStart = (obj) => cts.Cancel();
+            listenerInterceptor.TestBeforeStart = (_) => cts.Cancel();
 
             // Start the listener in the background
             await AssertException.TaskThrowsAsync<OperationCanceledException>(
                 () => listenerInterceptor.ListenToSingleRequestAndRespondAsync(
                     port,
                     string.Empty,
-                    (u) => { return new MessageAndHttpCode(HttpStatusCode.OK, "OK"); },
+                    (_) => { return new MessageAndHttpCode(HttpStatusCode.OK, "OK"); },
                     cts.Token))
                 .ConfigureAwait(false);
         }
@@ -101,14 +101,14 @@ namespace Microsoft.Identity.Test.Unit.WebUITests
             Task<Uri> listenTask = listenerInterceptor.ListenToSingleRequestAndRespondAsync(
                 port,
                 "/TestPath/",
-                (u) => { return new MessageAndHttpCode(HttpStatusCode.OK, "OK"); },
+                (_) => { return new MessageAndHttpCode(HttpStatusCode.OK, "OK"); },
                 CancellationToken.None);
 
             // Issue an HTTP request on the main thread
             await SendMessageToPortAsync(port, "TestPath").ConfigureAwait(false);
 
             // Wait for the listener to do its stuff
-            listenTask.Wait(2000 /* 2s timeout */);
+            listenTask.Wait(5000 /* 5s timeout */);
 
             // Assert
             Assert.IsTrue(listenTask.IsCompleted);
@@ -131,7 +131,7 @@ namespace Microsoft.Identity.Test.Unit.WebUITests
                 () => listenerInterceptor.ListenToSingleRequestAndRespondAsync(
                     port,
                     string.Empty,
-                    (u) => { return new MessageAndHttpCode(HttpStatusCode.OK, "OK"); },
+                    (_) => { return new MessageAndHttpCode(HttpStatusCode.OK, "OK"); },
                     cts.Token))
                 .ConfigureAwait(false);
         }

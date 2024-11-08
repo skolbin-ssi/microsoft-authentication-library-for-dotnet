@@ -1,12 +1,12 @@
 ﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#if DESKTOP || NET_CORE || NET6_WIN
+#if NETFRAMEWORK 
 
 using System;
 using Microsoft.Identity.Client.ApiConfig.Parameters;
+using Microsoft.Identity.Client.Desktop.WebView2WebUi;
 using Microsoft.Identity.Client.Internal;
-using Microsoft.Identity.Client.Platforms.Features.WebView2WebUi;
 using Microsoft.Identity.Client.Platforms.Features.WinFormsLegacyWebUi;
 using Microsoft.Identity.Client.Platforms.Shared.Desktop.OsBrowser;
 using Microsoft.Identity.Client.UI;
@@ -29,6 +29,9 @@ namespace Microsoft.Identity.Test.Unit.WebUITests
           new RequestContext(TestCommon.CreateDefaultAdfsServiceBundle(), Guid.NewGuid());
 
         [TestMethod]
+#if ONEBRANCH_BUILD
+        [Ignore]
+#endif
         public void IsSystemWebUiAvailable()
         {
             var webUIFactory = new WebView2WebUiFactory();
@@ -54,7 +57,7 @@ namespace Microsoft.Identity.Test.Unit.WebUITests
         }
 
         [TestMethod]
-        public void WebViewTypeNotConfigured_ADFS_WebView1()
+        public void WebViewTypeNotConfigured_ADFS_WebView2()
         {
             // Arrange
             var webUIFactory = new WebView2WebUiFactory(() => true);
@@ -66,7 +69,7 @@ namespace Microsoft.Identity.Test.Unit.WebUITests
                     _requestContextAdfs);
 
             // Assert
-            Assert.IsTrue(webUi is InteractiveWebUI);
+            Assert.IsTrue(webUi is WebView2WebUi);
 
         }
 
@@ -117,7 +120,7 @@ namespace Microsoft.Identity.Test.Unit.WebUITests
         }
 
         [TestMethod]
-        public void WebViewTypeEmbedded_ADFS_WebView1()
+        public void WebViewTypeEmbedded_ADFS_WebView2()
         {
             // Arrange
             var webUIFactory = new WebView2WebUiFactory(() => true);
@@ -126,7 +129,7 @@ namespace Microsoft.Identity.Test.Unit.WebUITests
             var webUi = webUIFactory.CreateAuthenticationDialog(_parent, WebViewPreference.Embedded, _requestContextAdfs);
 
             // Assert
-            Assert.IsTrue(webUi is InteractiveWebUI);
+            Assert.IsTrue(webUi is WebView2WebUi);
         }
 
         [TestMethod]
@@ -143,6 +146,9 @@ namespace Microsoft.Identity.Test.Unit.WebUITests
         }
 
         [TestMethod]
+#if ONEBRANCH_BUILD
+        [Ignore]
+#endif
         public void NetCoreFactory_System()
         {
             // Arrange

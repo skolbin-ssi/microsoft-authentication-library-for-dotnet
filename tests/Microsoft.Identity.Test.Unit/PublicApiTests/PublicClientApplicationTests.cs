@@ -11,10 +11,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Identity.Client;
 using Microsoft.Identity.Client.Advanced;
-#if !NET5_0_OR_GREATER
-using Microsoft.Identity.Client.Desktop;
-#endif
-#if NET_CORE
+#if NET6_0
 using Microsoft.Identity.Client.Broker;
 #endif
 using Microsoft.Identity.Client.Instance;
@@ -344,28 +341,24 @@ namespace Microsoft.Identity.Test.Unit.PublicApiTests
         [TestMethod]
         public void AcquireTokenWithDefaultRedirectURITest()
         {
-            using (var harness = CreateTestHarness())
-            {
-                //harness.HttpManager.AddInstanceDiscoveryMockHandler();
-                PublicClientApplication app = PublicClientApplicationBuilder.Create(TestConstants.ClientId)
-                                                                            .WithAuthority(new Uri(ClientApplicationBase.DefaultAuthority), true)
-                                                                            .BuildConcrete();
-                //Validate legacy default uri
-                Assert.AreEqual(TestConstants.RedirectUri, app.AppConfig.RedirectUri);
+            PublicClientApplication app = PublicClientApplicationBuilder.Create(TestConstants.ClientId)
+                                                                        .WithAuthority(new Uri(ClientApplicationBase.DefaultAuthority), true)
+                                                                        .BuildConcrete();
+            //Validate legacy default uri
+            Assert.AreEqual(TestConstants.RedirectUri, app.AppConfig.RedirectUri);
 
-                app = PublicClientApplicationBuilder.Create(TestConstants.ClientId)
-                                                                            .WithAuthority(new Uri(ClientApplicationBase.DefaultAuthority), true)
-                                                                            .WithHttpManager(harness.HttpManager)
-                                                                            .WithDefaultRedirectUri()
-                                                                            .BuildConcrete();
+            app = PublicClientApplicationBuilder.Create(TestConstants.ClientId)
+                      .WithAuthority(new Uri(ClientApplicationBase.DefaultAuthority), true)
+                      .WithDefaultRedirectUri()
+                      .BuildConcrete();
 
-                //Validate new default redirect uri
-#if DESKTOP || NET6_WIN
-                Assert.AreEqual(Constants.NativeClientRedirectUri, app.AppConfig.RedirectUri);
-#elif NET_CORE 
-                Assert.AreEqual(app.AppConfig.RedirectUri, "http://localhost");
+            //Validate new default redirect uri
+#if NETFRAMEWORK
+            Assert.AreEqual(Constants.NativeClientRedirectUri, app.AppConfig.RedirectUri);
+#else
+            Assert.AreEqual(app.AppConfig.RedirectUri, "http://localhost");
 #endif
-            }
+
         }
 
         [TestMethod]
@@ -480,27 +473,40 @@ namespace Microsoft.Identity.Test.Unit.PublicApiTests
                             MockHelpers.CreateClientInfo(TestConstants.Uid, TestConstants.Utid + "more"))
                     });
 
-                try
-                {
-                    result = app
-                        .AcquireTokenInteractive(TestConstants.s_scope)
-                        .WithAccount(result.Account)
-                        .WithPrompt(Prompt.SelectAccount)
-                        .ExecuteAsync(CancellationToken.None)
-                        .Result;
+                //Ensure Interactive flow does not fail when different home account id is returned
+                AuthenticationResult result2 = app
+                    .AcquireTokenInteractive(TestConstants.s_scope)
+                    .WithAccount(result.Account)
+                    .WithPrompt(Prompt.SelectAccount)
+                    .ExecuteAsync(CancellationToken.None)
+                    .Result;
 
-                    Assert.Fail("API should have failed here");
-                }
-                catch (AggregateException ex)
-                {
-                    MsalClientException exc = (MsalClientException)ex.InnerException;
-                    Assert.IsNotNull(exc);
-                    Assert.AreEqual(MsalError.UserMismatch, exc.ErrorCode);
-                }
+                httpManager.AddMockHandler(
+                    new MockHttpMessageHandler
+                    {
+                        ExpectedMethod = HttpMethod.Post,
+                        ResponseMessage = MockHelpers.CreateSuccessTokenResponseMessage(
+                            TestConstants.s_scope.AsSingleString(),
+                            MockHelpers.CreateIdToken(TestConstants.UniqueId, TestConstants.DisplayableId),
+                            MockHelpers.CreateClientInfo(TestConstants.Uid, TestConstants.Utid + "more"))
+                    });
+
+                //Silent flow should fail when different account is returned.
+                var exception = Assert.ThrowsException<AggregateException>(() =>
+                    result = app
+                    .AcquireTokenSilent(TestConstants.s_scope, result.Account)
+                    .WithForceRefresh(true)
+                    .ExecuteAsync(CancellationToken.None)
+                    .Result
+                    , "Silent API should have failed here");
+
+                MsalClientException exc = (MsalClientException)exception.InnerException;
+                Assert.IsNotNull(exc);
+                Assert.AreEqual(MsalError.UserMismatch, exc.ErrorCode);
 
                 var users = app.GetAccountsAsync().Result;
-                Assert.AreEqual(1, users.Count());
-                Assert.AreEqual(1, app.UserTokenCacheInternal.Accessor.GetAllAccessTokens().Count());
+                Assert.AreEqual(2, users.Count());
+                Assert.AreEqual(2, app.UserTokenCacheInternal.Accessor.GetAllAccessTokens().Count);
             }
         }
 
@@ -560,7 +566,7 @@ namespace Microsoft.Identity.Test.Unit.PublicApiTests
                 Assert.AreEqual(TestConstants.DisplayableId, result.Account.Username);
                 var users = app.GetAccountsAsync().Result;
                 Assert.AreEqual(2, users.Count());
-                Assert.AreEqual(2, app.UserTokenCacheInternal.Accessor.GetAllAccessTokens().Count());
+                Assert.AreEqual(2, app.UserTokenCacheInternal.Accessor.GetAllAccessTokens().Count);
             }
         }
 
@@ -860,7 +866,6 @@ namespace Microsoft.Identity.Test.Unit.PublicApiTests
             const string tenant1 = "72f988bf-86f1-41af-91ab-2d7cd011db47";
             const string tenant2 = "49f548d0-12b7-4169-a390-bb5304d24462";
             string tenantedAuthority1 = $"https://login.microsoftonline.com/{tenant1}/";
-            string tenantedAuthority2 = $"https://login.microsoftonline.com/{tenant2}/";
 
             using (var httpManager = new MockHttpManager())
             {
@@ -874,7 +879,7 @@ namespace Microsoft.Identity.Test.Unit.PublicApiTests
 
                 AuthenticationResult response = await
                     pca.AcquireTokenSilent(new[] { "User.Read" }, account)
-                    .WithAuthority(tenantedAuthority1)
+                    .WithTenantIdFromAuthority(new Uri(tenantedAuthority1))
                     .ExecuteAsync()
                     .ConfigureAwait(false);
 
@@ -1033,7 +1038,7 @@ namespace Microsoft.Identity.Test.Unit.PublicApiTests
 
             var pcaBuilder = PublicClientApplicationBuilder
                 .Create(clientIdInFile)
-                .WithLogging((lvl, msg, pii) => Trace.WriteLine($"[{lvl}] {msg}"))
+                .WithLogging((lvl, msg, _) => Trace.WriteLine($"[{lvl}] {msg}"))
                 .WithHttpManager(httpManager);
 
             if (authority != null)
@@ -1043,13 +1048,14 @@ namespace Microsoft.Identity.Test.Unit.PublicApiTests
 
             if (enableBroker)
             {
-#if NET5_0_OR_GREATER
-                pcaBuilder.WithBroker();
+#if NET6_0_OR_GREATER
+                pcaBuilder.WithBroker(
+                    new BrokerOptions(
+                        BrokerOptions.OperatingSystems.Windows));
 #else
-                WamExtension.WithWindowsBroker(pcaBuilder);
+            Assert.Fail("Test failure - not supported");
 #endif
             }
-
             var pca = pcaBuilder.BuildConcrete();
             pca.InitializeTokenCacheFromFile(ResourceHelper.GetTestResourceRelativePath(tokenCacheFile), true);
             var expectedRTs = enableBroker ? 0 : 2;
@@ -1148,7 +1154,7 @@ namespace Microsoft.Identity.Test.Unit.PublicApiTests
                .WithLoginHint("loginhint")
                .WithPrompt(Prompt.ForceLogin);
 
-#if DESKTOP
+#if NETFRAMEWORK
             interactiveBuilder = interactiveBuilder.WithUseEmbeddedWebView(true);
 #endif
             CheckBuilderCommonMethods(interactiveBuilder);
@@ -1160,8 +1166,8 @@ namespace Microsoft.Identity.Test.Unit.PublicApiTests
             var usernamePasswordBuilder = app.AcquireTokenByUsernamePassword(TestConstants.s_scope, "upn@live.com", "");
             CheckBuilderCommonMethods(usernamePasswordBuilder);
 
-            var deviceCodeBuilder = app.AcquireTokenWithDeviceCode(TestConstants.s_scope, result => Task.FromResult(0))
-               .WithDeviceCodeResultCallback(result => Task.FromResult(0));
+            var deviceCodeBuilder = app.AcquireTokenWithDeviceCode(TestConstants.s_scope, _ => Task.FromResult(0))
+               .WithDeviceCodeResultCallback(_ => Task.FromResult(0));
             CheckBuilderCommonMethods(deviceCodeBuilder);
 
             var silentBuilder = app.AcquireTokenSilent(TestConstants.s_scope, TestConstants.s_user)
@@ -1209,6 +1215,7 @@ namespace Microsoft.Identity.Test.Unit.PublicApiTests
 
         public static void CheckBuilderCommonMethods<T>(AbstractAcquireTokenParameterBuilder<T> builder) where T : AbstractAcquireTokenParameterBuilder<T>
         {
+#pragma warning disable CS0618 // Type or member is obsolete
             builder.WithAuthority(AadAuthorityAudience.AzureAdAndPersonalMicrosoftAccount, true)
                 .WithAuthority(AzureCloudInstance.AzureChina, AadAuthorityAudience.AzureAdMultipleOrgs, true)
                 .WithAuthority(AzureCloudInstance.AzurePublic, Guid.NewGuid(), true)
@@ -1224,6 +1231,7 @@ namespace Microsoft.Identity.Test.Unit.PublicApiTests
                     {
                         {"key1", "value1"}
                     });
+#pragma warning restore CS0618 // Type or member is obsolete
         }
 
         private Task<IEnumerable<IAccount>> PopulateB2CTokenCacheAsync(string userFlow, PublicClientApplication app)

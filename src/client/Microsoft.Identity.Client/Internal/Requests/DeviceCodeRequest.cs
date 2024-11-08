@@ -29,7 +29,7 @@ namespace Microsoft.Identity.Client.Internal.Requests
         {
             await ResolveAuthorityAsync().ConfigureAwait(false);
 
-            var client = new OAuth2Client(ServiceBundle.ApplicationLogger, ServiceBundle.HttpManager);
+            var client = new OAuth2Client(ServiceBundle.ApplicationLogger, ServiceBundle.HttpManager, null);
 
             var deviceCodeScopes = new HashSet<string>();
             deviceCodeScopes.UnionWith(AuthenticationRequestParameters.Scope);
@@ -41,7 +41,10 @@ namespace Microsoft.Identity.Client.Internal.Requests
             client.AddBodyParameter(OAuth2Parameter.Scope, deviceCodeScopes.AsSingleString());
             client.AddBodyParameter(OAuth2Parameter.Claims, AuthenticationRequestParameters.ClaimsAndClientCapabilities);
 
-            var builder = new UriBuilder(AuthenticationRequestParameters.Authority.GetDeviceCodeEndpoint());
+            var deviceCodeEndpoint = await AuthenticationRequestParameters.Authority.GetDeviceCodeEndpointAsync(
+                AuthenticationRequestParameters.RequestContext).ConfigureAwait(false);
+
+            var builder = new UriBuilder(deviceCodeEndpoint);
             builder.AppendQueryParameters(AuthenticationRequestParameters.ExtraQueryParameters);
 
             var response = await client.ExecuteRequestAsync<DeviceCodeResponse>(
@@ -73,10 +76,14 @@ namespace Microsoft.Identity.Client.Internal.Requests
 
                 try
                 {
+                    var tokenEndpoint = await AuthenticationRequestParameters.Authority.GetTokenEndpointAsync(AuthenticationRequestParameters.RequestContext)
+                        .ConfigureAwait(false);
+
                     var tokenResponse = await SendTokenRequestAsync(
-                                   AuthenticationRequestParameters.Authority.GetTokenEndpoint(),
-                                   GetBodyParameters(deviceCodeResult), cancellationToken)
-                               .ConfigureAwait(false);
+                        tokenEndpoint,
+                        GetBodyParameters(deviceCodeResult),
+                        cancellationToken).ConfigureAwait(false);
+
                     Metrics.IncrementTotalAccessTokensFromIdP();
                     return tokenResponse;
                 }
@@ -99,7 +106,7 @@ namespace Microsoft.Identity.Client.Internal.Requests
             throw new MsalClientException(MsalError.CodeExpired, "Verification code expired before contacting the server");
         }
 
-        private Dictionary<string, string> GetBodyParameters(DeviceCodeResult deviceCodeResult)
+        private static Dictionary<string, string> GetBodyParameters(DeviceCodeResult deviceCodeResult)
         {
             var dict = new Dictionary<string, string>
             {

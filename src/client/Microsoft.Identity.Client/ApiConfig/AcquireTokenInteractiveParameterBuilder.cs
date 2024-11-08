@@ -23,7 +23,7 @@ using UIKit;
 using Android.App;
 #endif
 
-#if DESKTOP || NET6_WIN
+#if NETFRAMEWORK 
 using System.Windows.Forms;
 #endif
 
@@ -79,12 +79,16 @@ namespace Microsoft.Identity.Client
 
         /// <summary>
         /// Specifies if the public client application should used an embedded web browser
-        /// or the system default browser
+        /// or the system default browser. If the broker (WAM, Authenticator, Company Portal) is configured, 
+        /// this setting is only used when the broker is not installed.
+        /// 
+        /// On .NET, including net8-windows, app developers must reference Microsoft.Identity.Client.Desktop
+        /// and call PublicClientApplicationBuilder.WithDesktopFeatures() to enable the embedded web browser.
+        /// 
         /// </summary>
         /// <param name="useEmbeddedWebView">If <c>true</c>, will use an embedded web browser,
         /// otherwise will attempt to use a system web browser. The default depends on the platform:
-        /// <c>false</c> for Xamarin.iOS and Xamarin.Android, and <c>true</c> for .NET Framework,
-        /// and UWP</param>
+        /// <c>false</c> for iOS and Android, and <c>true</c> for .NET Framework</param>
         /// <returns>The builder to chain the .With methods</returns>
         public AcquireTokenInteractiveParameterBuilder WithUseEmbeddedWebView(bool useEmbeddedWebView)
         {
@@ -96,16 +100,13 @@ namespace Microsoft.Identity.Client
             return this;
         }
 
-        // Remark: Default browser WebUI is not available on mobile (Android, UWP), but allow it at runtime
+        // Remark: Default browser WebUI is not available on mobile, but allow it at runtime
         // to avoid MissingMethodException
         /// <summary>
         /// Specifies options for using the system OS browser handle interactive authentication.
         /// </summary>
         /// <param name="options">Data object with options</param>
         /// <returns>The builder to chain the .With methods</returns>
-#if WINDOWS_APP
-        [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)] 
-#endif
         public AcquireTokenInteractiveParameterBuilder WithSystemWebViewOptions(SystemWebViewOptions options)
         {
             SystemWebViewOptions.ValidatePlatformAvailability();
@@ -150,7 +151,6 @@ namespace Microsoft.Identity.Client
         /// </summary>
         /// <param name="account">Account to use for the interactive token acquisition. See <see cref="IAccount"/> for ways to get an account</param>
         /// <returns>The builder to chain the .With methods</returns>
-        /// <remarks>An exception will be thrown If AAD returns a different account than the one that is being requested for.</remarks>
         public AcquireTokenInteractiveParameterBuilder WithAccount(IAccount account)
         {
             Parameters.Account = account;
@@ -190,7 +190,7 @@ namespace Microsoft.Identity.Client
          */
 
         /// <summary>
-        ///  Sets a reference to the ViewController (if using Xamarin.iOS), Activity (if using Xamarin.Android)
+        ///  Sets a reference to the ViewController (if using iOS), Activity (if using Android)
         ///  IWin32Window or IntPtr (if using .Net Framework). Used for invoking the browser.
         /// </summary>
         /// <remarks>Mandatory only on Android. Can also be set via the PublicClientApplication builder.</remarks>
@@ -224,14 +224,14 @@ namespace Microsoft.Identity.Client
                 Parameters.UiParent.CallerWindow = nsWindow;
             }
 
-#elif DESKTOP || NET6_WIN
+#elif NETFRAMEWORK 
             if (parent is IWin32Window win32Window)
             {
                 Parameters.UiParent.OwnerWindow = win32Window.Handle;
                 return this;
             }
 #endif
-#if DESKTOP || NET6_WIN || NET_CORE || NETSTANDARD
+#if NETFRAMEWORK ||  NET_CORE || NETSTANDARD
 
             if (parent is IntPtr intPtrWindow)
             {
@@ -244,7 +244,7 @@ namespace Microsoft.Identity.Client
 #if ANDROID
         /// <summary>
         /// Sets a reference to the current Activity that triggers the browser to be shown. Required
-        /// for MSAL to be able to show the browser when using Xamarin.Android
+        /// for MSAL to be able to show the browser when using Android
         /// </summary>
         /// <param name="activity">The current Activity</param>
         /// <returns>The builder to chain the .With methods</returns>
@@ -278,7 +278,7 @@ namespace Microsoft.Identity.Client
         }
 #endif
 
-#if DESKTOP || NET6_WIN
+#if NETFRAMEWORK 
         /// <summary>
         /// Sets a reference to the current IWin32Window that triggers the browser to be shown.
         /// Used to center the browser (embedded web view and Windows broker) that pop-up onto this window.        
@@ -297,7 +297,7 @@ namespace Microsoft.Identity.Client
         }
 #endif
 
-#if DESKTOP || NET6_WIN || NET_CORE || NETSTANDARD
+#if NETFRAMEWORK || NET_CORE || NETSTANDARD
 
         /// <summary>
         /// Sets a reference to the IntPtr to a window that triggers the browser to be shown.
@@ -336,25 +336,25 @@ namespace Microsoft.Identity.Client
         #endregion
 
         /// <summary>
-        ///  Modifies the token acquisition request so that the acquired token is a Proof of Possession token (PoP), rather than a Bearer token. 
+        ///  Modifies the token acquisition request so that the acquired token is a Proof-of-Possession token (PoP), rather than a Bearer token. 
         ///  PoP tokens are similar to Bearer tokens, but are bound to the HTTP request and to a cryptographic key, which MSAL can manage on Windows.
         ///  Note that only the host and path parts of the request URI will be bound.
         ///  See https://aka.ms/msal-net-pop
         /// </summary>
-        /// <param name="httpMethod">The HTTP method ("GET", "POST" etc.) method that will be bound to the token. Leave null and the POP token will not be bound to the method.
+        /// <param name="nonce">Nonce of the protected resource which will be published as part of the WWW-Authenticate header associated with a 401 HTTP response
+        /// or as part of the AuthorityInfo header associated with 200 response. Set it here to make it part of the Signed HTTP Request part of the PoP token.</param>
+        /// <param name="httpMethod">The HTTP method ("GET", "POST" etc.) method that will be bound to the token. If set to null, the PoP token will not be bound to the method.
         /// Corresponds to the "m" part of the a signed HTTP request.</param>
         /// <param name="requestUri">The URI to bind the signed HTTP request to.</param>
-        /// <param name="nonce">Nonce of the protected resource (RP) which will be published as part of the WWWAuthenticate header associated with a 401 HTTP response
-        /// or as part of the AuthorityInfo header associated with 200 response. Set it here to make it part of the Signed HTTP Request part of the POP token.</param>
         /// <returns>The builder.</returns>
         /// <remarks>
         /// <list type="bullet">
-        /// <item><description>An Authentication header is automatically added to the request</description></item>
+        /// <item><description>An Authentication header is automatically added to the request.</description></item>
         /// <item><description>The PoP token is bound to the HTTP request, more specifically to the HTTP method (GET, POST, etc.) and to the Uri (path and query, but not query parameters).</description></item>
-        /// <item><description>This is an experimental API. The method signature may change in the future without involving a major version upgrade.</description></item>
+        /// <item><description>Broker is required to use Proof-of-Possession on public clients.</description></item>
         /// </list>
         /// </remarks>
-#if iOS || ANDROID || WINDOWS_UWP
+#if iOS || ANDROID 
         [EditorBrowsable(EditorBrowsableState.Never)]
 #endif
         public AcquireTokenInteractiveParameterBuilder WithProofOfPossession(string nonce, HttpMethod httpMethod, Uri requestUri)
@@ -384,12 +384,12 @@ namespace Microsoft.Identity.Client
             popConfig.HttpMethod = httpMethod;
 
             CommonParameters.PopAuthenticationConfiguration = popConfig;
-            CommonParameters.AuthenticationScheme = new PopBrokerAuthenticationScheme();
+            CommonParameters.AuthenticationOperation = new PopBrokerAuthenticationOperation();
 
             return this;
         }
 
-        /// <inheritdoc />
+        /// <inheritdoc/>
         protected override void Validate()
         {
             base.Validate();
@@ -418,7 +418,7 @@ namespace Microsoft.Identity.Client
                                           : Parameters.LoginHint;
         }
 
-        /// <inheritdoc />
+        /// <inheritdoc/>
         internal override Task<AuthenticationResult> ExecuteInternalAsync(CancellationToken cancellationToken)
         {
             return PublicClientApplicationExecutor.ExecuteAsync(CommonParameters, Parameters, cancellationToken);

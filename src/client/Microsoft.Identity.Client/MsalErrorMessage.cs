@@ -128,14 +128,14 @@ namespace Microsoft.Identity.Client
         public const string BrokerResponseError = "Broker response returned error: ";
         public const string CannotInvokeBroker = "MSAL cannot invoke the broker. The Authenticator App (Broker) may not be installed on the user's device or there was an error invoking the broker. " +
             "Check logs for more details and see https://aka.ms/msal-brokers. ";
-        public const string CannotInvokeBrokerForPop = "MSAL cannot invoke the broker and it is required for Proof-of-Possession. WAM (Broker) may not be installed on the user's device or there was an error invoking the broker. Use IPublicCleintApplication.IsProofOfPossessionSupportedByClient to ensure Proof-of-Possession can be performed before using WithProofOfPossession." +
+        public const string CannotInvokeBrokerForPop = "MSAL cannot invoke the broker and it is required for Proof-of-Possession. WAM (Broker) may not be installed on the user's device or there was an error invoking the broker. Use IPublicClientApplication.IsProofOfPossessionSupportedByClient to ensure Proof-of-Possession can be performed before using WithProofOfPossession." +
             "Check logs for more details and see https://aka.ms/msal-net-pop. ";
         public const string BrokerDoesNotSupportPop = "The broker does not support Proof-of-Possession on the current platform.";
-        public const string BrokerRequiredForPop = "The request has Proof-of-Possession configured but does not have broker enabled. Broker is required for Proof-of-Possession on public clients. Use IPublicCleintApplication.IsProofOfPossessionSupportedByClient to ensure Proof-of-Possession can be performed before using WithProofOfPossession.";
+        public const string BrokerRequiredForPop = "The request has Proof-of-Possession configured but does not have broker enabled. Broker is required to use Proof-of-Possession on public clients. Use IPublicClientApplication.IsProofOfPossessionSupportedByClient to ensure Proof-of-Possession can be performed before using WithProofOfPossession.";
         public const string NonceRequiredForPop = "The request has Proof-of-Possession configured for public clients but does not have a nonce provided. A nonce is required for Proof-of-Possession on public clients.";
-        public const string AdfsNotSupportedWithBroker = "Broker does not support ADFS environments. If using Proof-of-Possession, use IPublicCleintApplication.IsProofOfPossessionSupportedByClient to ensure Proof-of-Possession can be performed before calling WithProofOfPossession.";
+        public const string AdfsNotSupportedWithBroker = "Broker does not support ADFS environments. If using Proof-of-Possession, use IPublicClientApplication.IsProofOfPossessionSupportedByClient to ensure Proof-of-Possession can be performed before calling WithProofOfPossession.";
 
-        public const string NullIntentReturnedFromBroker = "Broker returned a null intent. Check the Xamarin Android app settings and logs for more information. ";
+        public const string NullIntentReturnedFromBroker = "Broker returned a null intent. Check the Android app settings and logs for more information. ";
         public const string NoAccountForLoginHint = "You are trying to acquire a token silently using a login hint. No account was found in the token cache having this login hint. ";
         public const string MultipleAccountsForLoginHint = "You are trying to acquire a token silently using a login hint. Multiple accounts were found in the token cache having this login hint. Please choose an account manually an pass it in to AcquireTokenSilently. ";
 
@@ -143,22 +143,22 @@ namespace Microsoft.Identity.Client
 
         public const string HttpRequestUnsuccessful = "Response status code does not indicate success: {0} ({1}). ";
 
-        public const string AuthorityInvalidUriFormat = "'authority' should be in URI format. ";
+        public const string AuthorityInvalidUriFormat = "The authority (including the tenant ID) must be in a well-formed URI format. ";
 
         public const string AuthorityNotSupported = "'authority' is not supported. ";
 
         public const string AuthorityValidationFailed = "Authority validation failed. ";
 
-        public const string AuthorityUriInsecure = "'authority' should use the 'https' scheme. ";
+        public const string AuthorityUriInsecure = "The authority must use HTTPS scheme. ";
 
         public const string AuthorityUriInvalidPath =
-         "'authority' Uri should have at least one segment in the path (i.e. https://<host>/<path>/...). ";
+         "The authority URI should have at least one segment in the path (i.e. https://<host>/<path>/...). ";
 
         public const string B2cAuthorityUriInvalidPath =
-          "B2C 'authority' Uri should have at least 3 segments in the path (i.e. https://<host>/tfp/<tenant>/<policy>/...). ";
+          "The B2C authority URI should have at least 3 segments in the path (i.e. https://<host>/tfp/<tenant>/<policy>/...). ";
 
         public const string DstsAuthorityUriInvalidPath =
-          "DSTS authority URI should have at least 2 segments in the path (i.e. https://<host>/dstsv2/<tenant>/...). ";
+          "The DSTS authority URI should have at least 2 segments in the path (i.e. https://<host>/dstsv2/<tenant>/...). ";
 
         public const string UnsupportedAuthorityValidation =
             "Authority validation is not supported for this type of authority. See http://aka.ms/valid-authorities for details. ";
@@ -173,7 +173,7 @@ namespace Microsoft.Identity.Client
 
         public const string AuthorizationServerInvalidResponse = "The authorization server returned an invalid response. ";
 
-        public const string NonHttpsRedirectNotSupported = "Non-HTTPS URL redirect is not supported in webview. " +
+        public const string NonHttpsRedirectNotSupported = "Non-HTTPS URL redirect is not supported in a web view. " +
             "This error happens when the authorization flow, which collects user credentials, gets redirected " +
             "to a page that is not supported, for example if the redirect occurs over http. " +
             "This error does not trigger for the final redirect, which can be http://localhost, but for intermediary redirects." +
@@ -183,14 +183,8 @@ namespace Microsoft.Identity.Client
         public const string FailedToParseIDToken = "Failed to parse the returned id token. ";
 
         public const string InvalidAuthorityOpenId = "invalid authority while getting the open id config endpoint. ";
-        public const string UpnRequiredForAuthroityValidation = "UPN is required for ADFS authority validation. ";
+        public const string UpnRequiredForAuthorityValidation = "UPN is required for ADFS authority validation. ";
         public const string CannotFindTheAuthEndpoint = "Cannot find the auth endpoint. ";
-
-        public const string UapCannotFindUpn =
-           "Cannot find the user logged into Windows, but found a domain the name. Possible cause: the UWP application does not request the Enterprise Authentication capability. ";
-
-        public const string UapCannotFindDomainUser =
-            "Cannot find the user logged into Windows. Possible causes: the application does not request the User Account Information, Enterprise Authentication and Private Networks (Client & Server) capabilities or the user is not AD or AAD joined. ";
 
         public const string PlatformNotSupported = "Platform Not Supported";
 
@@ -200,7 +194,6 @@ namespace Microsoft.Identity.Client
         public const string ParsingWsTrustResponseFailedDueToConfiguration = "There was an error parsing the WS-Trust response from the endpoint. " +
             "\nThis may occur if there are issues with your ADFS configuration. See https://aka.ms/msal-net-iwa-troubleshooting for more details." +
             "\nEnable logging to see more details. See https://aka.ms/msal-net-logging.";
-
 
         public const string InternalErrorCacheEmptyUsername =
             "Internal error - trying to remove an MSAL user with an empty username. Possible cache corruption. See https://aka.ms/adal_token_cache_serialization. ";
@@ -233,7 +226,7 @@ namespace Microsoft.Identity.Client
         public const string ClientApplicationBaseExecutorNotImplemented =
             "ClientApplicationBase implementation does not implement IClientApplicationBaseExecutor. ";
 
-        public const string ActivityRequiredForParentObjectAndroid = "On Xamarin.Android, you have to specify the current Activity from which the browser pop-up will be displayed using the WithParentActivityOrWindow method. ";
+        public const string ActivityRequiredForParentObjectAndroid = "On Android, you have to specify the current Activity from which the browser pop-up will be displayed using the WithParentActivityOrWindow method. ";
 
         public const string LoggingCallbackAlreadySet = "LoggingCallback has already been set. ";
         public const string TelemetryCallbackAlreadySet = "TelemetryCallback has already been set. ";
@@ -252,11 +245,10 @@ namespace Microsoft.Identity.Client
 
         public const string ClientCredentialAuthenticationTypesAreMutuallyExclusive = "ClientSecret, Certificate and ClientAssertion are mutually exclusive properties. Only specify one. See https://aka.ms/msal-net-client-credentials. ";
         public const string ClientCredentialAuthenticationTypeMustBeDefined = "One client credential type required either: ClientSecret, Certificate, ClientAssertion or AppTokenProvider must be defined when creating a Confidential Client. Only specify one. See https://aka.ms/msal-net-client-credentials. ";
-        public const string ClientIdMustBeAGuid = "Error: ClientId is not a GUID. ";
 
         public static string InvalidRedirectUriReceived(string invalidRedirectUri)
         {
-            return string.Format(CultureInfo.InvariantCulture, "Invalid RedirectURI was received ({0})  Not parseable into System.Uri class. ", invalidRedirectUri);
+            return $"Invalid RedirectURI was received ({invalidRedirectUri})  Not parseable into System.Uri class. ";
         }
 
         public const string TelemetryClassIsObsolete =
@@ -275,7 +267,7 @@ namespace Microsoft.Identity.Client
 
         public static string RedirectUriMismatch(string expectedUri, string actualUri)
         {
-            return string.Format(CultureInfo.InvariantCulture, "Redirect Uri mismatch.  Expected ({0}) Actual ({1}). ", expectedUri, actualUri);
+            return $"Redirect Uri mismatch.  Expected ({expectedUri}) Actual ({actualUri}). ";
         }
 
         public const string InteractiveAuthNotSupported =
@@ -285,7 +277,7 @@ namespace Microsoft.Identity.Client
 
         public const string CustomWebUiAuthorizationCodeFailed = "CustomWebUi AcquireAuthorizationCode failed. ";
 
-        public const string TokenCacheJsonSerializerFailedParse = "MSAL V3 Deserialization failed to parse the cache contents. Is this possibly an earlier format needed for DeserializeMsalV2? (See https://aka.ms/msal-net-3x-cache-breaking-change). ";
+        public const string TokenCacheJsonSerializerFailedParse = "MSAL deserialization failed to parse the cache contents. First characters of the cache string: {0} \r\nPossible cause: token cache encryption is used via Microsoft.Identity.Web.TokenCache and decryption fails, for example. \r\n Full details of inner exception: {1} ";
         public const string TokenCacheDictionarySerializerFailedParse = "MSAL V2 Deserialization failed to parse the cache contents. Is this possibly an earlier format needed for DeserializeMsalV3?  (See https://aka.ms/msal-net-3x-cache-breaking-change). ";
         public const string BrokerNotSupportedOnThisPlatform = "Broker is only supported on mobile platforms (Android and iOS). See https://aka.ms/msal-brokers for details. ";
 
@@ -336,70 +328,47 @@ namespace Microsoft.Identity.Client
         }
 
         public const string NoAndroidBrokerAccountFound = "Android account manager could not find an account that matched the provided account information. ";
-        public const string AndroidBrokerCannotBeInvoked = "The current version of the broker may not support MSAL.Xamarin or power optimization is turned on. In order to perform brokered authentication on android you need to ensure that you have installed either Intune Company Portal (5.0.4689.0 or greater) or Microsoft Authenticator (6.2001.0140 or greater). See https://aka.ms/Brokered-Authentication-for-Android. ";
+        public const string AndroidBrokerCannotBeInvoked = "The current version of the broker may not support MSAL or power optimization is turned on. In order to perform brokered authentication on android you need to ensure that you have installed either Intune Company Portal (5.0.4689.0 or greater) or Microsoft Authenticator (6.2001.0140 or greater). See https://aka.ms/Brokered-Authentication-for-Android. ";
         public const string CustomMetadataInstanceOrUri = "You have configured your own instance metadata using both an Uri and a string. Only one is supported. " +
             "See https://aka.ms/msal-net-custom-instance-metadata for more details. ";
 
         public const string ScopesRequired = "At least one scope needs to be requested for this authentication flow. ";
         public const string InvalidAdalCacheMultipleRTs = "The ADAL cache is invalid as it contains multiple refresh token entries for one user. Deleting invalid ADAL cache. ";
-
-        public const string CryptoNet45 =
-            "Could not use the certificate for signing. See inner exception for details. " +
-            "Possible cause: this may be a known issue with apps build against .NET Desktop 4.6 or lower. " +
-            "Either target a higher version of .NET desktop - 4.6.1 and above, " +
-            "or use a different certificate type (non-CNG) or sign your own assertion " +
-            "as described at https://aka.ms/msal-net-signed-assertion. ";
-
         public static string ExperimentalFeature(string methodName)
         {
-            return string.Format(
-                CultureInfo.InvariantCulture,
-                "The API {0} is marked as experimental and you should be mindful about using it in production. " +
-                "It may change without incrementing the major version of the library. " +
-                "Call .WithExperimentalFeatures() when creating the public / confidential client to bypass this. See https://aka.ms/msal-net-experimental-features for details. ",
-                methodName);
+            return $"The API {methodName} is marked as experimental and you should be mindful about using it in production. It may change without incrementing the major version of the library. Call .WithExperimentalFeatures() when creating the public / confidential client to bypass this. See https://aka.ms/msal-net-experimental-features for details. ";
         }
 
         public static string NoUserInstanceMetadataEntry(string environment)
         {
-            return string.Format(
-                CultureInfo.InvariantCulture,
-                "The json containing instance metadata does not contain details about the authority in use: {0}. See https://aka.ms/msal-net-custom-instance-metadata for more details. ",
-                environment);
+            return $"The json containing instance metadata does not contain details about the authority in use: {environment}. See https://aka.ms/msal-net-custom-instance-metadata for more details. ";
         }
 
         public static string WABError(string status, string errorDetail, string responseData)
         {
-            return string.Format(
-                CultureInfo.InvariantCulture,
-                "WAB responded with: status = {0}, error detail = {1}, response data = {2}",
-                status ?? "", errorDetail ?? "", responseData ?? "");
+            return $"WAB responded with: status = {status}, error detail = {errorDetail}, response data = {responseData}";
         }
 
         public static string TokenTypeMismatch(string requestTokenType, string responseTokenType)
         {
-            return string.Format(
-                CultureInfo.InvariantCulture,
-                "You asked for token type {0}, but receive {1}. This occurs if the Identity Provider (AAD, B2C, ADFS etc.) does not support the requested token type. If using ADFS, consider upgrading to the latest version. ",
-                requestTokenType, responseTokenType);
+            return $"You asked for token type {requestTokenType}, but receive {responseTokenType}. This occurs if the Identity Provider (AAD, B2C, ADFS etc.) does not support the requested token type. If using ADFS, consider upgrading to the latest version. ";
         }
 
         public const string AccessTokenTypeMissing = "The response from the token endpoint does not contain the token_type parameter. This happens if the identity provider (AAD, B2C, ADFS, etc.) did not include the access token type in the token response. Verify the configuration of the identity provider. ";
 
         public static string InvalidJsonClaimsFormat(string claims)
         {
-            return string.Format(
-                CultureInfo.InvariantCulture,
-                "You have configured a claims parameter that is not in JSON format: {0}. Inspect the inner exception for details about the JSON parsing error. To learn more about claim requests, please see https://openid.net/specs/openid-connect-core-1_0.html#ClaimsParameter. ",
-                claims);
+            return $"You have configured a claims parameter that is not in JSON format: {claims}. Inspect the inner exception for details about the JSON parsing error. To learn more about claim requests, please see https://openid.net/specs/openid-connect-core-1_0.html#ClaimsParameter. ";
         }
 
         public static string CertMustHavePrivateKey(string certificateName)
         {
-            return string.Format(
-                CultureInfo.InvariantCulture,
-                "The certificate {0} does not have a private key. ",
-                certificateName);
+            return $"The certificate {certificateName} does not have a private key. ";
+        }
+
+        public static string CertMustBeRsa(string certificateFriendlyName)
+        {
+            return $"The provided certificate is not of type RSA. Please use a certificate of type RSA. Provided certificate's Friendly Name: {certificateFriendlyName}.";
         }
 
         public const string LinuxOpenToolFailed = "Unable to open a web page using xdg-open, gnome-open, kfmclient or wslview tools. See inner exception for details. Possible causes for this error are: tools are not installed or they cannot open a URL. Make sure you can open a web page by invoking from a terminal: xdg-open https://www.bing.com ";
@@ -410,10 +379,7 @@ namespace Microsoft.Identity.Client
         public const string AuthenticationFailedWamElevatedProcess = "WAM Account Picker did not return an account. Either the user cancelled the authentication or the WAM Account Picker crashed because the app is running in an elevated process. For troubleshooting details, see https://aka.ms/msal-net-wam .";
 
         public static string InitializeProcessSecurityError(string errorCode) =>
-            string.Format(
-                CultureInfo.InvariantCulture,
-                "Failure setting process security to enable WAM Account Picker in an elevated process ({0}). For troubleshooting details, see https://aka.ms/msal-net-wam .",
-                errorCode);
+            $"Failure setting process security to enable WAM Account Picker in an elevated process ({errorCode}). For troubleshooting details, see https://aka.ms/msal-net-wam .";
 
         public const string CcsRoutingHintMissing = "Either the userObjectIdentifier or tenantIdentifier are missing. Both are needed to create the CCS routing hint. See https://aka.ms/msal-net/ccsRouting. ";
 
@@ -423,6 +389,8 @@ namespace Microsoft.Identity.Client
             "See https://aka.ms/msal-net-token-cache-serialization .";
 
         public const string ClientCredentialWrongAuthority = "The current authority is targeting the /common or /organizations endpoint which is not recommended. See https://aka.ms/msal-net-client-credentials for more details.";
+
+        public const string OnBehalfOfWrongAuthority = "The current authority is targeting the /common or /organizations endpoint. Instead, it should target the same tenant as the client, which can be found in the 'tid' claim of the incoming client token. See https://aka.ms/msal-net-on-behalf-of for more details.";
 
         public const string TenantOverrideNonAad = "WithTenantId can only be used when an AAD authority is specified at the application level.";
 
@@ -439,23 +407,26 @@ namespace Microsoft.Identity.Client
         public const string UnableToParseAuthenticationHeader = "MSAL is unable to parse the authentication header returned from the resource endpoint. This can be a result of a malformed header returned in either the WWW-Authenticate or the Authentication-Info collections acquired from the provided endpoint.";
         public static string InvalidTokenProviderResponseValue(string invalidValueName)
         {
-            return string.Format(
-                                CultureInfo.InvariantCulture,
-                                "The following token provider result value is invalid: {0}.",
-                                invalidValueName);
+            return $"The following token provider result value is invalid: {invalidValueName}.";
         }
 
         public const string ManagedIdentityNoResponseReceived = "[Managed Identity] Authentication unavailable. No response received from the managed identity endpoint.";
         public const string ManagedIdentityInvalidResponse = "[Managed Identity] Invalid response, the authentication response received did not contain the expected fields.";
         public const string ManagedIdentityUnexpectedResponse = "[Managed Identity] Unexpected exception occurred when parsing the response. See the inner exception for details.";
         public const string ManagedIdentityExactlyOneScopeExpected = "[Managed Identity] To acquire token for managed identity, exactly one scope must be passed.";
+        public const string ManagedIdentityUnexpectedErrorResponse = "[Managed Identity] The error response was either empty or could not be parsed.";
 
         public const string ManagedIdentityEndpointInvalidUriError = "[Managed Identity] The environment variable {0} contains an invalid Uri {1} in {2} managed identity source.";
         public const string ManagedIdentityNoChallengeError = "[Managed Identity] Did not receive expected WWW-Authenticate header in the response from Azure Arc Managed Identity Endpoint.";
         public const string ManagedIdentityInvalidChallenge = "[Managed Identity] The WWW-Authenticate header in the response from Azure Arc Managed Identity Endpoint did not match the expected format.";
-        public const string ManagedIdentityUserAssignedNotSupported = "[Managed Identity] User assigned identity is not supported by the {0} Managed Identity. To authenticate with the system assigned identity omit the client id to .WithManagedIentity().";
+        public const string ManagedIdentityInvalidFile = "[Managed Identity] The file on the file path in the WWW-Authenticate header is not secure.";
+        public const string ManagedIdentityPlatformNotSupported = "[Managed Identity] The platform is not supported by Azure Arc. Azure Arc only supports Windows and Linux.";
+        public const string ManagedIdentityUserAssignedNotSupported = "[Managed Identity] User assigned identity is not supported by the {0} Managed Identity. To authenticate with the system assigned identity omit the client id in ManagedIdentityApplicationBuilder.Create().";
         public const string ManagedIdentityUserAssignedNotConfigurableAtRuntime = "[Managed Identity] Service Fabric user assigned managed identity ClientId or ResourceId is not configurable at runtime.";
         public const string CombinedUserAppCacheNotSupported = "Using a combined flat storage, like a file, to store both app and user tokens is not supported. Use a partitioned token cache (for ex. distributed cache like Redis) or separate files for app and user token caches. See https://aka.ms/msal-net-token-cache-serialization .";
         public const string JsonParseErrorMessage = "There was an error parsing the response from the token endpoint, see inner exception for details. Verify that your app is configured correctly. If this is a B2C app, one possible cause is acquiring a token for Microsoft Graph, which is not supported. See https://aka.ms/msal-net-up";
+        public const string SetCiamAuthorityAtRequestLevelNotSupported = "Setting the CIAM authority (ex. \"{tenantName}.ciamlogin.com\") at the request level is not supported. The CIAM authority must be set during application creation";
+        public const string ClaimsChallenge = "The returned error contains a claims challenge. For additional info on how to handle claims related to multifactor authentication, Conditional Access, and incremental consent, see https://aka.ms/msal-conditional-access-claims. If you are using the On-Behalf-Of flow, see https://aka.ms/msal-conditional-access-claims-obo for details.";
+        public const string CryptographicError = "A cryptographic exception occurred. Possible cause: the certificate has been disposed. See inner exception for full details.";
     }
 }

@@ -39,7 +39,7 @@ namespace Microsoft.Identity.Test.Unit.CacheTests
                                                         .WithUserTokenLegacyCachePersistenceForTest(
                                                             new TestLegacyCachePersistance())
                                                         .BuildConcrete();
-                app.UserTokenCacheInternal.SetBeforeAccess(n => { });
+                app.UserTokenCacheInternal.SetBeforeAccess(_ => { });
 
                 app.ServiceBundle.ConfigureMockWebUI(
                     AuthorizationResult.FromUri(app.AppConfig.RedirectUri + "?code=some-code"));
@@ -97,7 +97,7 @@ namespace Microsoft.Identity.Test.Unit.CacheTests
                 // Using RT from Adal cache for silent call
                 AuthenticationResult result1 = app
                     .AcquireTokenSilent(TestConstants.s_scope, result.Account)
-                    .WithAuthority(TestConstants.AuthorityCommonTenant)
+                    .WithTenantId("common")
                     .WithForceRefresh(false)
                     .ExecuteAsync(CancellationToken.None)
                     .Result;
@@ -143,7 +143,7 @@ namespace Microsoft.Identity.Test.Unit.CacheTests
 
                 Assert.IsNotNull(result);
 
-                Assert.AreEqual(1, app.UserTokenCacheInternal.Accessor.GetAllAccounts().Count());
+                Assert.AreEqual(1, app.UserTokenCacheInternal.Accessor.GetAllAccounts().Count);
                 Assert.AreEqual(1, app.GetAccountsAsync().Result.Count());
 
                 // login to app1 with same credentials
@@ -178,10 +178,10 @@ namespace Microsoft.Identity.Test.Unit.CacheTests
                 // make sure that only one account cache entity was created
                 Assert.AreEqual(1, app1.GetAccountsAsync().Result.Count());
 
-                Assert.AreEqual(2, app1.UserTokenCacheInternal.Accessor.GetAllAccessTokens().Count());
-                Assert.AreEqual(2, app1.UserTokenCacheInternal.Accessor.GetAllRefreshTokens().Count());
-                Assert.AreEqual(2, app1.UserTokenCacheInternal.Accessor.GetAllIdTokens().Count());
-                Assert.AreEqual(1, app1.UserTokenCacheInternal.Accessor.GetAllAccounts().Count());
+                Assert.AreEqual(2, app1.UserTokenCacheInternal.Accessor.GetAllAccessTokens().Count);
+                Assert.AreEqual(2, app1.UserTokenCacheInternal.Accessor.GetAllRefreshTokens().Count);
+                Assert.AreEqual(2, app1.UserTokenCacheInternal.Accessor.GetAllIdTokens().Count);
+                Assert.AreEqual(1, app1.UserTokenCacheInternal.Accessor.GetAllAccounts().Count);
 
                 // remove account from app
                 app.RemoveAsync(app.GetAccountsAsync().Result.First()).Wait();
@@ -209,7 +209,7 @@ namespace Microsoft.Identity.Test.Unit.CacheTests
                           .WithUserTokenLegacyCachePersistenceForTest(new TestLegacyCachePersistance())
                           .WithHttpManager(harness.HttpManager)
                           .BuildConcrete();
-                app.UserTokenCacheInternal.SetBeforeAccess(n => { });
+                app.UserTokenCacheInternal.SetBeforeAccess(_ => { });
                 CreateAdalCache(harness.ServiceBundle.ApplicationLogger, app.UserTokenCacheInternal.LegacyPersistence, TestConstants.s_scope.ToString());
 
                 var adalUsers =

@@ -29,9 +29,10 @@ namespace Microsoft.Identity.Client.Internal
             ApplicationLogger = LoggerHelper.CreateLogger(Guid.Empty, config);
 
             PlatformProxy = config.PlatformProxy ?? PlatformProxyFactory.CreatePlatformProxy(ApplicationLogger);
-            HttpManager = config.HttpManager ?? new HttpManager(
-                config.HttpClientFactory ??
-                PlatformProxy.CreateDefaultHttpClientFactory(), config.RetryOnServerErrors);
+
+            HttpManager = config.HttpManager ?? 
+                HttpManagerFactory.GetHttpManager(config.HttpClientFactory ?? PlatformProxy.CreateDefaultHttpClientFactory(), 
+                config.RetryOnServerErrors, config.IsManagedIdentity);
 
             HttpTelemetryManager = new HttpTelemetryManager();
 
@@ -48,7 +49,7 @@ namespace Microsoft.Identity.Client.Internal
             if (shouldClearCaches) // for test
             {
                 AuthorityManager.ClearValidationCache();
-                PoPProviderFactory.Reset();
+                PoPCryptoProviderFactory.Reset();
             }
         }
 
@@ -58,18 +59,18 @@ namespace Microsoft.Identity.Client.Internal
         /// </summary>
         public ILoggerAdapter ApplicationLogger { get; }
 
-        /// <inheritdoc />
+        /// <inheritdoc/>
         public IHttpManager HttpManager { get; }
 
         public IInstanceDiscoveryManager InstanceDiscoveryManager { get; }
 
-        /// <inheritdoc />
+        /// <inheritdoc/>
         public IWsTrustWebRequestManager WsTrustWebRequestManager { get; }
 
-        /// <inheritdoc />
+        /// <inheritdoc/>
         public IPlatformProxy PlatformProxy { get; private set; }
 
-        /// <inheritdoc />
+        /// <inheritdoc/>
         public ApplicationConfiguration Config { get; }
 
         public IDeviceAuthManager DeviceAuthManager { get; }

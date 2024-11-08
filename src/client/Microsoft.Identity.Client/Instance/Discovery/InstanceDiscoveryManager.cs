@@ -87,17 +87,12 @@ namespace Microsoft.Identity.Client.Instance.Discovery
         {
             string environment = authorityInfo.Host;
 
-            // Skip instance discovery for managed identity
-            if (requestContext.ServiceBundle.Config.UseManagedIdentity)
-            {
-                return CreateEntryForSingleAuthority(authorityInfo.CanonicalAuthority);
-            }
-
             if (authorityInfo.IsInstanceDiscoverySupported)
             {
-                InstanceDiscoveryMetadataEntry entry = null;
-                entry = _userMetadataProvider?.GetMetadataOrThrow(environment, requestContext.Logger) ??  // if user provided metadata but entry is not found, fail fast
-                await _regionDiscoveryProvider.GetMetadataAsync(authorityInfo.CanonicalAuthority, requestContext).ConfigureAwait(false);
+                InstanceDiscoveryMetadataEntry entry =
+                    // if user provided metadata but entry is not found, fail fast
+                    _userMetadataProvider?.GetMetadataOrThrow(environment, requestContext.Logger) ??
+                    await _regionDiscoveryProvider.GetMetadataAsync(authorityInfo.CanonicalAuthority, requestContext).ConfigureAwait(false);
 
                 //Check if instance discovery endpoint is disabled
                 if (entry == null && requestContext.ServiceBundle.Config.IsInstanceDiscoveryEnabled)
@@ -129,12 +124,6 @@ namespace Microsoft.Identity.Client.Instance.Discovery
             Uri authorityUri = authorityInfo.CanonicalAuthority;
             string environment = authorityInfo.Host;
 
-            // Skip instance discovery for managed identity
-            if (requestContext.ServiceBundle.Config.UseManagedIdentity)
-            {
-                return CreateEntryForSingleAuthority(authorityUri);
-            }
-
             if (authorityInfo.IsInstanceDiscoverySupported)
             {
                 var entry = _userMetadataProvider?.GetMetadataOrThrow(environment, requestContext.Logger);
@@ -159,9 +148,8 @@ namespace Microsoft.Identity.Client.Instance.Discovery
                 }
 
                 requestContext.Logger.Info("[Instance Discovery] Instance discovery is enabled and will be performed");
-                entry = entry ??
-                    await _regionDiscoveryProvider.GetMetadataAsync(authorityUri, requestContext).ConfigureAwait(false) ??
-                    await FetchNetworkMetadataOrFallbackAsync(requestContext, authorityUri).ConfigureAwait(false);
+                entry ??= await _regionDiscoveryProvider.GetMetadataAsync(authorityUri, requestContext).ConfigureAwait(false) ??
+                          await FetchNetworkMetadataOrFallbackAsync(requestContext, authorityUri).ConfigureAwait(false);
 
                 if (entry == null)
                 {

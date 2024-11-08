@@ -1,7 +1,6 @@
 ﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#if !ANDROID && !iOS && !WINDOWS_APP 
 using System;
 using System.IO;
 using System.Net;
@@ -46,7 +45,7 @@ namespace Microsoft.Identity.Test.Unit
             var ex = await AssertException.TaskThrowsAsync<MsalClientException>(() =>
                 app
                 .AcquireTokenForClient(TestConstants.s_scope)
-                .WithAuthority($"https://login.microsoft.com/17b189bc-2b81-4ec5-aa51-3e628cbc931b")
+                .WithAuthority("https://login.microsoft.com/17b189bc-2b81-4ec5-aa51-3e628cbc931b")
 #pragma warning restore CS0618 // Type or member is obsolete
                     .ExecuteAsync())
                 .ConfigureAwait(false);
@@ -305,6 +304,99 @@ namespace Microsoft.Identity.Test.Unit
         }
 
         [TestMethod]
+        public async Task MsalForceRegionIsSet_RegionIsUsed()
+        {
+            using (new EnvVariableContext())
+            using (var httpManager = new MockHttpManager())
+            {
+                Environment.SetEnvironmentVariable(
+                    ConfidentialClientApplicationBuilder.ForceRegionEnvVariable, TestConstants.Region);
+
+                httpManager.AddRegionDiscoveryMockHandler(TestConstants.Region);
+                httpManager.AddMockHandler(CreateTokenResponseHttpHandler(expectRegional: true));
+
+                var cca = ConfidentialClientApplicationBuilder
+                                 .Create(TestConstants.ClientId)
+                                 .WithHttpManager(httpManager)
+                                 .WithClientSecret(TestConstants.ClientSecret)
+                                 .Build();
+
+                AuthenticationResult result = await cca
+                        .AcquireTokenForClient(TestConstants.s_scope)
+                        .ExecuteAsync()
+                        .ConfigureAwait(false);
+
+                Assert.AreEqual(TestConstants.Region, result.ApiEvent.RegionUsed);
+                Assert.AreEqual(RegionAutodetectionSource.Imds, result.ApiEvent.RegionAutodetectionSource);
+
+                Assert.AreEqual(TestConstants.Region, result.AuthenticationResultMetadata.RegionDetails.RegionUsed);
+                Assert.AreEqual(RegionOutcome.UserProvidedValid, result.AuthenticationResultMetadata.RegionDetails.RegionOutcome);
+                Assert.IsNull(result.AuthenticationResultMetadata.RegionDetails.AutoDetectionError);
+            }
+        }
+
+        [TestMethod]
+        public async Task MsalForceRegionIsSet_WithRegionIsSet_WithRegionWins()
+        {
+            using (new EnvVariableContext())
+            using (var httpManager = new MockHttpManager())
+            {
+                // this will be ignored, in favor of TestConstants.Region
+                Environment.SetEnvironmentVariable(
+                    ConfidentialClientApplicationBuilder.ForceRegionEnvVariable, "someOtherRegion");
+
+                httpManager.AddRegionDiscoveryMockHandler(TestConstants.Region);
+                httpManager.AddMockHandler(CreateTokenResponseHttpHandler(expectRegional: true));
+
+                var cca = ConfidentialClientApplicationBuilder
+                                 .Create(TestConstants.ClientId)
+                                 .WithHttpManager(httpManager)
+                                 .WithAzureRegion(TestConstants.Region)
+                                 .WithClientSecret(TestConstants.ClientSecret)
+                                 .Build();
+
+                AuthenticationResult result = await cca
+                        .AcquireTokenForClient(TestConstants.s_scope)
+                        .ExecuteAsync()
+                        .ConfigureAwait(false);
+
+                Assert.AreEqual(TestConstants.Region, result.ApiEvent.RegionUsed);
+                Assert.AreEqual(RegionAutodetectionSource.Imds, result.ApiEvent.RegionAutodetectionSource);
+
+                Assert.AreEqual(TestConstants.Region, result.AuthenticationResultMetadata.RegionDetails.RegionUsed);
+                Assert.AreEqual(RegionOutcome.UserProvidedValid, result.AuthenticationResultMetadata.RegionDetails.RegionOutcome);
+                Assert.IsNull(result.AuthenticationResultMetadata.RegionDetails.AutoDetectionError);
+            }
+        }
+
+        [TestMethod]
+        public async Task MsalForceRegionIsSet_WithRegionIsSetToOptOut_NoRegionIsUsed()
+        {
+            using (new EnvVariableContext())
+            using (var httpManager = new MockHttpManager())
+            {
+                Environment.SetEnvironmentVariable(
+                    ConfidentialClientApplicationBuilder.ForceRegionEnvVariable, TestConstants.Region);
+
+                httpManager.AddInstanceDiscoveryMockHandler();
+                httpManager.AddMockHandler(CreateTokenResponseHttpHandler(expectRegional: false));
+
+                var cca = ConfidentialClientApplicationBuilder
+                                 .Create(TestConstants.ClientId)
+                                 .WithHttpManager(httpManager)
+                                 .WithAzureRegion(ConfidentialClientApplicationBuilder.DisableForceRegion)
+                                 .WithClientSecret(TestConstants.ClientSecret)
+                                 .Build();
+
+                AuthenticationResult result = await cca
+                        .AcquireTokenForClient(TestConstants.s_scope)
+                        .ExecuteAsync()
+                        .ConfigureAwait(false);
+
+                Assert.IsNull(result.ApiEvent.RegionUsed);
+            }
+        }
+        [TestMethod]
         public void WithAzureRegionThrowsOnNullArg()
         {
             AssertException.Throws<ArgumentNullException>(
@@ -359,7 +451,7 @@ namespace Microsoft.Identity.Test.Unit
 #pragma warning disable CS0618 // Type or member is obsolete
                 AuthenticationResult result = await app
                     .AcquireTokenForClient(TestConstants.s_scope)
-                    .WithAuthority("https://" + TestConstants.PpeOrgEnvironment + "/17b189bc-2b81-4ec5-aa51-3e628cbc931b")
+                    .WithTenantId("17b189bc-2b81-4ec5-aa51-3e628cbc931b")
                     .ExecuteAsync()
                     .ConfigureAwait(false);
 
@@ -375,7 +467,7 @@ namespace Microsoft.Identity.Test.Unit
 
                 result = await app
                    .AcquireTokenForClient(TestConstants.s_scope)
-                   .WithAuthority("https://" + TestConstants.PpeOrgEnvironment + "/17b189bc-2b81-4ec5-aa51-3e628cbc931b")
+                   .WithTenantId("17b189bc-2b81-4ec5-aa51-3e628cbc931b")
                    .ExecuteAsync()
                    .ConfigureAwait(false);
 #pragma warning restore CS0618 // Type or member is obsolete
@@ -477,7 +569,7 @@ namespace Microsoft.Identity.Test.Unit
         {
             using (var harness = new MockHttpAndServiceBundle())
             {
-                MockHttpMessageHandler discoveryHandler = null;
+                MockHttpMessageHandler discoveryHandler;
                 if (authorityIsValid)
                 {
                     discoveryHandler = MockHelpers.CreateInstanceDiscoveryMockHandler(
@@ -724,4 +816,3 @@ namespace Microsoft.Identity.Test.Unit
 
     }
 }
-#endif

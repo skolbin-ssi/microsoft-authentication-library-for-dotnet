@@ -4,6 +4,7 @@
 using System;
 using System.Linq;
 using System.Net.Http;
+using System.Security.Claims;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Identity.Client;
@@ -11,6 +12,7 @@ using Microsoft.Identity.Client.UI;
 using Microsoft.Identity.Test.Common.Core.Mocks;
 using Microsoft.Identity.Test.Common.Mocks;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using NSubstitute;
 
 namespace Microsoft.Identity.Test.Unit
 {
@@ -27,7 +29,7 @@ namespace Microsoft.Identity.Test.Unit
         }
 
         [TestMethod]
-        public async Task MetricsUpdatedSucessfully_AcquireTokenForClient_Async()
+        public async Task MetricsUpdatedSuccessfully_AcquireTokenForClient_Async()
         {
             using (var harness = CreateTestHarness())
             {
@@ -52,7 +54,7 @@ namespace Microsoft.Identity.Test.Unit
                 Assert.IsTrue(result.AuthenticationResultMetadata.DurationInCacheInMs > 0);
                 Assert.IsTrue(result.AuthenticationResultMetadata.DurationTotalInMs > 0);
                 Assert.AreEqual(
-                    "https://login.microsoftonline.com/common/oauth2/v2.0/token", 
+                    "https://login.microsoftonline.com/common/oauth2/v2.0/token",
                     result.AuthenticationResultMetadata.TokenEndpoint);
                 Assert.AreEqual(1, Metrics.TotalAccessTokensFromIdP);
                 Assert.AreEqual(0, Metrics.TotalAccessTokensFromCache);
@@ -124,8 +126,8 @@ namespace Microsoft.Identity.Test.Unit
                 #endregion
 
                 #region ObBehalfOf
-                harness.HttpManager.AddMockHandlerSuccessfulClientCredentialTokenResponseMessage();
-                harness.HttpManager.AddMockHandlerSuccessfulClientCredentialTokenResponseMessage();
+                harness.HttpManager.AddTokenResponse(TokenResponseType.Valid_UserFlows);
+                harness.HttpManager.AddTokenResponse(TokenResponseType.Valid_UserFlows);
 
                 // Act - AcquireTokenForClient returns result from IDP. Refresh reason is no access tokens.
                 result = await cca.AcquireTokenOnBehalfOf(TestConstants.s_scope.ToArray(), new UserAssertion(TestConstants.UserAssertion))
@@ -213,7 +215,7 @@ namespace Microsoft.Identity.Test.Unit
         }
 
         [TestMethod]
-        public async Task MetricsUpdatedSucessfully_AcquireTokenInteractive_Async()
+        public async Task MetricsUpdatedSuccessfully_AcquireTokenInteractive_Async()
         {
             using (var harness = CreateTestHarness())
             {
@@ -226,7 +228,7 @@ namespace Microsoft.Identity.Test.Unit
         }
 
         [TestMethod]
-        public async Task MetricsUpdatedSucessfully_AcquireTokenSilent_Async()
+        public async Task MetricsUpdatedSuccessfully_AcquireTokenSilent_Async()
         {
             using (var harness = CreateTestHarness())
             {
@@ -236,7 +238,7 @@ namespace Microsoft.Identity.Test.Unit
         }
 
         [TestMethod]
-        public async Task MetricsUpdatedSucessfully_AcquireTokenInteractiveAndSilent_Async()
+        public async Task MetricsUpdatedSuccessfully_AcquireTokenInteractiveAndSilent_Async()
         {
             using (var harness = CreateTestHarness())
             {
@@ -255,7 +257,7 @@ namespace Microsoft.Identity.Test.Unit
                             .WithAuthority(new Uri(ClientApplicationBase.DefaultAuthority), false)
                             .WithHttpManager(httpManager)
                             .BuildConcrete();
-            
+
             if (populateUserCache)
             {
                 TokenCacheHelper.PopulateCache(pca.UserTokenCacheInternal.Accessor);
@@ -287,12 +289,14 @@ namespace Microsoft.Identity.Test.Unit
 
         private async Task TestAcquireTokenSilent_Async(PublicClientApplication pca, int expectedTokensFromIdp = 0, int expectedTokensFromCache = 0, int expectedTokensFromBroker = 0)
         {
+#pragma warning disable CS0618 // Type or member is obsolete
             AuthenticationResult result = await pca.AcquireTokenSilent(
                 TestConstants.s_scope.ToArray(),
                 TestConstants.DisplayableId)
                 .WithAuthority(pca.Authority, false)
                 .ExecuteAsync()
                 .ConfigureAwait(false);
+#pragma warning restore CS0618 // Type or member is obsolete
 
             Assert.IsNotNull(result);
             Assert.AreEqual(TokenSource.Cache, result.AuthenticationResultMetadata.TokenSource);

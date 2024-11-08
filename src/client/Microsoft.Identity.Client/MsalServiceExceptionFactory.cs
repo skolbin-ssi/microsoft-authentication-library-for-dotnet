@@ -15,7 +15,7 @@ namespace Microsoft.Identity.Client
 {
     internal class MsalServiceExceptionFactory
     {
-        static ISet<string> s_nonUiSubErrors = new HashSet<string>(
+        static readonly ISet<string> s_nonUiSubErrors = new HashSet<string>(
             new[] { MsalError.ClientMismatch, MsalError.ProtectionPolicyRequired },
             StringComparer.OrdinalIgnoreCase);
 
@@ -26,17 +26,30 @@ namespace Microsoft.Identity.Client
           Exception innerException = null)
         {
             MsalServiceException ex = null;
-            var oAuth2Response = JsonHelper.TryToDeserializeFromJson<OAuth2ResponseBase>(httpResponse?.Body);
+            OAuth2ResponseBase oAuth2Response = JsonHelper.TryToDeserializeFromJson<OAuth2ResponseBase>(httpResponse?.Body);
 
             if (IsInvalidGrant(oAuth2Response?.Error, oAuth2Response?.SubError) || IsInteractionRequired(oAuth2Response?.Error))
             {
+                string errorMessageToUse = null;
+
                 if (IsThrottled(oAuth2Response))
                 {
-                    ex = new MsalUiRequiredException(errorCode, MsalErrorMessage.AadThrottledError, innerException);
+                    errorMessageToUse = MsalErrorMessage.AadThrottledError;
+                }
+                else  
+                {  
+                    errorMessageToUse  = errorMessage;  
+                }  
+
+                if (oAuth2Response.Claims == null)
+                {
+                    ex = new MsalUiRequiredException(errorCode, errorMessageToUse, innerException);
                 }
                 else
                 {
-                    ex = new MsalUiRequiredException(errorCode, errorMessage, innerException);
+                    //Update error message with claims challenge error
+                    errorMessageToUse += " " + MsalErrorMessage.ClaimsChallenge;
+                    ex = new MsalClaimsChallengeException(errorCode, errorMessageToUse, innerException);
                 }
             }
 
@@ -48,16 +61,14 @@ namespace Microsoft.Identity.Client
                     innerException);
             }
 
-            if (ex == null)
-            {
-                ex = new MsalServiceException(errorCode, errorMessage, innerException);
-            }
+            ex ??= new MsalServiceException(errorCode, errorMessage, innerException);
 
             SetHttpExceptionData(ex, httpResponse);
 
             ex.Claims = oAuth2Response?.Claims;
             ex.CorrelationId = oAuth2Response?.CorrelationId;
             ex.SubError = oAuth2Response?.SubError;
+            ex.ErrorCodes = oAuth2Response?.ErrorCodes;
 
             return ex;
         }
@@ -128,21 +139,52 @@ namespace Microsoft.Identity.Client
             return ex;
         }
 
-        internal static MsalServiceException FromManagedIdentityResponse(
+        internal static MsalException CreateManagedIdentityException(
             string errorCode,
-            HttpResponse httpResponse)
+            string errorMessage,
+            Exception innerException,
+            ManagedIdentitySource managedIdentitySource,
+            int? statusCode)
         {
-            var managedIdentityResponse = JsonHelper.TryToDeserializeFromJson<ManagedIdentityErrorResponse>(httpResponse?.Body);
+            MsalException exception;
 
-            string message = managedIdentityResponse == null ? 
-                "Empty error response received." :
-                $"Error message: {managedIdentityResponse.Message}. Correlation Id: {managedIdentityResponse.CorrelationId}";
+            if (statusCode.HasValue)
+            {
+                exception = new MsalServiceException(errorCode, errorMessage, (int)statusCode, innerException);
 
-            MsalServiceException ex = new MsalServiceException(errorCode, message, (int)httpResponse.StatusCode);
+                var isRetryable = statusCode switch
+                {
+                    404 or 408 or 429 or 500 or 503 or 504 => true,
+                    _ => false,
+                };
 
-            SetHttpExceptionData(ex, httpResponse);
+                exception.IsRetryable = isRetryable;
+            }
+            else if (innerException != null)
+            {
+                exception = new MsalServiceException(errorCode, errorMessage, innerException);
+            }
+            else
+            {
+                exception = new MsalServiceException(errorCode, errorMessage);
+            }
 
-            return ex;
+            exception = DecorateExceptionWithManagedIdentitySource(exception, managedIdentitySource);
+            return exception;
+        }
+
+        private static MsalException DecorateExceptionWithManagedIdentitySource(
+            MsalException exception,
+            ManagedIdentitySource managedIdentitySource)
+        {
+            var result = new Dictionary<string, string>()
+            {
+                { MsalException.ManagedIdentitySource, managedIdentitySource.ToString() }
+            };
+
+            exception.AdditionalExceptionData = result;
+
+            return exception;
         }
 
         internal static MsalThrottledServiceException FromThrottledAuthenticationResponse(HttpResponse httpResponse)

@@ -6,7 +6,7 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using Microsoft.Identity.Client.Utils;
 
-#if SUPPORTS_WIN32 && !WINDOWS_APP
+#if SUPPORTS_WIN32 
 using Microsoft.Identity.Client.Platforms.Features.DesktopOs;
 #endif
 
@@ -15,41 +15,17 @@ namespace Microsoft.Identity.Client.PlatformsCommon.Shared
     internal static class DesktopOsHelper
     {
         private static Lazy<bool> s_wamSupportedOSLazy = new Lazy<bool>(
-           () => IsWamSupportedOSInternal());
+           IsWamSupportedOSInternal);
         private static Lazy<string> s_winVersionLazy = new Lazy<string>(
-            () => GetWindowsVersionStringInternal());
+            GetWindowsVersionStringInternal);
 
         public static bool IsWindows()
         {
-#if WINDOWS_APP
-        return true;
-#else
 
-#if DESKTOP
+#if NETFRAMEWORK
             return Environment.OSVersion.Platform == PlatformID.Win32NT;
 #elif SUPPORTS_WIN32
             return RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
-#else
-            return false;
-#endif
-
-#endif
-        }
-
-        public static bool IsWin32()
-        {
-#if WINDOWS_APP
-            return false;
-#else
-
-            return IsWindows();
-#endif
-        }
-
-        public static bool IsXamarinOrUwp()
-        {
-#if IS_XAMARIN_OR_UWP
-            return true;
 #else
             return false;
 #endif
@@ -57,9 +33,9 @@ namespace Microsoft.Identity.Client.PlatformsCommon.Shared
 
         public static bool IsLinux()
         {
-#if IS_XAMARIN_OR_UWP
+#if __MOBILE__ 
             return false;
-#elif DESKTOP
+#elif NETFRAMEWORK
             return Environment.OSVersion.Platform == PlatformID.Unix;
 #else
             return RuntimeInformation.IsOSPlatform(OSPlatform.Linux);
@@ -70,9 +46,9 @@ namespace Microsoft.Identity.Client.PlatformsCommon.Shared
         {
 #if MAC
             return true;
-#elif DESKTOP
+#elif NETFRAMEWORK
             return Environment.OSVersion.Platform == PlatformID.MacOSX;
-#elif !IS_XAMARIN_OR_UWP
+#elif !__MOBILE__ 
             return RuntimeInformation.IsOSPlatform(OSPlatform.OSX);
 #else
             return false;
@@ -86,9 +62,7 @@ namespace Microsoft.Identity.Client.PlatformsCommon.Shared
         /// <returns>Returns <c>true</c> if the Windows Version has WAM support</returns>
         private static bool IsWamSupportedOSInternal()
         {
-#if WINDOWS_APP
-            return true;
-#elif SUPPORTS_WIN32
+#if SUPPORTS_WIN32
             if (IsWindows() && Win32VersionApi.IsWamSupportedOs())
             {
                 return true;
@@ -105,7 +79,7 @@ namespace Microsoft.Identity.Client.PlatformsCommon.Shared
             //Environment.OSVersion as it will return incorrect information on some operating systems
             //For more information on how to acquire the current OS version from the registry
             //See (https://stackoverflow.com/a/61914068)
-#if DESKTOP
+#if NETFRAMEWORK
             var reg = Win32.Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows NT\CurrentVersion");
 
             string OSInfo = (string)reg.GetValue("ProductName");
@@ -184,9 +158,8 @@ namespace Microsoft.Identity.Client.PlatformsCommon.Shared
 
         private static bool IsInteractiveSessionMac()
         {
-
             // Get information about the current session
-            int error = SecurityFramework.SessionGetInfo(SecurityFramework.CallerSecuritySession, out int id, out var sessionFlags);
+            int error = SecurityFramework.SessionGetInfo(SecurityFramework.CallerSecuritySession, out int _, out var sessionFlags);
 
             // Check if the session supports Quartz
             if (error == 0 && (sessionFlags & SessionAttributeBits.SessionHasGraphicAccess) != 0)

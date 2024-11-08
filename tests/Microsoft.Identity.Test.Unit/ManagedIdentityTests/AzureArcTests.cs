@@ -6,93 +6,45 @@ using System.Globalization;
 using System.Net;
 using System.Threading.Tasks;
 using Microsoft.Identity.Client;
+using Microsoft.Identity.Client.AppConfig;
+using Microsoft.Identity.Client.ManagedIdentity;
 using Microsoft.Identity.Test.Common;
 using Microsoft.Identity.Test.Common.Core.Helpers;
 using Microsoft.Identity.Test.Common.Core.Mocks;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using NSubstitute.Core;
+using static Microsoft.Identity.Test.Common.Core.Helpers.ManagedIdentityTestUtil;
 
 namespace Microsoft.Identity.Test.Unit.ManagedIdentityTests
 {
     [TestClass]
     [DeploymentItem("Resources\\ManagedIdentityAzureArcSecret.txt")]
-    public class AzureArcTests
+    public class AzureArcTests : TestBase
     {
-        private const string Endpoint = "http://localhost:40342/metadata/identity/oauth2/token";
-        private const string Resource = "https://management.azure.com";
         private const string AzureArc = "Azure Arc";
 
-        [TestInitialize]
-        public void TestInitialize()
-        {
-            TestCommon.ResetInternalStaticCaches();
-        }
-
         [DataTestMethod]
-        [DataRow(Endpoint, "https://management.azure.com")]
-        [DataRow(Endpoint, "https://management.azure.com/.default")]
-        public async Task AzureArcHappyPathAsync(
-            string endpoint, 
-            string scope)
+        [DataRow(TestConstants.ClientId, UserAssignedIdentityId.ClientId)]
+        [DataRow("resourceId", UserAssignedIdentityId.ResourceId)]
+        [DataRow(TestConstants.ObjectId, UserAssignedIdentityId.ObjectId)]
+        public async Task AzureArcUserAssignedManagedIdentityNotSupportedAsync(string userAssignedId, UserAssignedIdentityId userAssignedIdentityId)
         {
             using (new EnvVariableContext())
-            using (var httpManager = new MockHttpManager())
+            using (var httpManager = new MockHttpManager(isManagedIdentity: true))
             {
-                SetEnvironmentVariables(endpoint);
+                SetEnvironmentVariables(ManagedIdentitySource.AzureArc, ManagedIdentityTests.AzureArcEndpoint);
 
-                IConfidentialClientApplication cca = ConfidentialClientApplicationBuilder
-                    .Create("clientId")
-                    .WithHttpManager(httpManager)
-                    .WithExperimentalFeatures()
-                    .Build();
+                ManagedIdentityApplicationBuilder miBuilder = CreateMIABuilder(userAssignedId, userAssignedIdentityId);
+                miBuilder.WithHttpManager(httpManager);
 
-                httpManager.AddManagedIdentityWSTrustMockHandler(endpoint,
-                    ResourceHelper.GetTestResourceRelativePath("ManagedIdentityAzureArcSecret.txt"));
+                IManagedIdentityApplication mi = miBuilder.Build();
 
-                httpManager.AddManagedIdentityMockHandler(
-                    endpoint,
-                    Resource,
-                    MockHelpers.GetMsiSuccessfulResponse(),
-                    ManagedIdentitySourceType.AzureArc);
-
-                var result = await cca.AcquireTokenForClient(new string[] { scope })
-                    .WithManagedIdentity()
-                    .ExecuteAsync().ConfigureAwait(false);
-
-                Assert.IsNotNull(result);
-                Assert.IsNotNull(result.AccessToken);
-                Assert.AreEqual(TokenSource.IdentityProvider, result.AuthenticationResultMetadata.TokenSource);
-
-                result = await cca.AcquireTokenForClient(new string[] { scope })
-                    .WithManagedIdentity()
-                    .ExecuteAsync().ConfigureAwait(false);
-
-                Assert.IsNotNull(result);
-                Assert.AreEqual(TokenSource.Cache, result.AuthenticationResultMetadata.TokenSource);
-            }
-        }
-
-        [DataTestMethod]
-        [DataRow(TestConstants.ClientId)]
-        [DataRow("resourceId")]
-        public async Task AzureArcUserAssignedManagedIdentityNotSupportedAsync(string userAssignedClientId)
-        {
-            using (new EnvVariableContext())
-            using (var httpManager = new MockHttpManager())
-            {
-                SetEnvironmentVariables(Endpoint);
-
-                IConfidentialClientApplication cca = ConfidentialClientApplicationBuilder
-                    .Create("clientId")
-                    .WithHttpManager(httpManager)
-                    .WithExperimentalFeatures()
-                    .Build();
-
-                MsalClientException ex = await Assert.ThrowsExceptionAsync<MsalClientException>(async () =>
-                    await cca.AcquireTokenForClient(new string[] { "scope" })
-                    .WithManagedIdentity(userAssignedClientId)
+                MsalServiceException ex = await Assert.ThrowsExceptionAsync<MsalServiceException>(async () =>
+                    await mi.AcquireTokenForManagedIdentity("scope")
                     .ExecuteAsync().ConfigureAwait(false)).ConfigureAwait(false);
 
                 Assert.IsNotNull(ex);
+                Assert.AreEqual(ManagedIdentitySource.AzureArc.ToString(), ex.AdditionalExceptionData[MsalException.ManagedIdentitySource]);
                 Assert.AreEqual(MsalError.UserAssignedManagedIdentityNotSupported, ex.ErrorCode);
                 Assert.AreEqual(string.Format(CultureInfo.InvariantCulture, MsalErrorMessage.ManagedIdentityUserAssignedNotSupported, AzureArc), ex.Message);
             }
@@ -102,143 +54,60 @@ namespace Microsoft.Identity.Test.Unit.ManagedIdentityTests
         public async Task AzureArcAuthHeaderMissingAsync()
         {
             using (new EnvVariableContext())
-            using (var httpManager = new MockHttpManager())
+            using (var httpManager = new MockHttpManager(isManagedIdentity: true))
             {
-                SetEnvironmentVariables(Endpoint);
+                SetEnvironmentVariables(ManagedIdentitySource.AzureArc, ManagedIdentityTests.AzureArcEndpoint);
 
-                IConfidentialClientApplication cca = ConfidentialClientApplicationBuilder
-                    .Create("clientId")
-                    .WithHttpManager(httpManager)
-                    .WithExperimentalFeatures()
-                    .Build();
+                var miBuilder = ManagedIdentityApplicationBuilder.Create(ManagedIdentityId.SystemAssigned)
+                    .WithHttpManager(httpManager);
 
-                httpManager.AddManagedIdentityWSTrustMockHandler(Endpoint);
+                // Disabling shared cache options to avoid cross test pollution.
+                miBuilder.Config.AccessorOptions = null;
+
+                var mi = miBuilder.Build();
+
+                httpManager.AddManagedIdentityWSTrustMockHandler(ManagedIdentityTests.AzureArcEndpoint);
 
                 MsalServiceException ex = await Assert.ThrowsExceptionAsync<MsalServiceException>(async () =>
-                    await cca.AcquireTokenForClient(new string[] { "scope" })
-                    .WithManagedIdentity()
+                    await mi.AcquireTokenForManagedIdentity("scope")
                     .ExecuteAsync().ConfigureAwait(false)).ConfigureAwait(false);
 
                 Assert.IsNotNull(ex);
+                Assert.AreEqual(ManagedIdentitySource.AzureArc.ToString(), ex.AdditionalExceptionData[MsalException.ManagedIdentitySource]);
                 Assert.AreEqual(MsalError.ManagedIdentityRequestFailed, ex.ErrorCode);
                 Assert.AreEqual(MsalErrorMessage.ManagedIdentityNoChallengeError, ex.Message);
             }
         }
 
-        [TestMethod]
-        public async Task AzureArcAuthHeaderInvalidAsync()
-        {
-            using (new EnvVariableContext())
-            using (var httpManager = new MockHttpManager())
-            {
-                SetEnvironmentVariables(Endpoint);
-
-                IConfidentialClientApplication cca = ConfidentialClientApplicationBuilder
-                    .Create("clientId")
-                    .WithHttpManager(httpManager)
-                    .WithExperimentalFeatures()
-                    .Build();
-
-                httpManager.AddManagedIdentityWSTrustMockHandler(Endpoint, "somevalue=filepath");
-
-                MsalServiceException ex = await Assert.ThrowsExceptionAsync<MsalServiceException>(async () =>
-                    await cca.AcquireTokenForClient(new string[] { "scope" })
-                    .WithManagedIdentity()
-                    .ExecuteAsync().ConfigureAwait(false)).ConfigureAwait(false);
-
-                Assert.IsNotNull(ex);
-                Assert.AreEqual(MsalError.ManagedIdentityRequestFailed, ex.ErrorCode);
-                Assert.AreEqual(MsalErrorMessage.ManagedIdentityInvalidChallenge, ex.Message);
-            }
-        }
-
         [DataTestMethod]
-        [DataRow("user.read")]
-        [DataRow("https://management.core.windows.net//user_impersonation")]
-        [DataRow("s")]
-        public async Task AzureArcTestWrongScopeAsync(string resource)
+        [DataRow("somefile=filename", MsalErrorMessage.ManagedIdentityInvalidChallenge)]
+        [DataRow("C:\\ProgramData\\AzureConnectedMachineAgent\\Tokens\\filename.txt", MsalErrorMessage.ManagedIdentityInvalidFile)]
+        [DataRow("C:\\ProgramData\\AzureConnectedMachineAgent\\Tokens\\...\\etc\\filename.key", MsalErrorMessage.ManagedIdentityInvalidFile)]
+        public async Task AzureArcAuthHeaderInvalidAsync(string filename, string errorMessage)
         {
             using (new EnvVariableContext())
-            using (var httpManager = new MockHttpManager())
+            using (var httpManager = new MockHttpManager(isManagedIdentity: true))
             {
-                SetEnvironmentVariables(Endpoint);
-                IConfidentialClientApplication cca = ConfidentialClientApplicationBuilder
-                    .Create("clientId")
-                    .WithHttpManager(httpManager)
-                    .WithExperimentalFeatures()
-                    .Build();
+                SetEnvironmentVariables(ManagedIdentitySource.AzureArc, ManagedIdentityTests.AzureArcEndpoint);
 
-                httpManager.AddManagedIdentityWSTrustMockHandler(Endpoint, 
-                    ResourceHelper.GetTestResourceRelativePath("ManagedIdentityAzureArcSecret.txt"));
-                httpManager.AddManagedIdentityMockHandler(Endpoint, resource, MockHelpers.GetMsiErrorResponse(), 
-                    ManagedIdentitySourceType.AzureArc, statusCode: HttpStatusCode.InternalServerError);
-                httpManager.AddManagedIdentityWSTrustMockHandler(Endpoint, 
-                    ResourceHelper.GetTestResourceRelativePath("ManagedIdentityAzureArcSecret.txt"));
-                httpManager.AddManagedIdentityMockHandler(Endpoint, resource, MockHelpers.GetMsiErrorResponse(), 
-                    ManagedIdentitySourceType.AzureArc, statusCode: HttpStatusCode.InternalServerError);
+                var miBuilder = ManagedIdentityApplicationBuilder.Create(ManagedIdentityId.SystemAssigned)
+                    .WithHttpManager(httpManager);
+
+                // Disabling shared cache options to avoid cross test pollution.
+                miBuilder.Config.AccessorOptions = null;
+
+                var mi = miBuilder.Build();
+
+                httpManager.AddManagedIdentityWSTrustMockHandler(ManagedIdentityTests.AzureArcEndpoint, filename);
 
                 MsalServiceException ex = await Assert.ThrowsExceptionAsync<MsalServiceException>(async () =>
-                    await cca.AcquireTokenForClient(new string[] { resource })
-                    .WithManagedIdentity()
+                    await mi.AcquireTokenForManagedIdentity("scope")
                     .ExecuteAsync().ConfigureAwait(false)).ConfigureAwait(false);
 
                 Assert.IsNotNull(ex);
+                Assert.AreEqual(ManagedIdentitySource.AzureArc.ToString(), ex.AdditionalExceptionData[MsalException.ManagedIdentitySource]);
                 Assert.AreEqual(MsalError.ManagedIdentityRequestFailed, ex.ErrorCode);
-            }
-        }
-
-        [TestMethod]
-        public async Task AzureArcErrorResponseNoPayloadTestAsync()
-        {
-            using(new EnvVariableContext())
-            using (var httpManager = new MockHttpManager())
-            {
-                SetEnvironmentVariables(Endpoint);
-
-                IConfidentialClientApplication cca = ConfidentialClientApplicationBuilder
-                    .Create("clientId")
-                    .WithHttpManager(httpManager)
-                    .WithExperimentalFeatures()
-                    .Build();
-
-                httpManager.AddManagedIdentityMockHandler(Endpoint, "scope", "", ManagedIdentitySourceType.AzureArc, statusCode: HttpStatusCode.InternalServerError);
-                httpManager.AddManagedIdentityMockHandler(Endpoint, "scope", "", ManagedIdentitySourceType.AzureArc, statusCode: HttpStatusCode.InternalServerError);
-
-                MsalServiceException ex = await Assert.ThrowsExceptionAsync<MsalServiceException>(async () =>
-                    await cca.AcquireTokenForClient(new string[] { "scope" })
-                    .WithManagedIdentity()
-                    .ExecuteAsync().ConfigureAwait(false)).ConfigureAwait(false);
-
-                Assert.IsNotNull(ex);
-                Assert.AreEqual(MsalError.ManagedIdentityRequestFailed, ex.ErrorCode);
-                Assert.AreEqual(MsalErrorMessage.ManagedIdentityNoResponseReceived, ex.Message);
-            }
-        }
-
-        [TestMethod]
-        public async Task AzureArcNullResponseAsync()
-        {
-            using(new EnvVariableContext())
-            using (var httpManager = new MockHttpManager())
-            {
-                SetEnvironmentVariables(Endpoint);
-
-                IConfidentialClientApplication cca = ConfidentialClientApplicationBuilder
-                    .Create("clientId")
-                    .WithHttpManager(httpManager)
-                    .WithExperimentalFeatures()
-                    .Build();
-
-                httpManager.AddManagedIdentityMockHandler(Endpoint, "https://management.azure.com", "", ManagedIdentitySourceType.AzureArc, statusCode: HttpStatusCode.OK);
-
-                MsalServiceException ex = await Assert.ThrowsExceptionAsync<MsalServiceException>(async () =>
-                    await cca.AcquireTokenForClient(new string[] { "https://management.azure.com" })
-                    .WithManagedIdentity()
-                    .ExecuteAsync().ConfigureAwait(false)).ConfigureAwait(false);
-
-                Assert.IsNotNull(ex);
-                Assert.AreEqual(MsalError.ManagedIdentityRequestFailed, ex.ErrorCode);
-                Assert.AreEqual(MsalErrorMessage.ManagedIdentityInvalidResponse, ex.Message);
+                Assert.AreEqual(errorMessage, ex.Message);
             }
         }
 
@@ -246,31 +115,27 @@ namespace Microsoft.Identity.Test.Unit.ManagedIdentityTests
         public async Task AzureArcInvalidEndpointAsync()
         {
             using(new EnvVariableContext())
-            using (var httpManager = new MockHttpManager())
+            using (var httpManager = new MockHttpManager(isManagedIdentity: true))
             {
-                SetEnvironmentVariables("localhost/token");
+                SetEnvironmentVariables(ManagedIdentitySource.AzureArc, "localhost/token");
 
-                IConfidentialClientApplication cca = ConfidentialClientApplicationBuilder
-                    .Create("clientId")
-                    .WithHttpManager(httpManager)
-                    .WithExperimentalFeatures()
-                    .Build();
+                var miBuilder = ManagedIdentityApplicationBuilder.Create(ManagedIdentityId.SystemAssigned)
+                    .WithHttpManager(httpManager);
 
-                MsalClientException ex = await Assert.ThrowsExceptionAsync<MsalClientException>(async () =>
-                    await cca.AcquireTokenForClient(new string[] { "https://management.azure.com" })
-                    .WithManagedIdentity()
+                // Disabling shared cache options to avoid cross test pollution.
+                miBuilder.Config.AccessorOptions = null;
+
+                var mi = miBuilder.Build();
+
+                MsalServiceException ex = await Assert.ThrowsExceptionAsync<MsalServiceException>(async () =>
+                    await mi.AcquireTokenForManagedIdentity(ManagedIdentityTests.Resource)
                     .ExecuteAsync().ConfigureAwait(false)).ConfigureAwait(false);
 
                 Assert.IsNotNull(ex);
+                Assert.AreEqual(ManagedIdentitySource.AzureArc.ToString(), ex.AdditionalExceptionData[MsalException.ManagedIdentitySource]);
                 Assert.AreEqual(MsalError.InvalidManagedIdentityEndpoint, ex.ErrorCode);
                 Assert.AreEqual(string.Format(CultureInfo.InvariantCulture, MsalErrorMessage.ManagedIdentityEndpointInvalidUriError, "IDENTITY_ENDPOINT", "localhost/token", AzureArc), ex.Message);
             }
-        }
-
-        private void SetEnvironmentVariables(string endpoint)
-        {
-            Environment.SetEnvironmentVariable("IDENTITY_ENDPOINT", endpoint);
-            Environment.SetEnvironmentVariable("IMDS_ENDPOINT", "http://localhost:40342");
         }
     }
 }

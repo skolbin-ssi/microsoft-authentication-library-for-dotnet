@@ -4,25 +4,19 @@
 using System;
 using System.Collections.Generic;
 using System.Security.Cryptography.X509Certificates;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Identity.Client.ApiConfig.Executors;
 using Microsoft.Identity.Client.ApiConfig.Parameters;
 using Microsoft.Identity.Client.Core;
 using Microsoft.Identity.Client.Internal;
 using Microsoft.Identity.Client.Internal.Requests;
+using Microsoft.Identity.Client.TelemetryCore.Internal.Events;
+using static Microsoft.Identity.Client.TelemetryCore.Internal.Events.ApiEvent;
 
 namespace Microsoft.Identity.Client
 {
-    /// <summary>
-    /// Class to be used for confidential client applications (web apps, web APIs, and daemon applications).
-    /// </summary>
-    /// <remarks>
-    /// Confidential client applications are typically applications which run on servers (web apps, web API, or even service/daemon applications).
-    /// They are considered difficult to access, and therefore capable of keeping an application secret (hold configuration
-    /// time secrets as these values would be difficult for end users to extract).
-    /// A web app is the most common confidential client. The clientId is exposed through the web browser, but the secret is passed only in the back channel
-    /// and never directly exposed. For details see https://aka.ms/msal-net-client-applications
-    /// </remarks>
+    /// <inheritdoc cref="IConfidentialClientApplication"/>
 #if !SUPPORTS_CONFIDENTIAL_CLIENT
         [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]  // hide confidential client on mobile
 #endif
@@ -31,7 +25,8 @@ namespace Microsoft.Identity.Client
             IConfidentialClientApplication,
             IConfidentialClientApplicationWithCertificate,
             IByRefreshToken,
-            ILongRunningWebApi
+            ILongRunningWebApi,
+            IByUsernameAndPassword
     {
         /// <summary>
         /// Instructs MSAL to try to auto discover the Azure region.
@@ -47,23 +42,10 @@ namespace Microsoft.Identity.Client
             AppTokenCacheInternal = configuration.AppTokenCacheInternalForTest ?? new TokenCache(ServiceBundle, true);
             Certificate = configuration.ClientCredentialCertificate;
 
-            this.ServiceBundle.ApplicationLogger.Verbose(()=>$"ConfidentialClientApplication {configuration.GetHashCode()} created");
+            this.ServiceBundle.ApplicationLogger.Verbose(() => $"ConfidentialClientApplication {configuration.GetHashCode()} created");
         }
 
-        /// <summary>
-        /// Acquires a security token from the authority configured in the app using the authorization code
-        /// previously received from the STS.
-        /// It uses the OAuth 2.0 authorization code flow (See https://aka.ms/msal-net-authorization-code).
-        /// It's usually used in web apps (for instance ASP.NET / ASP.NET Core web apps) which sign-in users,
-        /// and can request an authorization code.
-        /// This method does not lookup the token cache, but stores the result in it, so it can be looked up
-        /// using other methods such as <see cref="IClientApplicationBase.AcquireTokenSilent(IEnumerable{string}, IAccount)"/>.
-        /// </summary>
-        /// <param name="scopes">Scopes requested to access a protected API</param>
-        /// <param name="authorizationCode">The authorization code received from the service authorization endpoint.</param>
-        /// <returns>A builder enabling you to add optional parameters before executing the token request</returns>
-        /// <remarks>You can set optional parameters by chaining the builder with other .With methods.
-        /// </remarks>
+        /// <inheritdoc/>
         public AcquireTokenByAuthorizationCodeParameterBuilder AcquireTokenByAuthorizationCode(
             IEnumerable<string> scopes,
             string authorizationCode)
@@ -74,19 +56,7 @@ namespace Microsoft.Identity.Client
                 authorizationCode);
         }
 
-        /// <summary>
-        /// Acquires a token from the authority configured in the app, for the confidential client itself (in the name of no user)
-        /// using the client credentials flow. See https://aka.ms/msal-net-client-credentials.
-        /// </summary>
-        /// <param name="scopes">scopes requested to access a protected API. For this flow (client credentials), the scopes
-        /// should be of the form "{ResourceIdUri/.default}" for instance <c>https://management.azure.net/.default</c> or, for Microsoft
-        /// Graph, <c>https://graph.microsoft.com/.default</c> as the requested scopes are defined statically with the application registration
-        /// in the portal, and cannot be overridden in the application.</param>
-        /// <returns>A builder enabling you to add optional parameters before executing the token request</returns>
-        /// <remarks>You can also chain the following optional parameters:
-        /// <see cref="AcquireTokenForClientParameterBuilder.WithForceRefresh(bool)"/>
-        /// <see cref="AbstractAcquireTokenParameterBuilder{T}.WithExtraQueryParameters(Dictionary{string, string})"/>
-        /// </remarks>
+        /// <inheritdoc/>
         public AcquireTokenForClientParameterBuilder AcquireTokenForClient(
             IEnumerable<string> scopes)
         {
@@ -95,20 +65,7 @@ namespace Microsoft.Identity.Client
                 scopes);
         }
 
-        /// <summary>
-        /// Acquires an access token for this application (usually a Web API) from the authority configured in the application,
-        /// in order to access another downstream protected web API on behalf of a user using the OAuth 2.0 On-Behalf-Of flow.
-        /// See https://aka.ms/msal-net-on-behalf-of.
-        /// This confidential client application was itself called with a token which will be provided in the
-        /// <paramref name="userAssertion">userAssertion</paramref> parameter.
-        /// </summary>
-        /// <param name="scopes">Scopes requested to access a protected API</param>
-        /// <param name="userAssertion">Instance of <see cref="UserAssertion"/> containing credential information about
-        /// the user on behalf of whom to get a token.</param>
-        /// <returns>A builder enabling you to add optional parameters before executing the token request</returns>
-        /// <remarks>You can also chain the following optional parameters:
-        /// <see cref="AbstractAcquireTokenParameterBuilder{T}.WithExtraQueryParameters(Dictionary{string, string})"/>
-        /// </remarks>
+        /// <inheritdoc/>
         public AcquireTokenOnBehalfOfParameterBuilder AcquireTokenOnBehalfOf(
             IEnumerable<string> scopes,
             UserAssertion userAssertion)
@@ -125,7 +82,7 @@ namespace Microsoft.Identity.Client
                 userAssertion);
         }
 
-        /// <inheritdoc />
+        /// <inheritdoc/>
         public AcquireTokenOnBehalfOfParameterBuilder InitiateLongRunningProcessInWebApi(
             IEnumerable<string> scopes,
             string userToken,
@@ -150,7 +107,7 @@ namespace Microsoft.Identity.Client
                 longRunningProcessSessionKey);
         }
 
-        /// <inheritdoc />
+        /// <inheritdoc/>
         public AcquireTokenOnBehalfOfParameterBuilder AcquireTokenInLongRunningProcess(
             IEnumerable<string> scopes,
             string longRunningProcessSessionKey)
@@ -167,25 +124,64 @@ namespace Microsoft.Identity.Client
         }
 
         /// <summary>
-        /// Computes the URL of the authorization request letting the user sign-in and consent to the application accessing specific scopes in
-        /// the user's name. The URL targets the /authorize endpoint of the authority configured in the application.
-        /// This override enables you to specify a login hint and extra query parameter.
+        /// Stops an in-progress long-running on-behalf-of session by removing the tokens associated with the provided cache key.
+        /// See <see href="https://aka.ms/msal-net-long-running-obo">Long-running OBO in MSAL.NET</see>.
         /// </summary>
-        /// <param name="scopes">Scopes requested to access a protected API</param>
-        /// <returns>A builder enabling you to add optional parameters before executing the token request to get the
-        /// URL of the STS authorization endpoint parametrized with the parameters</returns>
-        /// <remarks>You can also chain the following optional parameters:
-        /// <see cref="GetAuthorizationRequestUrlParameterBuilder.WithRedirectUri(string)"/>
-        /// <see cref="GetAuthorizationRequestUrlParameterBuilder.WithLoginHint(string)"/>
-        /// <see cref="AbstractAcquireTokenParameterBuilder{T}.WithExtraQueryParameters(Dictionary{string, string})"/>
-        /// <see cref="GetAuthorizationRequestUrlParameterBuilder.WithExtraScopesToConsent(IEnumerable{string})"/>
-        /// </remarks>
+        /// <param name="longRunningProcessSessionKey">OBO cache key used to remove the tokens.</param>
+        /// <param name="cancellationToken">Cancellation token.</param>
+        /// <returns>True if tokens are removed from the cache; false, otherwise.</returns>
+        /// <exception cref="ArgumentNullException"><paramref name="longRunningProcessSessionKey"/> is not set.</exception>
+        public async Task<bool> StopLongRunningProcessInWebApiAsync(string longRunningProcessSessionKey, CancellationToken cancellationToken = default)
+        {
+            if (string.IsNullOrEmpty(longRunningProcessSessionKey))
+            {
+                throw new ArgumentNullException(nameof(longRunningProcessSessionKey));
+            }
+
+            Guid correlationId = Guid.NewGuid();
+            RequestContext requestContext = base.CreateRequestContext(correlationId, cancellationToken);
+            requestContext.ApiEvent = new ApiEvent(correlationId);
+            requestContext.ApiEvent.ApiId = ApiIds.RemoveOboTokens;
+
+            var authority = await Instance.Authority.CreateAuthorityForRequestAsync(
+              requestContext,
+              null).ConfigureAwait(false);
+
+            var authParameters = new AuthenticationRequestParameters(
+                   ServiceBundle,
+                   UserTokenCacheInternal,
+                   new AcquireTokenCommonParameters() { ApiId = requestContext.ApiEvent.ApiId },
+                   requestContext,
+                   authority);
+
+            if (UserTokenCacheInternal != null)
+            {
+                return await UserTokenCacheInternal.StopLongRunningOboProcessAsync(longRunningProcessSessionKey, authParameters).ConfigureAwait(false);
+            }
+
+            return false;
+        }
+
+        /// <inheritdoc/>
         public GetAuthorizationRequestUrlParameterBuilder GetAuthorizationRequestUrl(
             IEnumerable<string> scopes)
         {
             return GetAuthorizationRequestUrlParameterBuilder.Create(
                 ClientExecutorFactory.CreateConfidentialClientExecutor(this),
                 scopes);
+        }
+
+        /// <inheritdoc/>
+        AcquireTokenByUsernameAndPasswordConfidentialParameterBuilder IByUsernameAndPassword.AcquireTokenByUsernamePassword(
+            IEnumerable<string> scopes,
+            string username,
+            string password)
+        {
+            return AcquireTokenByUsernameAndPasswordConfidentialParameterBuilder.Create(
+                ClientExecutorFactory.CreateConfidentialClientExecutor(this),
+                scopes,
+                username,
+                password);
         }
 
         AcquireTokenByRefreshTokenParameterBuilder IByRefreshToken.AcquireTokenByRefreshToken(
@@ -198,13 +194,7 @@ namespace Microsoft.Identity.Client
                 refreshToken);
         }
 
-        /// <summary>
-        /// Application token cache. This case holds access tokens for the application. It's maintained
-        /// and updated silently if needed when calling <see cref="AcquireTokenForClient(IEnumerable{string})"/>
-        /// </summary>
-        /// <remarks>On .NET Framework and .NET Core you can also customize the token cache serialization.
-        /// See https://aka.ms/msal-net-token-cache-serialization. This is taken care of by MSAL.NET on other platforms
-        /// </remarks>
+        /// <inheritdoc/>
         public ITokenCache AppTokenCache => AppTokenCacheInternal;
 
         /// <summary>

@@ -5,20 +5,23 @@ using System;
 using System.Diagnostics;
 using Microsoft.Identity.Client;
 using Microsoft.Identity.Client.Core;
+using Microsoft.Identity.Client.Extensibility;
 using Microsoft.Identity.Client.Internal.Broker;
 using Microsoft.Identity.Client.OAuth2;
 using Microsoft.Identity.Test.Common;
 using Microsoft.Identity.Test.Common.Core.Mocks;
+using Microsoft.IdentityModel.Logging;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace Microsoft.Identity.Test.Unit
 {
     [TestClass]
-    public class TestBase
+    public partial class TestBase
     {
         [AssemblyInitialize]
         public static void AssemblyInit(TestContext context)
         {
+            IdentityModelEventSource.ShowPII = true;
             EnableFileTracingOnEnvVar();
             Trace.WriteLine("Test run started");
         }
@@ -33,14 +36,10 @@ namespace Microsoft.Identity.Test.Unit
         [TestInitialize]
         public virtual void TestInitialize()
         {
-#if DESKTOP
+#if NETFRAMEWORK
             Trace.WriteLine("Framework: .NET FX");
 #elif NET6_0
             Trace.WriteLine("Framework: .NET 6");
-#elif NET_CORE
-            Trace.WriteLine("Framework: .NET Core");
-#elif NET6_WIN
-            Trace.WriteLine("Framework: .NET6-Win");
 #endif
             Trace.WriteLine("Test started " + TestContext.TestName);
             TestCommon.ResetInternalStaticCaches();
@@ -63,7 +62,7 @@ namespace Microsoft.Identity.Test.Unit
             return new MockHttpAndServiceBundle(
                 logCallback,
                 isExtendedTokenLifetimeEnabled,
-                testContext: TestContext,
+                testName: TestContext.TestName,
                 isMultiCloudSupportEnabled: isMultiCloudSupportEnabled,
                 isInstanceDiscoveryEnabled: isInstanceDiscoveryEnabled
                 );
@@ -77,54 +76,6 @@ namespace Microsoft.Identity.Test.Unit
             {
                 Trace.Listeners.Add(new TextWriterTraceListener(traceFile, "testListener"));
             }
-        }
-
-        internal MsalTokenResponse CreateMsalRunTimeBrokerTokenResponse(string accessToken = null, string tokenType = null)
-        {
-            return new MsalTokenResponse()
-            {
-                AccessToken = accessToken ?? TestConstants.UserAccessToken,
-                IdToken = null,
-                CorrelationId = null,
-                Scope = TestConstants.ScopeStr,
-                ExpiresIn = 3600,
-                ClientInfo = null,
-                TokenType = tokenType ?? "Bearer",
-                WamAccountId = TestConstants.LocalAccountId,
-                TokenSource = TokenSource.Broker
-            };
-        }
-
-        internal class IosBrokerMock : NullBroker
-        {
-            public IosBrokerMock(ILoggerAdapter logger) : base(logger)
-            {
-
-            }
-            public override bool IsBrokerInstalledAndInvokable(AuthorityType authorityType)
-            {
-                if (authorityType == AuthorityType.Adfs)
-                {
-                    return false;
-                }
-
-                return true;
-            }
-        }
-
-        internal static IBroker CreateBroker(Type brokerType)
-        {
-            if (brokerType == typeof(NullBroker))
-            {
-                return new NullBroker(null);
-            }
-
-            if (brokerType == typeof(IosBrokerMock))
-            {
-                return new IosBrokerMock(null);
-            }
-
-            throw new NotImplementedException();
         }
     }
 }

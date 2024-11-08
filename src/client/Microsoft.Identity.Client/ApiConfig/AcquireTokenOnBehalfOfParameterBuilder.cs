@@ -24,9 +24,9 @@ namespace Microsoft.Identity.Client
     public sealed class AcquireTokenOnBehalfOfParameterBuilder :
         AbstractConfidentialClientAcquireTokenParameterBuilder<AcquireTokenOnBehalfOfParameterBuilder>
     {
-        private AcquireTokenOnBehalfOfParameters Parameters { get; } = new AcquireTokenOnBehalfOfParameters();
+        internal AcquireTokenOnBehalfOfParameters Parameters { get; } = new AcquireTokenOnBehalfOfParameters();
 
-        /// <inheritdoc />
+        /// <inheritdoc/>
         internal AcquireTokenOnBehalfOfParameterBuilder(IConfidentialClientApplicationExecutor confidentialClientApplicationExecutor)
             : base(confidentialClientApplicationExecutor)
         {
@@ -100,18 +100,17 @@ namespace Microsoft.Identity.Client
         }
 
         /// <summary>
-        /// Specifies if the client application should force refreshing the
-        /// token from the user token cache. By default the token is taken from the
-        /// the user token cache (forceRefresh=false)
+        /// Specifies if the client application should ignore access tokens when reading the token cache. 
+        /// New tokens will still be written to the token cache.
+        /// By default the token is taken from the the user token cache (forceRefresh=false)
         /// </summary>
         /// <param name="forceRefresh">If <c>true</c>, ignore any access token in the user token cache
         /// and attempt to acquire new access token using the refresh token for the account
-        /// if one is available. This can be useful in the case when the application developer wants to make
-        /// sure that conditional access policies are applied immediately, rather than after the expiration of the access token.
-        /// The default is <c>false</c></param>
+        /// if one is available. The default is <c>false</c></param>
         /// <returns>The builder to chain the .With methods</returns>
-        /// <remarks>Avoid unnecessarily setting <paramref name="forceRefresh"/> to <c>true</c> true in order to
-        /// avoid negatively affecting the performance of your application</remarks>
+        /// <remarks>
+        /// Do not use this flag except in well understood cases. Identity Providers will throttle clients that issue too many similar token requests.
+        /// </remarks>        
         public AcquireTokenOnBehalfOfParameterBuilder WithForceRefresh(bool forceRefresh)
         {
             Parameters.ForceRefresh = forceRefresh;
@@ -163,7 +162,7 @@ namespace Microsoft.Identity.Client
             return this;
         }
 
-        /// <inheritdoc />
+        /// <inheritdoc/>
         internal override Task<AuthenticationResult> ExecuteInternalAsync(CancellationToken cancellationToken)
         {
             return ConfidentialClientApplicationExecutor.ExecuteAsync(CommonParameters, Parameters, cancellationToken);
@@ -178,10 +177,24 @@ namespace Microsoft.Identity.Client
                 Parameters.SendX5C = this.ServiceBundle.Config?.SendX5C ?? false;
             }
         }
-        /// <inheritdoc />
+        /// <inheritdoc/>
         internal override ApiEvent.ApiIds CalculateApiEventId()
         {
-            return ApiEvent.ApiIds.AcquireTokenOnBehalfOf;
+            if (string.IsNullOrEmpty(Parameters.LongRunningOboCacheKey))
+            {
+                return ApiEvent.ApiIds.AcquireTokenOnBehalfOf;
+            }
+            else
+            {
+                if (Parameters.UserAssertion != null)
+                {
+                    return ApiEvent.ApiIds.InitiateLongRunningObo;
+                }
+                else
+                {
+                    return ApiEvent.ApiIds.AcquireTokenInLongRunningObo;
+                }
+            }
         }
     }
 }

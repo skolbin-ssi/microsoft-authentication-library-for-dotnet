@@ -3,12 +3,11 @@
 
 using System;
 using System.Collections.Concurrent;
-using System.Globalization;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
+using Microsoft.Identity.Client.Core;
 using Microsoft.Identity.Client.Internal;
-using Microsoft.Identity.Client.Internal.ClientCredential;
 using Microsoft.Identity.Client.PlatformsCommon.Interfaces;
 using Microsoft.Identity.Client.Utils;
 
@@ -23,6 +22,13 @@ namespace Microsoft.Identity.Client.PlatformsCommon.Shared
     {
         private static readonly ConcurrentDictionary<string, RSA> s_certificateToRsaMap = new ConcurrentDictionary<string, RSA>();
         private static readonly int s_maximumMapSize = 1000;
+
+        protected ILoggerAdapter Logger { get; }
+
+        public CommonCryptographyManager(ILoggerAdapter logger = null)
+        {
+            Logger = logger;
+        }
 
         public string CreateBase64UrlEncodedSha256Hash(string input)
         {
@@ -54,11 +60,10 @@ namespace Microsoft.Identity.Client.PlatformsCommon.Shared
         }
 
         /// <remarks>AAD only supports RSA certs for client credentials </remarks>
-        public virtual byte[] SignWithCertificate(string message, X509Certificate2 certificate)
+        public virtual byte[] SignWithCertificate(string message, X509Certificate2 certificate, RSASignaturePadding signaturePadding)
         {
             // MSAL used to check min key size by looking at certificate.GetRSAPublicKey().KeySize
             // but this causes sporadic failures in the crypto stack. Rely on AAD to perform key size validations.
-
             if (!s_certificateToRsaMap.TryGetValue(certificate.Thumbprint, out RSA rsa))
             {
                 if (s_certificateToRsaMap.Count >= s_maximumMapSize)
@@ -67,12 +72,34 @@ namespace Microsoft.Identity.Client.PlatformsCommon.Shared
                 rsa = certificate.GetRSAPrivateKey();
             }
 
-            var signedData = rsa.SignData(Encoding.UTF8.GetBytes(message), HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+            //Ensure certificate is of type RSA.
+            if (rsa == null)
+            {
+                throw new MsalClientException(MsalError.CertificateNotRsa, MsalErrorMessage.CertMustBeRsa(certificate.PublicKey?.Oid?.FriendlyName));
+            }
 
-            // Cache only valid RSA crypto providers, which are able to sign data successfully
-            s_certificateToRsaMap[certificate.Thumbprint] = rsa;
-            return signedData;
+            try
+            {
+                return SignDataAndCacheProvider(message);
+            }
+            catch (Exception ex)
+            {
+                Logger?.Warning($"Exception occurred when signing data with a certificate. {ex}");
 
-        }        
+                rsa = certificate.GetRSAPrivateKey();
+
+                return SignDataAndCacheProvider(message);
+            }
+
+            byte[] SignDataAndCacheProvider(string message)
+            {
+                //codeql [SM03799] Backwards Compatibility: Requires using PKCS1 padding for Identity Providers not supporting PSS (older ADFS, non-Microsoft identity providers)
+                var signedData = rsa.SignData(Encoding.UTF8.GetBytes(message), HashAlgorithmName.SHA256, signaturePadding);
+                
+                // Cache only valid RSA crypto providers, which are able to sign data successfully
+                s_certificateToRsaMap[certificate.Thumbprint] = rsa;
+                return signedData;
+            }
+        }
     }
 }

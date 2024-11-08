@@ -75,7 +75,7 @@ namespace Microsoft.Identity.Client.Internal.Requests.Silent
                 AuthenticationRequestParameters.RequestContext.ApiEvent.CacheInfo = cacheInfoTelemetry;
             }
 
-            // No AT or AT neesd to be refreshed 
+            // No access token or cached access token needs to be refreshed 
             try
             {
                 if (cachedAccessTokenItem == null)
@@ -86,14 +86,21 @@ namespace Microsoft.Identity.Client.Internal.Requests.Silent
                 {
                     var shouldRefresh = SilentRequestHelper.NeedsRefresh(cachedAccessTokenItem);
 
-                    // may fire a request to get a new token in the background
+                    // If needed, refreshes token in the background
                     if (shouldRefresh)
                     {
                         AuthenticationRequestParameters.RequestContext.ApiEvent.CacheInfo = CacheRefreshReason.ProactivelyRefreshed;
 
                         SilentRequestHelper.ProcessFetchInBackground(
                         cachedAccessTokenItem,
-                        () => RefreshRtOrFailAsync(cancellationToken), logger);
+                        () =>
+                        {
+                            // Use a linked token source, in case the original cancellation token source is disposed before this background task completes.
+                            using var tokenSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                            return RefreshRtOrFailAsync(tokenSource.Token);
+                        }, logger, ServiceBundle, AuthenticationRequestParameters.RequestContext.ApiEvent.ApiId,
+                        AuthenticationRequestParameters.RequestContext.ApiEvent.CallerSdkApiId,
+                        AuthenticationRequestParameters.RequestContext.ApiEvent.CallerSdkVersion);
                     }
                 }
 
@@ -160,7 +167,9 @@ namespace Microsoft.Identity.Client.Internal.Requests.Silent
                 AuthenticationRequestParameters.RequestContext.CorrelationId,
                 TokenSource.Cache,
                 AuthenticationRequestParameters.RequestContext.ApiEvent,
-                account);
+                account, 
+                spaAuthCode: null,
+                additionalResponseParameters: null);
         }       
 
         private async Task<MsalTokenResponse> TryGetTokenUsingFociAsync(CancellationToken cancellationToken)
@@ -202,7 +211,7 @@ namespace Microsoft.Identity.Client.Internal.Requests.Silent
                 {
                     // Hack: STS does not yet send back the suberror on these platforms because they are not in an allowed list,
                     // so the best thing we can do is to consider all errors as client_mismatch.
-#if NETSTANDARD || WINDOWS_APP || MAC
+#if NETSTANDARD || MAC
                     ex?.GetType();  // avoid the "variable 'ex' is declared but never used" in this code path.
                     return null;
 #else

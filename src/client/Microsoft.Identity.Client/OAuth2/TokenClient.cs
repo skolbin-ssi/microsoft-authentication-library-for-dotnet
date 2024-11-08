@@ -10,6 +10,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Identity.Client.Core;
+using Microsoft.Identity.Client.Instance;
 using Microsoft.Identity.Client.Internal;
 using Microsoft.Identity.Client.Internal.Requests;
 using Microsoft.Identity.Client.Kerberos;
@@ -29,12 +30,6 @@ namespace Microsoft.Identity.Client.OAuth2
         private readonly IServiceBundle _serviceBundle;
         private readonly OAuth2Client _oAuth2Client;
 
-        /// <summary>
-        /// Used to avoid sending duplicate "last request" telemetry
-        /// from a multi-threaded environment
-        /// </summary>
-        private volatile bool _requestInProgress = false;
-
         public TokenClient(AuthenticationRequestParameters requestParams)
         {
             _requestParams = requestParams ?? throw new ArgumentNullException(nameof(requestParams));
@@ -42,7 +37,8 @@ namespace Microsoft.Identity.Client.OAuth2
 
             _oAuth2Client = new OAuth2Client(
                _serviceBundle.ApplicationLogger,
-               _serviceBundle.HttpManager);
+               _serviceBundle.HttpManager,
+               requestParams.MtlsCertificate);
         }
 
         public async Task<MsalTokenResponse> SendTokenRequestAsync(
@@ -55,7 +51,11 @@ namespace Microsoft.Identity.Client.OAuth2
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
-                string tokenEndpoint = tokenEndpointOverride ?? _requestParams.Authority.GetTokenEndpoint();
+                string tokenEndpoint = tokenEndpointOverride;
+                if (tokenEndpoint == null)
+                {
+                    tokenEndpoint = await _requestParams.Authority.GetTokenEndpointAsync(_requestParams.RequestContext).ConfigureAwait(false);
+                }
                 Debug.Assert(_requestParams.RequestContext.ApiEvent != null, "The Token Client must only be called by requests.");
                 _requestParams.RequestContext.ApiEvent.TokenEndpoint = tokenEndpoint;
 
@@ -133,13 +133,17 @@ namespace Microsoft.Identity.Client.OAuth2
                 _requestParams.RequestContext.Logger.Verbose(
                     () => "[TokenClient] Before adding the client assertion / secret");
 
+                var tokenEndpoint = await _requestParams.Authority.GetTokenEndpointAsync(_requestParams.RequestContext).ConfigureAwait(false);
+
+                bool useSha2 = _requestParams.AuthorityManager.Authority.AuthorityInfo.IsSha2CredentialSupported;
                 await _serviceBundle.Config.ClientCredential.AddConfidentialClientParametersAsync(
                     _oAuth2Client,
                     _requestParams.RequestContext.Logger,
                     _serviceBundle.PlatformProxy.CryptographyManager,
                     _requestParams.AppConfig.ClientId,
-                    _requestParams.Authority.GetTokenEndpoint(),
+                    tokenEndpoint,
                     _requestParams.SendX5C,
+                    useSha2,
                     cancellationToken).ConfigureAwait(false);
 
                 _requestParams.RequestContext.Logger.Verbose(
@@ -167,15 +171,6 @@ namespace Microsoft.Identity.Client.OAuth2
                 TelemetryConstants.XClientCurrentTelemetry,
                 _serviceBundle.HttpTelemetryManager.GetCurrentRequestHeader(
                     _requestParams.RequestContext.ApiEvent));
-
-            if (!_requestInProgress)
-            {
-                _requestInProgress = true;
-
-                _oAuth2Client.AddHeader(
-                    TelemetryConstants.XClientLastTelemetry,
-                    _serviceBundle.HttpTelemetryManager.GetLastRequestHeader());
-            }
 
             //Signaling that the client can perform PKey Auth on supported platforms
             if (DeviceAuthHelper.CanOSPerformPKeyAuth())
@@ -221,6 +216,7 @@ namespace Microsoft.Identity.Client.OAuth2
             // no-op if resolvedClaims is null
             _oAuth2Client.AddBodyParameter(OAuth2Parameter.Claims, resolvedClaims);
         }
+
         private void AddExtraHttpHeaders()
         {
             if (_requestParams.ExtraHttpHeaders != null)
@@ -256,28 +252,16 @@ namespace Microsoft.Identity.Client.OAuth2
                             _requestParams.RequestContext, true, _requestParams.OnBeforeTokenRequestHandler)
                         .ConfigureAwait(false);
 
-                // Clear failed telemetry data as we've just sent it
-                _serviceBundle.HttpTelemetryManager.ResetPreviousUnsentData();
-
                 return msalTokenResponse;
             }
             catch (MsalServiceException ex)
             {
-                if (!ex.IsRetryable)
-                {
-                    // Clear failed telemetry data as we've just sent it ... 
-                    // even if we received an error from the server, 
-                    // telemetry would have been recorded
-                    _serviceBundle.HttpTelemetryManager.ResetPreviousUnsentData();
-                }
-
                 if (ex.StatusCode == (int)HttpStatusCode.Unauthorized)
                 {
-                    string responseHeader = string.Empty;
                     var isChallenge = _serviceBundle.DeviceAuthManager.TryCreateDeviceAuthChallengeResponse(
                         ex.Headers,
                         new Uri(tokenEndpoint), // do not add query params to PKeyAuth https://github.com/AzureAD/microsoft-authentication-library-for-dotnet/issues/2359
-                        out responseHeader);
+                        out string responseHeader);
                     if (isChallenge)
                     {
                         //Injecting PKeyAuth response here and replaying request to attempt device auth
@@ -291,22 +275,15 @@ namespace Microsoft.Identity.Client.OAuth2
                 }
 
                 throw;
-            }
-            finally
-            {
-                _requestInProgress = false;
-            }
+            }           
         }
 
         private static string GetDefaultScopes(ISet<string> inputScope)
         {
-            // OAuth spec states that scopes are case sensitive, but 
-            // merge the reserved scopes in a case insensitive way, to 
+            // OAuth spec states that scopes are case sensitive, but
+            // merge the reserved scopes in a case insensitive way, to
             // avoid sending things like "openid OpenId" (note that EVO is tolerant of this)
-            SortedSet<string> set = new SortedSet<string>(
-                inputScope.ToArray(),
-                StringComparer.OrdinalIgnoreCase);
-
+            var set = new SortedSet<string>(inputScope, StringComparer.OrdinalIgnoreCase);
             set.UnionWith(OAuth2Value.ReservedScopes);
             return set.AsSingleString();
         }

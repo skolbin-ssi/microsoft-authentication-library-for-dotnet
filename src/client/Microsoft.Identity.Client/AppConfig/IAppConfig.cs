@@ -40,7 +40,7 @@ namespace Microsoft.Identity.Client
 
         /// <summary>
         /// Flag telling if logging to platform defaults is enabled/disabled for the app.
-        /// In Desktop/UWP, Event Tracing is used. In iOS, NSLog is used.
+        /// In Desktop, Event Tracing is used. In iOS, NSLog is used.
         /// In Android, logcat is used. See https://aka.ms/msal-net-logging.
         /// </summary>
         bool IsDefaultPlatformLoggingEnabled { get; }
@@ -56,7 +56,7 @@ namespace Microsoft.Identity.Client
         string TenantId { get; }
 
         /// <summary>
-        /// Callback used for logging. It was set with <see cref="AbstractApplicationBuilder{T}.WithLogging(LogCallback, LogLevel?, bool?, bool?)"/>
+        /// Callback used for logging. It was set with <see cref="BaseAbstractApplicationBuilder{T}.WithLogging(LogCallback, LogLevel?, bool?, bool?)"/>
         /// See https://aka.ms/msal-net-logging
         /// </summary>
         LogCallback LoggingCallback { get; }
@@ -128,14 +128,6 @@ namespace Microsoft.Identity.Client
         /// <summary>
         /// </summary>
         Func<object> ParentActivityOrWindowFunc { get; }
-
-#if WINDOWS_APP
-        /// <summary>
-        /// Flag to enable authentication with the user currently signed-in on Windows.
-        /// When set to true, the application will try to connect to the corporate network using Windows Integrated Authentication.
-        /// </summary>
-        bool UseCorporateNetwork { get; }
-#endif // WINDOWS_APP
 
 #if iOS
         /// <summary>

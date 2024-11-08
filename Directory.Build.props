@@ -1,5 +1,6 @@
 <Project>
   <PropertyGroup>
+    <LangVersion>latest</LangVersion>
     <!-- This is strong naming, not signing-->
     <SignAssembly>true</SignAssembly>
     <!-- The MSAL.snk has both private and public keys -->
@@ -7,18 +8,25 @@
     <DelaySign>false</DelaySign>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
-    <IsPackable>false</IsPackable>    
+    <!-- Projects must set this individually -->
+    <IsPackable>false</IsPackable>
   </PropertyGroup>
 
-  <ItemGroup Label="For ContinuousIntegrationBuild support">
-    <SourceRoot Include="$(MSBuildThisFileDirectory)/"/> <!-- defines repository top level dir-->
+  <PropertyGroup Label="For CI build" Condition="'$(TF_BUILD)' == 'true'">
+    <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
+  </PropertyGroup>
+
+  <ItemGroup Label="For CI build">
+    <!-- defines repository top level dir-->
+    <SourceRoot Include="$(MSBuildThisFileDirectory)/"/>
   </ItemGroup>
+
   <ItemGroup>
     <!-- PrivateAssets="All" is on these packages to ensure they're development dependencies
          and aren't included as transitionary dependencies to package consumers.
          For clarity, without PrivateAssets marked here, anyone consuming Microsoft.Identity.Client
          would also be forced to install these dependencies.  PrivateAssets avoids this problem. -->
-    <PackageReference Include="Microsoft.VisualStudio.Threading.Analyzers" Version="17.*" PrivateAssets="All" />
-    <PackageReference Include="Microsoft.CodeAnalysis.NetAnalyzers" Version="7.0.0" PrivateAssets="All" />
+    <PackageReference Include="Microsoft.VisualStudio.Threading.Analyzers" PrivateAssets="All" />
+    <PackageReference Include="Microsoft.CodeAnalysis.NetAnalyzers" PrivateAssets="All" />
   </ItemGroup>
-</Project> 
+</Project>

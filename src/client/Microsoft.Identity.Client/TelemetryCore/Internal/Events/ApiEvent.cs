@@ -3,6 +3,7 @@
 
 using System;
 using Microsoft.Identity.Client.AuthScheme;
+using Microsoft.Identity.Client.Cache;
 using Microsoft.Identity.Client.Region;
 
 namespace Microsoft.Identity.Client.TelemetryCore.Internal.Events
@@ -25,7 +26,20 @@ namespace Microsoft.Identity.Client.TelemetryCore.Internal.Events
             GetAccounts = 1010,
             GetAccountById = 1011,
             GetAccountsByUserFlow = 1012,
-            RemoveAccount = 1013
+            RemoveAccount = 1013,
+
+            // MSAL 4.51.0+
+            RemoveOboTokens = 1014,
+            // The API IDs for managed identity will not be found in HTTP telemetry,
+            // as we don't hit eSTS for managed identity calls.
+            AcquireTokenForSystemAssignedManagedIdentity = 1015,
+            AcquireTokenForUserAssignedManagedIdentity = 1016,
+
+            // MSAL 4.54.0+
+            InitiateLongRunningObo = 1017,
+            AcquireTokenInLongRunningObo = 1018,
+
+            // "2002" is reserved for 1p OTEL signal that telemetry is disabled
         }
 
         public ApiEvent(Guid correlationId)
@@ -81,14 +95,14 @@ namespace Microsoft.Identity.Client.TelemetryCore.Internal.Events
 
         public bool IsTokenCacheSerialized { get; set; }
 
-        public string IsTokenCacheSerializedString
+        public char IsTokenCacheSerializedString
         {
             get => IsTokenCacheSerialized ? TelemetryConstants.One : TelemetryConstants.Zero;
         }
 
         public bool IsLegacyCacheEnabled { get; set; }
 
-        public string IsLegacyCacheEnabledString
+        public char IsLegacyCacheEnabledString
         {
             get => IsLegacyCacheEnabled ? TelemetryConstants.One : TelemetryConstants.Zero;
         }
@@ -115,5 +129,19 @@ namespace Microsoft.Identity.Client.TelemetryCore.Internal.Events
         {
             get => TokenType.HasValue ? TokenType.Value.ToString("D") : null;
         }
+
+        public AssertionType AssertionType { get; set; }
+
+        public CacheLevel CacheLevel { get; set; }
+
+        public string MsalRuntimeTelemetry { get; set; }
+
+        public string CallerSdkApiId { get; set; }
+
+        public string CallerSdkVersion { get; set; }
+
+        public static bool IsLongRunningObo(ApiIds apiId) => apiId == ApiIds.InitiateLongRunningObo || apiId == ApiIds.AcquireTokenInLongRunningObo;
+
+        public static bool IsOnBehalfOfRequest(ApiIds apiId) => apiId == ApiIds.AcquireTokenOnBehalfOf || IsLongRunningObo(apiId);
     }
 }

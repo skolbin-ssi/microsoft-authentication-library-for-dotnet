@@ -4,8 +4,11 @@
 using System;
 using System.Drawing.Text;
 using System.IO;
+using System.Linq;
 using System.Security.Cryptography.X509Certificates;
 using System.Security.Permissions;
+using System.Threading.Tasks;
+using System.Threading;
 using Microsoft.Identity.Client;
 using Microsoft.Identity.Client.Internal;
 using Microsoft.Identity.Client.Internal.ClientCredential;
@@ -38,8 +41,8 @@ namespace Microsoft.Identity.Test.Unit.AppConfigTests
             // Validate Defaults
             Assert.AreEqual(LogLevel.Info, cca.AppConfig.LogLevel);
             Assert.AreEqual(TestConstants.ClientId, cca.AppConfig.ClientId);
-            Assert.IsNotNull(cca.AppConfig.ClientName);
-            Assert.IsNotNull(cca.AppConfig.ClientVersion);
+            Assert.IsNull(cca.AppConfig.ClientName);
+            Assert.IsNull(cca.AppConfig.ClientVersion);
             Assert.AreEqual(false, cca.AppConfig.EnablePiiLogging);
             Assert.IsNull(cca.AppConfig.HttpClientFactory);
             Assert.AreEqual(false, cca.AppConfig.IsDefaultPlatformLoggingEnabled);
@@ -68,6 +71,7 @@ namespace Microsoft.Identity.Test.Unit.AppConfigTests
 
         [TestMethod]
         [DeploymentItem(@"Resources\testCert.crtfile")]
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Internal.Analyzers", "IA5352:DoNotMisuseCryptographicApi", Justification = "Suppressing RoslynAnalyzers: Rule: IA5352 - Do Not Misuse Cryptographic APIs in test only code")]
         public void TestBuildWithNoClientSecretButUsingCert()
         {
             var options = new ConfidentialClientApplicationOptions()
@@ -96,50 +100,33 @@ namespace Microsoft.Identity.Test.Unit.AppConfigTests
         }
 
         [TestMethod]
-        public void CacheSynchronizationWithDefaultCCA()
+        public void CacheSynchronization_Default_IsTrue()
         {
-            //Validate CacheSynchronizationEnabled when app is created from ApplicaitonOptions for CCA
-            var options = new ConfidentialClientApplicationOptions()
+            var ccaOptions = new ConfidentialClientApplicationOptions()
             {
                 ClientSecret = "secret",
                 ClientId = TestConstants.ClientId,
             };
-            var app = ConfidentialClientApplicationBuilder.CreateWithApplicationOptions(options).Build();
-            Assert.IsFalse((app.AppConfig as ApplicationConfiguration).CacheSynchronizationEnabled);
+            var cca = ConfidentialClientApplicationBuilder.CreateWithApplicationOptions(ccaOptions).Build();
+            Assert.IsTrue((cca.AppConfig as ApplicationConfiguration).CacheSynchronizationEnabled);
 
-            options = new ConfidentialClientApplicationOptions
+            cca = ConfidentialClientApplicationBuilder.Create(Guid.NewGuid().ToString()).WithClientSecret(TestConstants.ClientSecret).Build();
+            Assert.IsTrue((cca.AppConfig as ApplicationConfiguration).CacheSynchronizationEnabled);
+        }
+
+        [DataTestMethod]
+        [DataRow(false)]
+        [DataRow(true)]
+        public void CacheSynchronization_WithOptions(bool enableCacheSynchronization)
+        {
+            var ccaOptions = new ConfidentialClientApplicationOptions
             {
                 ClientId = TestConstants.ClientId,
                 ClientSecret = "secret",
-                EnableCacheSynchronization = false
+                EnableCacheSynchronization = enableCacheSynchronization
             };
-            app = ConfidentialClientApplicationBuilder.CreateWithApplicationOptions(options).Build();
-            Assert.AreEqual(false, (app.AppConfig as ApplicationConfiguration).CacheSynchronizationEnabled);
-
-            options = new ConfidentialClientApplicationOptions
-            {
-                ClientId = TestConstants.ClientId,
-                ClientSecret = "secret",
-                EnableCacheSynchronization = true
-            };
-            app = ConfidentialClientApplicationBuilder.CreateWithApplicationOptions(options).Build();
-            Assert.AreEqual(true, (app.AppConfig as ApplicationConfiguration).CacheSynchronizationEnabled);
-
-            //Validate CacheSynchronizationEnabled is false by default when app is created from ConfidentialClientApplicationBuilder
-            app = ConfidentialClientApplicationBuilder.Create(Guid.NewGuid().ToString()).WithClientSecret(TestConstants.ClientSecret).BuildConcrete();
-            Assert.IsFalse((app.AppConfig as ApplicationConfiguration).CacheSynchronizationEnabled);
-
-            //Validate CacheSynchronizationEnabled when app is created from ApplicaitonOptions for PCA
-            var options2 = new PublicClientApplicationOptions()
-            {
-                ClientId = TestConstants.ClientId
-            };
-            var app2 = PublicClientApplicationBuilder.CreateWithApplicationOptions(options2).Build();
-            Assert.IsTrue((app2.AppConfig as ApplicationConfiguration).CacheSynchronizationEnabled);
-
-            //Validate CacheSynchronizationEnabled is true by default when app is created from PublicClientApplicationBuilder
-            app2 = PublicClientApplicationBuilder.Create(Guid.NewGuid().ToString()).BuildConcrete();
-            Assert.IsTrue((app2.AppConfig as ApplicationConfiguration).CacheSynchronizationEnabled);
+            var cca = ConfidentialClientApplicationBuilder.CreateWithApplicationOptions(ccaOptions).Build();
+            Assert.AreEqual(enableCacheSynchronization, (cca.AppConfig as ApplicationConfiguration).CacheSynchronizationEnabled);
         }
 
         [DataTestMethod]
@@ -147,7 +134,7 @@ namespace Microsoft.Identity.Test.Unit.AppConfigTests
         [DataRow(true, true, true)]
         [DataRow(true, false, false)]
         [DataRow(false, true, true)]
-        public void CacheSynchronizationNoDefault(bool optionFlag, bool builderFlag, bool result)
+        public void CacheSynchronization_WithCacheSynchronization_TakesPrecedence(bool optionFlag, bool builderFlag, bool result)
         {
             var options = new ConfidentialClientApplicationOptions
             {
@@ -248,7 +235,7 @@ namespace Microsoft.Identity.Test.Unit.AppConfigTests
             var cca = ConfidentialClientApplicationBuilder
                       .Create(TestConstants.ClientId)
                             .WithClientSecret("cats")
-                            .WithLogging((level, message, pii) => { }).Build();
+                            .WithLogging((_, _, _) => { }).Build();
 
             Assert.IsNotNull(cca.AppConfig.LoggingCallback);
         }
@@ -312,14 +299,13 @@ namespace Microsoft.Identity.Test.Unit.AppConfigTests
         [TestMethod]
         public void TestConstructor_WithTenantId()
         {
-            const string TenantId = "a_tenant id";
             var cca = ConfidentialClientApplicationBuilder
                       .Create(TestConstants.ClientId)
                       .WithClientSecret("cats")
-                      .WithTenantId(TenantId)
+                      .WithTenantId(TestConstants.TenantId)
                       .Build();
 
-            Assert.AreEqual(TenantId, cca.AppConfig.TenantId);
+            Assert.AreEqual(TestConstants.TenantId, cca.AppConfig.TenantId);
         }
 
         [TestMethod]
@@ -337,6 +323,7 @@ namespace Microsoft.Identity.Test.Unit.AppConfigTests
 
         [TestMethod]
         [DeploymentItem(@"Resources\testCert.crtfile")]
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Internal.Analyzers", "IA5352:DoNotMisuseCryptographicApi", Justification = "Suppressing RoslynAnalyzers: Rule: IA5352 - Do Not Misuse Cryptographic APIs in test only code")]
         public void TestConstructor_WithCertificate_X509Certificate2()
         {
             var cert = new X509Certificate2(
@@ -372,6 +359,7 @@ namespace Microsoft.Identity.Test.Unit.AppConfigTests
 
         [TestMethod]
         [DeploymentItem(@"Resources\testCert.crtfile")]
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Internal.Analyzers", "IA5352:DoNotMisuseCryptographicApi", Justification = "Suppressing RoslynAnalyzers: Rule: IA5352 - Do Not Misuse Cryptographic APIs in test only code")]
         public void TestConstructor_WithCertificate_SendX5C()
         {
             var cert = new X509Certificate2(
@@ -476,6 +464,51 @@ namespace Microsoft.Identity.Test.Unit.AppConfigTests
                       .Build();
 
             Assert.AreEqual(isLegacyCacheCompatibilityEnabled, cca.AppConfig.LegacyCacheCompatibilityEnabled);
+        }
+
+        [TestMethod]
+        public void WithClientCapabilities()
+        {
+            var cca = ConfidentialClientApplicationBuilder.Create(TestConstants.ClientId)
+                .WithClientCapabilities(new[] { "cp1", "cp2" })
+                .Build();
+
+            CollectionAssert.AreEquivalent(new[] { "cp1", "cp2" }, cca.AppConfig.ClientCapabilities.ToList());
+        }
+
+        [TestMethod]
+        public void WithClientCapabilitiesViaOptions()
+        {
+            var options = new ConfidentialClientApplicationOptions
+            {
+                Instance = "https://login.microsoftonline.com",
+                TenantId = "organizations",
+                ClientId = TestConstants.ClientId,
+                ClientCapabilities = new[] { "cp1", "cp2" }
+            };
+
+            var app = ConfidentialClientApplicationBuilder.CreateWithApplicationOptions(options)
+                .Build();
+
+            CollectionAssert.AreEquivalent(new string[] { "cp1", "cp2" }, app.AppConfig.ClientCapabilities.ToList());
+        }
+
+        [TestMethod]
+        public async Task Claims_Fail_WhenClaimsIsNotJson_Async()
+        {
+            var app = ConfidentialClientApplicationBuilder.Create(TestConstants.ClientId)
+                            .WithClientSecret(TestConstants.ClientSecret)
+                            .WithClientCapabilities(TestConstants.ClientCapabilities)
+                            .BuildConcrete();
+
+            var ex = await AssertException.TaskThrowsAsync<MsalClientException>(
+                () => app
+                    .AcquireTokenForClient(TestConstants.s_scope)
+                    .WithClaims("claims_that_are_not_json")
+                    .ExecuteAsync(CancellationToken.None))
+                .ConfigureAwait(false);
+
+            Assert.AreEqual(MsalError.InvalidJsonClaimsFormat, ex.ErrorCode);
         }
     }
 }

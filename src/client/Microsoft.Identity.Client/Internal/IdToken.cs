@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using System.Security.Claims;
 using Microsoft.Identity.Client.Utils;
 #if SUPPORTS_SYSTEM_TEXT_JSON
@@ -24,6 +25,7 @@ namespace Microsoft.Identity.Client.Internal
         public const string Version = "ver";
         public const string PreferredUsername = "preferred_username";
         public const string Name = "name";
+        public const string Email = "email";
         public const string HomeObjectId = "home_oid";
         public const string GivenName = "given_name";
         public const string FamilyName = "family_name";
@@ -41,8 +43,21 @@ namespace Microsoft.Identity.Client.Internal
     {
         private const string DefaultIssuser = "LOCAL AUTHORITY";
 
+        /// <summary>
+        /// The OID claim is a unique identifier (GUID) for the user object in Azure AD.
+        /// Guest Users have different OID.
+        /// This is a stable ID across all apps.
+        /// 
+        /// IMPORTANT: There are rare cases where this is missing! 
+        /// </summary>
+        /// <remarks>
+        /// Avoid using as it is not guaranteed non-null. Use <see cref="GetUniqueId"/> instead.
+        /// </remarks>
         public string ObjectId { get; private set; }
 
+        /// <summary>
+        /// The sub claim is a unique identifier for user + app. 
+        /// </summary>
         public string Subject { get; private set; }
 
         public string TenantId { get; private set; }
@@ -50,6 +65,7 @@ namespace Microsoft.Identity.Client.Internal
         public string PreferredUsername { get; private set; }
 
         public string Name { get; private set; }
+        public string Email { get; private set; }
 
         public string Upn { get; private set; }
 
@@ -63,6 +79,28 @@ namespace Microsoft.Identity.Client.Internal
         }
 
         public ClaimsPrincipal ClaimsPrincipal { get; private set; }
+
+
+        private static IdToken ClaimsToToken(List<Claim> claims)
+        {
+            var principal = new ClaimsPrincipal(new ClaimsIdentity(claims));
+            return new IdToken
+            {
+                ClaimsPrincipal = principal,
+                ObjectId = FindClaim(claims, IdTokenClaim.ObjectId),
+                Subject = FindClaim(claims, IdTokenClaim.Subject),
+                TenantId = FindClaim(claims, IdTokenClaim.TenantId),
+                PreferredUsername = FindClaim(claims, IdTokenClaim.PreferredUsername),
+                Name = FindClaim(claims, IdTokenClaim.Name),
+                Email = FindClaim(claims, IdTokenClaim.Email),
+                Upn = FindClaim(claims, IdTokenClaim.Upn),
+                GivenName = FindClaim(claims, IdTokenClaim.GivenName),
+                FamilyName = FindClaim(claims, IdTokenClaim.FamilyName)
+            };
+
+            static string FindClaim(List<Claim> claims, string type) =>
+                claims.SingleOrDefault(_ => string.Equals(_.Type, type, StringComparison.OrdinalIgnoreCase))?.Value;
+        }
 
         #region Using Newtonsoft
 #if !SUPPORTS_SYSTEM_TEXT_JSON
@@ -89,22 +127,8 @@ namespace Microsoft.Identity.Client.Internal
                 string payload = Base64UrlHelpers.Decode(idTokenSegments[1]);
                 var idTokenClaims = JsonConvert.DeserializeObject<Dictionary<string, object>>(payload);
 
-                IdToken parsedIdToken = new IdToken();
-
                 List<Claim> claims = GetClaimsFromRawToken(idTokenClaims);
-                parsedIdToken.ClaimsPrincipal = new ClaimsPrincipal(new ClaimsIdentity(claims));
-
-                parsedIdToken.ObjectId = parsedIdToken.ClaimsPrincipal.FindFirst(IdTokenClaim.ObjectId)?.Value;
-                parsedIdToken.Subject = parsedIdToken.ClaimsPrincipal.FindFirst(IdTokenClaim.Subject)?.Value;
-                parsedIdToken.TenantId = parsedIdToken.ClaimsPrincipal.FindFirst(IdTokenClaim.TenantId)?.Value;
-                parsedIdToken.PreferredUsername = parsedIdToken.ClaimsPrincipal.FindFirst(IdTokenClaim.PreferredUsername)?.Value;
-                parsedIdToken.Name = parsedIdToken.ClaimsPrincipal.FindFirst(IdTokenClaim.Name)?.Value;
-                parsedIdToken.Upn = parsedIdToken.ClaimsPrincipal.FindFirst(IdTokenClaim.Upn)?.Value;
-                parsedIdToken.GivenName = parsedIdToken.ClaimsPrincipal.FindFirst(IdTokenClaim.GivenName)?.Value;
-                parsedIdToken.FamilyName = parsedIdToken.ClaimsPrincipal.FindFirst(IdTokenClaim.FamilyName)?.Value;
-
-                return parsedIdToken;
-
+                return ClaimsToToken(claims);
             }
             catch (JsonException exc)
             {
@@ -329,23 +353,8 @@ namespace Microsoft.Identity.Client.Internal
             {
                 string payload = Base64UrlHelpers.Decode(idTokenSegments[1]);
                 var idTokenClaims = JsonDocument.Parse(payload);
-
-                IdToken parsedIdToken = new IdToken();
-
                 List<Claim> claims = GetClaimsFromRawToken(idTokenClaims);
-                parsedIdToken.ClaimsPrincipal = new ClaimsPrincipal(new ClaimsIdentity(claims));
-
-                parsedIdToken.ObjectId = parsedIdToken.ClaimsPrincipal.FindFirst(IdTokenClaim.ObjectId)?.Value;
-                parsedIdToken.Subject = parsedIdToken.ClaimsPrincipal.FindFirst(IdTokenClaim.Subject)?.Value;
-                parsedIdToken.TenantId = parsedIdToken.ClaimsPrincipal.FindFirst(IdTokenClaim.TenantId)?.Value;
-                parsedIdToken.PreferredUsername = parsedIdToken.ClaimsPrincipal.FindFirst(IdTokenClaim.PreferredUsername)?.Value;
-                parsedIdToken.Name = parsedIdToken.ClaimsPrincipal.FindFirst(IdTokenClaim.Name)?.Value;
-                parsedIdToken.Upn = parsedIdToken.ClaimsPrincipal.FindFirst(IdTokenClaim.Upn)?.Value;
-                parsedIdToken.GivenName = parsedIdToken.ClaimsPrincipal.FindFirst(IdTokenClaim.GivenName)?.Value;
-                parsedIdToken.FamilyName = parsedIdToken.ClaimsPrincipal.FindFirst(IdTokenClaim.FamilyName)?.Value;
-
-                return parsedIdToken;
-
+                return ClaimsToToken(claims);
             }
             catch (JsonException exc)
             {

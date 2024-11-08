@@ -7,6 +7,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Castle.Core.Internal;
 using Microsoft.Identity.Client;
+using Microsoft.Identity.Client.AppConfig;
 using Microsoft.Identity.Client.Cache;
 using Microsoft.Identity.Client.Cache.Items;
 using Microsoft.Identity.Client.Core;
@@ -23,7 +24,6 @@ using Microsoft.Identity.Test.Common.Core.Helpers;
 using Microsoft.Identity.Test.Common.Core.Mocks;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using NSubstitute;
-using NSubstitute.Extensions;
 
 namespace Microsoft.Identity.Test.Unit.CacheTests
 {
@@ -55,43 +55,46 @@ namespace Microsoft.Identity.Test.Unit.CacheTests
             bool serializeCache,
             bool expectToCallAdalLegacyCache)
         {
-            // Arrange
-            var legacyCachePersistence = Substitute.For<ILegacyCachePersistence>();
-            var serviceBundle = TestCommon.CreateServiceBundleWithCustomHttpManager(null, isLegacyCacheEnabled: enableLegacyCacheCompatibility);
-            var requestContext = new RequestContext(serviceBundle, Guid.NewGuid());
-            var response = TestConstants.CreateMsalTokenResponse();
-
-            ITokenCacheInternal cache = new TokenCache(serviceBundle, false);
-            ((TokenCache)cache).LegacyCachePersistence = legacyCachePersistence;
-            if (serializeCache) // no point in invoking the Legacy ADAL cache if you're only keeping it memory
+            using (MockHttpManager mockHttpManager = new MockHttpManager())
             {
-                cache.SetBeforeAccess((n) => { });
-            }
+                // Arrange
+                var legacyCachePersistence = Substitute.For<ILegacyCachePersistence>();
+                mockHttpManager.AddInstanceDiscoveryMockHandler();
+                var serviceBundle = TestCommon.CreateServiceBundleWithCustomHttpManager(mockHttpManager, isLegacyCacheEnabled: enableLegacyCacheCompatibility);
+                var requestContext = new RequestContext(serviceBundle, Guid.NewGuid());
+                var response = TestConstants.CreateMsalTokenResponse();
 
-            var requestParams = TestCommon.CreateAuthenticationRequestParameters(serviceBundle);
-            requestParams.AuthorityManager = new AuthorityManager(
-                requestContext,
-                Authority.CreateAuthorityWithTenant(
-                    requestParams.AuthorityInfo,
-                    TestConstants.Utid));
-            requestParams.Account = new Account(TestConstants.s_userIdentifier, $"1{TestConstants.DisplayableId}", TestConstants.ProductionPrefNetworkEnvironment);
+                ITokenCacheInternal cache = new TokenCache(serviceBundle, false, legacyCachePersistence);                
+                if (serializeCache) // no point in invoking the Legacy ADAL cache if you're only keeping it memory
+                {
+                    cache.SetBeforeAccess((_) => { });
+                }
 
-            // Act
-            await cache.FindRefreshTokenAsync(requestParams).ConfigureAwait(true);
-            await cache.SaveTokenResponseAsync(requestParams, response).ConfigureAwait(true);
-            await cache.GetAccountsAsync(requestParams).ConfigureAwait(true);
-            await cache.RemoveAccountAsync(requestParams.Account, requestParams).ConfigureAwait(true);
+                var requestParams = TestCommon.CreateAuthenticationRequestParameters(serviceBundle);
+                requestParams.AuthorityManager = new AuthorityManager(
+                    requestContext,
+                    Authority.CreateAuthorityWithTenant(
+                        requestParams.AuthorityInfo,
+                        TestConstants.Utid));
+                requestParams.Account = new Account(TestConstants.s_userIdentifier, $"1{TestConstants.DisplayableId}", TestConstants.ProductionPrefNetworkEnvironment);
 
-            // Assert
-            if (expectToCallAdalLegacyCache)
-            {
-                legacyCachePersistence.ReceivedWithAnyArgs().LoadCache();
-                legacyCachePersistence.ReceivedWithAnyArgs().WriteCache(Arg.Any<byte[]>());
-            }
-            else
-            {
-                legacyCachePersistence.DidNotReceiveWithAnyArgs().LoadCache();
-                legacyCachePersistence.DidNotReceiveWithAnyArgs().WriteCache(Arg.Any<byte[]>());
+                // Act
+                await cache.FindRefreshTokenAsync(requestParams).ConfigureAwait(true);
+                await cache.SaveTokenResponseAsync(requestParams, response).ConfigureAwait(true);
+                await cache.GetAccountsAsync(requestParams).ConfigureAwait(true);
+                await cache.RemoveAccountAsync(requestParams.Account, requestParams).ConfigureAwait(true);
+
+                // Assert
+                if (expectToCallAdalLegacyCache)
+                {
+                    legacyCachePersistence.ReceivedWithAnyArgs().LoadCache();
+                    legacyCachePersistence.ReceivedWithAnyArgs().WriteCache(Arg.Any<byte[]>());
+                }
+                else
+                {
+                    legacyCachePersistence.DidNotReceiveWithAnyArgs().LoadCache();
+                    legacyCachePersistence.DidNotReceiveWithAnyArgs().WriteCache(Arg.Any<byte[]>());
+                }
             }
         }
 
@@ -102,36 +105,43 @@ namespace Microsoft.Identity.Test.Unit.CacheTests
             bool multiCloudSupportEnabled)
         {
             // Arrange
-            var serviceBundle = TestCommon.CreateServiceBundleWithCustomHttpManager(null, isMultiCloudSupportEnabled: multiCloudSupportEnabled);
-            var requestContext = new RequestContext(serviceBundle, Guid.NewGuid());
-            var response = TestConstants.CreateMsalTokenResponse();
+            using (MockHttpManager mockHttpManager = new MockHttpManager())
+            {
+                mockHttpManager.AddInstanceDiscoveryMockHandler();
 
-            ITokenCacheInternal cache = new TokenCache(serviceBundle, false);
+                var serviceBundle = TestCommon.CreateServiceBundleWithCustomHttpManager(
+                    mockHttpManager,
+                    isMultiCloudSupportEnabled: multiCloudSupportEnabled);
+                var requestContext = new RequestContext(serviceBundle, Guid.NewGuid());
+                var response = TestConstants.CreateMsalTokenResponse();
 
-            var requestParams = TestCommon.CreateAuthenticationRequestParameters(serviceBundle);
-            requestParams.AuthorityManager = new AuthorityManager(
-                requestContext,
-                Authority.CreateAuthorityWithTenant(
-                    requestParams.AuthorityInfo,
-                    TestConstants.Utid));
-            requestParams.Account = new Account(TestConstants.s_userIdentifier, $"1{TestConstants.DisplayableId}", TestConstants.ProductionPrefNetworkEnvironment);
+                ITokenCacheInternal cache = new TokenCache(serviceBundle, false);
 
-            var res = await cache.SaveTokenResponseAsync(requestParams, response).ConfigureAwait(true);
+                var requestParams = TestCommon.CreateAuthenticationRequestParameters(serviceBundle);
+                requestParams.AuthorityManager = new AuthorityManager(
+                    requestContext,
+                    Authority.CreateAuthorityWithTenant(
+                        requestParams.AuthorityInfo,
+                        TestConstants.Utid));
+                requestParams.Account = new Account(TestConstants.s_userIdentifier, $"1{TestConstants.DisplayableId}", TestConstants.ProductionPrefNetworkEnvironment);
 
-            IEnumerable<IAccount> accounts = await cache.GetAccountsAsync(requestParams).ConfigureAwait(true);
-            Assert.IsNotNull(accounts);
-            Assert.IsNotNull(accounts.Single());
+                var res = await cache.SaveTokenResponseAsync(requestParams, response).ConfigureAwait(true);
 
-            MsalRefreshTokenCacheItem refreshToken = await cache.FindRefreshTokenAsync(requestParams).ConfigureAwait(true);
-            Assert.IsNotNull(refreshToken);
+                IEnumerable<IAccount> accounts = await cache.GetAccountsAsync(requestParams).ConfigureAwait(true);
+                Assert.IsNotNull(accounts);
+                Assert.IsNotNull(accounts.Single());
 
-            MsalIdTokenCacheItem idToken = cache.GetIdTokenCacheItem(res.Item1);
-            Assert.IsNotNull(idToken);
+                MsalRefreshTokenCacheItem refreshToken = await cache.FindRefreshTokenAsync(requestParams).ConfigureAwait(true);
+                Assert.IsNotNull(refreshToken);
 
-            await cache.RemoveAccountAsync(requestParams.Account, requestParams).ConfigureAwait(true);
-            accounts = await cache.GetAccountsAsync(requestParams).ConfigureAwait(true);
-            Assert.IsNotNull(accounts);
-            Assert.IsTrue(accounts.IsNullOrEmpty());
+                MsalIdTokenCacheItem idToken = cache.GetIdTokenCacheItem(res.Item1);
+                Assert.IsNotNull(idToken);
+
+                await cache.RemoveAccountAsync(requestParams.Account, requestParams).ConfigureAwait(true);
+                accounts = await cache.GetAccountsAsync(requestParams).ConfigureAwait(true);
+                Assert.IsNotNull(accounts);
+                Assert.IsTrue(accounts.IsNullOrEmpty());
+            }
         }
 
         [TestMethod]
@@ -495,7 +505,7 @@ namespace Microsoft.Identity.Test.Unit.CacheTests
                 var userAccessorExpiration = TokenCache.CalculateSuggestedCacheExpiry(userTokenCache.Accessor, logger);
 
                 // Assert
-                Assert.IsNull(appAccessorExpiration );
+                Assert.IsNull(appAccessorExpiration);
                 Assert.IsNull(userAccessorExpiration);
                 Assert.IsFalse(appTokenCache.Accessor.HasAccessOrRefreshTokens());
                 Assert.IsFalse(userTokenCache.Accessor.HasAccessOrRefreshTokens());
@@ -569,7 +579,6 @@ namespace Microsoft.Identity.Test.Unit.CacheTests
                     null,
                     _homeAccountId);
 
-                string rtKey = rtItem.CacheKey;
                 cache.Accessor.SaveRefreshToken(rtItem);
 
                 var authParams = harness.CreateAuthenticationRequestParameters(
@@ -606,7 +615,6 @@ namespace Microsoft.Identity.Test.Unit.CacheTests
                     null,
                     _homeAccountId);
 
-                string rtKey = rtItem.CacheKey;
                 cache.Accessor.SaveRefreshToken(rtItem);
 
                 var authParams = harness.CreateAuthenticationRequestParameters(
@@ -662,7 +670,7 @@ namespace Microsoft.Identity.Test.Unit.CacheTests
         [TestCategory(TestCategories.TokenCacheTests)]
         public async Task DoNotSaveRefreshTokenInAdalCacheForMsalB2CAuthorityTestAsync()
         {
-            var appConfig = new ApplicationConfiguration(isConfidentialClient: true)
+            var appConfig = new ApplicationConfiguration(MsalClientType.ConfidentialClient)
             {
                 ClientId = TestConstants.ClientId,
                 RedirectUri = TestConstants.RedirectUri,
@@ -1099,7 +1107,6 @@ namespace Microsoft.Identity.Test.Unit.CacheTests
                 response.Scope = TestConstants.s_scope.AsSingleString();
                 response.TokenType = "Bearer";
 
-                RequestContext requestContext = new RequestContext(serviceBundle, new Guid());
                 var requestParams = TestCommon.CreateAuthenticationRequestParameters(serviceBundle, authority);
 
                 adfsCache.SaveTokenResponseAsync(requestParams, response);
@@ -1369,7 +1376,7 @@ namespace Microsoft.Identity.Test.Unit.CacheTests
                         "1"));
 
                 // Act
-                bool? result = cache.IsFociMemberAsync(requestParams, "1").Result; //requst params uses ProductionPrefEnvAlias
+                bool? result = cache.IsFociMemberAsync(requestParams, "1").Result; //request params uses ProductionPrefEnvAlias
 
                 // Assert
                 Assert.AreEqual(true, result.Value);
@@ -1378,55 +1385,79 @@ namespace Microsoft.Identity.Test.Unit.CacheTests
 
         [TestMethod]
         [TestCategory(TestCategories.TokenCacheTests)]
-        public async Task ValidateTokenCacheIsDumpedToLogsTestAsync()
+        public async Task ValidateTokenCacheContentsAreLogged_TestAsync()
         {
-            using (MockHttpAndServiceBundle harness = CreateTestHarness())
-            {
-                //Arrange
-                harness.HttpManager.AddInstanceDiscoveryMockHandler();
+            using MockHttpAndServiceBundle harness = CreateTestHarness();
 
-                string dump = string.Empty;
-                LogCallback callback = (LogLevel level, string message, bool containsPii) =>
+            //Arrange
+            harness.HttpManager.AddInstanceDiscoveryMockHandler();
+
+            string logs = string.Empty;
+            LogCallback logCallback = (LogLevel level, string message, bool _) =>
+                                    {
+                                        if (level == LogLevel.Verbose)
                                         {
-                                            if (level == LogLevel.Verbose)
-                                            {
-                                                dump += $"MSAL Test: {message}\n";
-                                            }
-                                        };
+                                            logs += message;
+                                        }
+                                    };
 
-                var serviceBundle = TestCommon.CreateServiceBundleWithCustomHttpManager(harness.HttpManager, logCallback: callback);
-                ITokenCacheInternal cache = new TokenCache(serviceBundle, false);
-                cache.SetAfterAccess((args) => { return; });
+            var serviceBundle = TestCommon.CreateServiceBundleWithCustomHttpManager(harness.HttpManager, logCallback: logCallback);
+            ITokenCacheInternal cache = new TokenCache(serviceBundle, false);
+            cache.SetAfterAccess((_) => { return; });
 
-                var ex = TokenCacheHelper.PopulateCacheWithAccessTokens(cache.Accessor, 19);
+            TokenCacheHelper.PopulateCacheWithAccessTokens(cache.Accessor, 11);
 
-                var requestParams = TestCommon.CreateAuthenticationRequestParameters(
-                    serviceBundle,
-                    scopes: new HashSet<string>());
-                requestParams.Account = TestConstants.s_user;
-                requestParams.RequestContext.ApiEvent = new ApiEvent(Guid.NewGuid());
+            var requestParams = TestCommon.CreateAuthenticationRequestParameters(
+                serviceBundle,
+                scopes: new HashSet<string>());
+            requestParams.Account = TestConstants.s_user;
+            requestParams.RequestContext.ApiEvent = new ApiEvent(Guid.NewGuid());
 
-                var response = TokenCacheHelper.CreateMsalTokenResponse(true);
+            var response = TokenCacheHelper.CreateMsalTokenResponse(true);
 
-                //Act
-                await cache.SaveTokenResponseAsync(requestParams, response).ConfigureAwait(false);
+            //Act
+            await cache.SaveTokenResponseAsync(requestParams, response).ConfigureAwait(false);
 
-                //Assert
-                Assert.IsTrue(dump != string.Empty);
-                Assert.IsTrue(dump.Contains("Total number of access tokens in cache: 20"));
-                Assert.IsTrue(dump.Contains("Total number of refresh tokens in cache: 20"));
-                Assert.IsTrue(dump.Contains("Token cache dump of the first 10 cache keys"));
+            //Assert
+            Assert.IsTrue(logs != string.Empty);
+            Assert.IsTrue(logs.Contains("Total number of access tokens in the cache: 12"));
+            Assert.IsTrue(logs.Contains("Total number of refresh tokens in the cache: 12"));
+            Assert.IsTrue(logs.Contains("First 10 access token cache keys:"));
+            Assert.IsTrue(logs.Contains("First 10 refresh token cache keys:"));
 
-                var accessTokens = cache.Accessor.GetAllAccessTokens().ToList();
-                foreach (MsalAccessTokenCacheItem item in accessTokens)
-                {
-                    Assert.IsTrue(dump.Contains(item.ToLogString()));
-                    if (accessTokens.IndexOf(item) >= 9)
-                    {
-                        break;
-                    }
-                }
+            var accessTokens = cache.Accessor.GetAllAccessTokens().ToList();
+            var refreshTokens = cache.Accessor.GetAllRefreshTokens().ToList();
+            for (int i = 0; i < 10; i++)
+            {
+                Assert.IsTrue(logs.Contains(accessTokens[i].ToLogString()));
+                Assert.IsTrue(logs.Contains(refreshTokens[i].ToLogString()));
             }
+        }
+
+        [DataTestMethod]
+        [DataRow(true)]
+        [DataRow(false)]
+        public void AccessTokenCacheItem_ToLogString_UsesPiiFlag_Test(bool enablePii)
+        {
+            var accessTokenCacheItem = TokenCacheHelper.CreateAccessTokenItem();
+
+            var log = accessTokenCacheItem.ToLogString(enablePii);
+
+            Assert.AreEqual(enablePii, log.Contains(accessTokenCacheItem.HomeAccountId));
+            Assert.AreNotEqual(enablePii, log.Contains(accessTokenCacheItem.HomeAccountId.GetHashCode().ToString()));
+        }
+
+        [DataTestMethod]
+        [DataRow(true)]
+        [DataRow(false)]
+        public void RefreshTokenCacheItem_ToLogString_UsesPiiFlag_Test(bool enablePii)
+        {
+            var refreshTokenCacheItem = TokenCacheHelper.CreateRefreshTokenItem();
+
+            var log = refreshTokenCacheItem.ToLogString(enablePii);
+
+            Assert.AreEqual(enablePii, log.Contains(refreshTokenCacheItem.HomeAccountId));
+            Assert.AreNotEqual(enablePii, log.Contains(refreshTokenCacheItem.HomeAccountId.GetHashCode().ToString()));
         }
 
         private void ValidateIsFociMember(

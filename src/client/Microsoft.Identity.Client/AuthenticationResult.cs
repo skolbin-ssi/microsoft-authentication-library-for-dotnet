@@ -11,6 +11,7 @@ using Microsoft.Identity.Client.AuthScheme;
 using Microsoft.Identity.Client.Cache;
 using Microsoft.Identity.Client.Cache.Items;
 using Microsoft.Identity.Client.TelemetryCore.Internal.Events;
+using Microsoft.Identity.Client.Utils;
 
 namespace Microsoft.Identity.Client
 {
@@ -20,7 +21,7 @@ namespace Microsoft.Identity.Client
     /// </summary>
     public partial class AuthenticationResult
     {
-        private readonly IAuthenticationScheme _authenticationScheme;
+        private readonly IAuthenticationOperation _authenticationScheme;
 
         /// <summary>
         /// Constructor meant to help application developers test their apps. Allows mocking of authentication flows.
@@ -39,7 +40,8 @@ namespace Microsoft.Identity.Client
         /// <param name="tokenType">The token type, defaults to Bearer. Note: this property is experimental and may change in future versions of the library.</param>
         /// <param name="authenticationResultMetadata">Contains metadata related to the Authentication Result.</param>
         /// <param name="claimsPrincipal">Claims from the ID token</param>
-        /// <param name="spaAuthCode">Auth Code returned by the Microsoft identity platform when you use AcquireTokenByAuthorizeCode.WithSpaAuthorizationCode(). This auth code is meant to be redeemed by the frontend code.</param>
+        /// <param name="spaAuthCode">Auth Code returned by the Microsoft identity platform when you use AcquireTokenByAuthorizationCode.WithSpaAuthorizationCode(). This auth code is meant to be redeemed by the frontend code. See https://aka.ms/msal-net/spa-auth-code</param>
+        /// <param name="additionalResponseParameters">Other properties from the token response.</param>
         public AuthenticationResult( // for backwards compat with 4.16-
             string accessToken,
             bool isExtendedLifeTimeToken,
@@ -54,7 +56,8 @@ namespace Microsoft.Identity.Client
             string tokenType = "Bearer",
             AuthenticationResultMetadata authenticationResultMetadata = null, 
             ClaimsPrincipal claimsPrincipal = null,
-            string spaAuthCode = null)
+            string spaAuthCode = null,
+            IReadOnlyDictionary<string, string> additionalResponseParameters = null)
         {
             AccessToken = accessToken;
 #pragma warning disable CS0618 // Type or member is obsolete
@@ -72,6 +75,7 @@ namespace Microsoft.Identity.Client
             AuthenticationResultMetadata = authenticationResultMetadata;
             ClaimsPrincipal = claimsPrincipal;
             SpaAuthCode = spaAuthCode;
+            AdditionalResponseParameters = additionalResponseParameters;
         }
 
         /// <summary>
@@ -124,16 +128,17 @@ namespace Microsoft.Identity.Client
 
         internal AuthenticationResult(
             MsalAccessTokenCacheItem msalAccessTokenCacheItem,
-            MsalIdTokenCacheItem msalIdTokenCacheItem, 
-            IAuthenticationScheme authenticationScheme,
+            MsalIdTokenCacheItem msalIdTokenCacheItem,
+            IAuthenticationOperation authenticationScheme,
             Guid correlationID,
-            TokenSource tokenSource, 
+            TokenSource tokenSource,
             ApiEvent apiEvent,
             Account account,
-            string spaAuthCode = null)
+            string spaAuthCode,
+            IReadOnlyDictionary<string, string> additionalResponseParameters)
         {
             _authenticationScheme = authenticationScheme ?? throw new ArgumentNullException(nameof(authenticationScheme));
-            
+
             string homeAccountId =
                 msalAccessTokenCacheItem?.HomeAccountId ??
                 msalIdTokenCacheItem?.HomeAccountId;
@@ -162,10 +167,11 @@ namespace Microsoft.Identity.Client
             CorrelationId = correlationID;
             ApiEvent = apiEvent;
             AuthenticationResultMetadata = new AuthenticationResultMetadata(tokenSource);
-
+            AdditionalResponseParameters = msalAccessTokenCacheItem?.PersistedCacheParameters?.Count > 0 ?
+                                                                    (IReadOnlyDictionary<string, string>)msalAccessTokenCacheItem.PersistedCacheParameters :
+                                                                    additionalResponseParameters;
             if (msalAccessTokenCacheItem != null)
             {
-                AccessToken = authenticationScheme.FormatAccessToken(msalAccessTokenCacheItem);
                 ExpiresOn = msalAccessTokenCacheItem.ExpiresOn;
                 Scopes = msalAccessTokenCacheItem.ScopeSet;
 
@@ -180,6 +186,19 @@ namespace Microsoft.Identity.Client
                 {
                     AuthenticationResultMetadata.RefreshOn = msalAccessTokenCacheItem.RefreshOn;
                 }
+
+                AccessToken = msalAccessTokenCacheItem.Secret;
+            }
+
+            var measuredResultDuration = StopwatchService.MeasureCodeBlock(() =>
+            {
+                //Important: only call this at the end
+                authenticationScheme.FormatResult(this);
+            });
+
+            if (authenticationScheme.TelemetryTokenType == 5)
+            {
+                AuthenticationResultMetadata.DurationCreatingExtendedTokenInUs = measuredResultDuration.Microseconds;
             }
         }
 
@@ -189,7 +208,7 @@ namespace Microsoft.Identity.Client
         /// <summary>
         /// Access Token that can be used as a bearer token to access protected web APIs
         /// </summary>
-        public string AccessToken { get; }
+        public string AccessToken { get; set; }
 
         /// <summary>
         /// In case when Azure AD has an outage, to be more resilient, it can return tokens with
@@ -207,9 +226,16 @@ namespace Microsoft.Identity.Client
         public bool IsExtendedLifeTimeToken { get; }
 
         /// <summary>
-        /// Gets the Unique Id of the account. It can be null. When the <see cref="IdToken"/> is not <c>null</c>, this is its ID, that
-        /// is its ObjectId claim, or if that claim is <c>null</c>, the Subject claim.
+        /// Gets the Unique Id of the account in this <see cref="TenantId" />
+        /// It is set as the oid (ObjectId) claim, or if that claim is <c>null</c>, as the sub (Subject) claim which is guaranteed not-null.
         /// </summary>
+        /// <remarks>
+        /// The oid claim identifies a user in all apps - Microsoft Identity Providers issue ID tokens with this claim, although it can be null in rare cases.
+        /// The sub claim is "a locally unique and never reassigned identifier within the Issuer for the End-User" as per https://openid.net/specs/openid-connect-core-1_0.html and it is a 
+        /// mandatory claim with OIDC compliant issuers.
+        /// Guest AAD accounts have different oid claim values in each tenant. Use <see cref="Account.HomeAccountId"/> to uniquely identify users across tenants.
+        /// See https://docs.microsoft.com/azure/active-directory/develop/id-tokens#payload-claims
+        /// </remarks>
         public string UniqueId { get; }
 
         /// <summary>
@@ -269,6 +295,15 @@ namespace Microsoft.Identity.Client
         public string SpaAuthCode { get; }
 
         /// <summary>
+        /// Exposes additional response parameters returned by the token issuer (AAD).
+        /// </summary>
+        /// <remarks>
+        /// Not all parameters are added here, only the ones that MSAL doesn't interpret itself and only scalars.
+        /// Not supported on mobile frameworks (e.g. net6-android or net6-ios)
+        /// </remarks>
+        public IReadOnlyDictionary<string, string> AdditionalResponseParameters { get; }
+
+        /// <summary>
         /// All the claims present in the ID token.
         /// </summary>
         public ClaimsPrincipal ClaimsPrincipal { get; }
@@ -296,11 +331,7 @@ namespace Microsoft.Identity.Client
         /// </example>
         public string CreateAuthorizationHeader()
         {
-            return string.Format(
-                CultureInfo.InvariantCulture,
-                "{0} {1}",
-                _authenticationScheme?.AuthorizationHeaderPrefix ?? TokenType,
-                AccessToken);
+            return $"{_authenticationScheme?.AuthorizationHeaderPrefix ?? TokenType} {AccessToken}";
         }
     }
 }

@@ -5,9 +5,7 @@ using System;
 using System.IO;
 using System.Linq;
 using Microsoft.Identity.Client;
-#if !NET6_WIN && !NET7_0
-using Microsoft.Identity.Client.Desktop;
-#endif
+using Microsoft.Identity.Client.Broker;
 using Microsoft.Identity.Client.Internal;
 using Microsoft.Identity.Client.PlatformsCommon.Factories;
 using Microsoft.Identity.Client.PlatformsCommon.Shared;
@@ -32,8 +30,8 @@ namespace Microsoft.Identity.Test.Unit.AppConfigTests
             // Validate Defaults
             Assert.AreEqual(LogLevel.Info, pca.AppConfig.LogLevel);
             Assert.AreEqual(TestConstants.ClientId, pca.AppConfig.ClientId);
-            Assert.IsNotNull(pca.AppConfig.ClientName);
-            Assert.IsNotNull(pca.AppConfig.ClientVersion);
+            Assert.IsNull(pca.AppConfig.ClientName);
+            Assert.IsNull(pca.AppConfig.ClientVersion);
             Assert.IsFalse(pca.AppConfig.EnablePiiLogging);
             Assert.IsNull(pca.AppConfig.HttpClientFactory);
             Assert.IsFalse(pca.AppConfig.IsDefaultPlatformLoggingEnabled);
@@ -50,30 +48,6 @@ namespace Microsoft.Identity.Test.Unit.AppConfigTests
             var pca = PublicClientApplicationBuilder.Create(ClientId)
                                                     .Build();
             Assert.AreEqual(ClientId, pca.AppConfig.ClientId);
-        }
-
-        [TestMethod]
-        public void ClientIdMustBeAGuid()
-        {
-            var ex = AssertException.Throws<MsalClientException>(
-                () => PublicClientApplicationBuilder.Create("http://my.app")
-                        .WithAuthority(TestConstants.AadAuthorityWithTestTenantId)
-                        .Build());
-
-            Assert.AreEqual(MsalError.ClientIdMustBeAGuid, ex.ErrorCode);
-
-            ex = AssertException.Throws<MsalClientException>(
-              () => PublicClientApplicationBuilder.Create("http://my.app")
-                      .WithAuthority(TestConstants.B2CAuthority)
-                      .Build());
-
-            Assert.AreEqual(MsalError.ClientIdMustBeAGuid, ex.ErrorCode);
-
-            // ADFS does not have this constraint
-            PublicClientApplicationBuilder.Create("http://my.app")
-                        .WithAuthority(new Uri(TestConstants.ADFSAuthority))
-                        .Build();
-
         }
 
         [TestMethod]
@@ -124,7 +98,7 @@ namespace Microsoft.Identity.Test.Unit.AppConfigTests
             };
 
             var pca = PublicClientApplicationBuilder.CreateWithApplicationOptions(options)
-                .WithLogging((level, message, pii) => { }).Build();
+                .WithLogging((_, _, _) => { }).Build();
 
             Assert.AreEqual(LogLevel.Error, pca.AppConfig.LogLevel);
             Assert.IsTrue(pca.AppConfig.EnablePiiLogging);
@@ -144,7 +118,7 @@ namespace Microsoft.Identity.Test.Unit.AppConfigTests
             };
 
             var pca = PublicClientApplicationBuilder.CreateWithApplicationOptions(options)
-                .WithLogging((level, message, pii) => { },
+                .WithLogging((_, _, _) => { },
                     LogLevel.Verbose, true, false).Build();
 
             Assert.AreEqual(LogLevel.Verbose, pca.AppConfig.LogLevel);
@@ -238,7 +212,7 @@ namespace Microsoft.Identity.Test.Unit.AppConfigTests
         public void TestConstructor_WithLogging()
         {
             var pca = PublicClientApplicationBuilder.Create(TestConstants.ClientId)
-                                                    .WithLogging((level, message, pii) => { }, LogLevel.Verbose, true, true)
+                                                    .WithLogging((_, _, _) => { }, LogLevel.Verbose, true, true)
                                                     .Build();
 
             Assert.IsNotNull(pca.AppConfig.LoggingCallback);
@@ -301,12 +275,11 @@ namespace Microsoft.Identity.Test.Unit.AppConfigTests
         [TestMethod]
         public void TestConstructor_WithTenantId()
         {
-            const string TenantId = "a_tenant id";
             var pca = PublicClientApplicationBuilder.Create(TestConstants.ClientId)
-                                                    .WithTenantId(TenantId)
+                                                    .WithTenantId(TestConstants.TenantId)
                                                     .Build();
 
-            Assert.AreEqual(TenantId, pca.AppConfig.TenantId);
+            Assert.AreEqual(TestConstants.TenantId, pca.AppConfig.TenantId);
         }
 
         [TestMethod]
@@ -581,13 +554,11 @@ namespace Microsoft.Identity.Test.Unit.AppConfigTests
 
             Assert.AreEqual($"https://login.microsoftonline.com/{TestConstants.TenantId}/", app2.Authority);
 
-            var ex = AssertException.Throws<MsalClientException>(() => PublicClientApplicationBuilder
+            PublicClientApplicationBuilder
              .CreateWithApplicationOptions(options)
              .WithTenantId(TestConstants.TenantId)
              .WithAuthority($"https://login.microsoftonline.com/{TestConstants.TenantId2}")
-            .Build());
-
-            Assert.AreEqual(MsalError.AuthorityTenantSpecifiedTwice, ex.ErrorCode);
+            .Build();
 
             var options2 = new PublicClientApplicationOptions();
             options2.ClientId = TestConstants.ClientId;
@@ -624,73 +595,39 @@ namespace Microsoft.Identity.Test.Unit.AppConfigTests
             Assert.AreEqual($"https://login.microsoftonline.com/{TestConstants.TenantId}/", app6.Authority);
         }
 
-#if NET6_WIN
         [TestMethod]
+        public void CacheSynchronization_Default_IsTrue()
+        {
+            var pcaOptions = new PublicClientApplicationOptions()
+            {
+                ClientId = TestConstants.ClientId
+            };
+            var pca = PublicClientApplicationBuilder.CreateWithApplicationOptions(pcaOptions).Build();
+            Assert.IsTrue((pca.AppConfig as ApplicationConfiguration).CacheSynchronizationEnabled);
+
+            pca = PublicClientApplicationBuilder.Create(Guid.NewGuid().ToString()).Build();
+            Assert.IsTrue((pca.AppConfig as ApplicationConfiguration).CacheSynchronizationEnabled);
+        }
+// For some reason the broker doesn't load on netfx, running the test on .net only
+#if NET
+        [TestMethod]        
         public void IsBrokerAvailable_net6()
         {
             var appBuilder = PublicClientApplicationBuilder
                     .Create(TestConstants.ClientId)
-                    .WithAuthority(TestConstants.AuthorityTenant);
+                    .WithAuthority(TestConstants.AuthorityTenant)
+                    .WithBroker(new BrokerOptions(BrokerOptions.OperatingSystems.Windows));
 
             Assert.AreEqual(DesktopOsHelper.IsWin10OrServerEquivalent(), appBuilder.IsBrokerAvailable());
         }
 #endif
-
-#if (DESKTOP || NET_CORE) && !NET6_0
-        [TestMethod]
-        public void IsBrokerAvailable_OldDotNet()
-        {
-            var builder1 = PublicClientApplicationBuilder
-                    .Create(TestConstants.ClientId)
-                    .WithAuthority(TestConstants.AuthorityTenant);
-
-            // broker is not available out of the box
-            Assert.IsFalse(builder1.IsBrokerAvailable());
-
-            var builder2 = PublicClientApplicationBuilder
-                   .Create(TestConstants.ClientId)
-                   .WithWindowsDesktopFeatures()
-                   .WithAuthority(TestConstants.AuthorityTenant);
-
-            // broker is not available out of the box
-            Assert.AreEqual(DesktopOsHelper.IsWin10OrServerEquivalent(), builder2.IsBrokerAvailable());
-        }
-
-        [TestMethod]
-        public void NoBrokerADFS_OldDotNet()
-        {
-            var builder1 = PublicClientApplicationBuilder
-                    .Create(TestConstants.ClientId)
-                    .WithAuthority(TestConstants.ADFSAuthority);
-
-            // broker is not available out of the box
-            Assert.IsFalse(builder1.IsBrokerAvailable());
-
-            var builder2 = PublicClientApplicationBuilder
-                   .Create(TestConstants.ClientId)
-                   .WithWindowsDesktopFeatures()
-                   .WithAuthority(TestConstants.ADFSAuthority);
-
-            // broker is not available on ADFS
-            Assert.IsFalse(builder2.IsBrokerAvailable());
-
-            var builder3 = PublicClientApplicationBuilder
-                   .Create(TestConstants.ClientId)
-                   .WithWindowsDesktopFeatures()
-                   .WithAdfsAuthority(TestConstants.ADFSAuthority);
-
-            // broker is not available on ADFS
-            Assert.IsFalse(builder3.IsBrokerAvailable());
-        }
-#endif
-
         [TestMethod]
         public void IsBrokerAvailable_NoAuthorityInBuilder()
         {
             var builder1 = PublicClientApplicationBuilder
                 .Create(TestConstants.ClientId);
 
-#if DESKTOP || NET_CORE
+#if NETFRAMEWORK || NET_CORE
             Assert.IsFalse(builder1.IsBrokerAvailable());
 #else
             Assert.IsTrue(builder1.IsBrokerAvailable());

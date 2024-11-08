@@ -118,8 +118,6 @@ namespace Microsoft.Identity.Test.Unit.ApiConfigTests
         [TestMethod]
         public async Task TestAcquireTokenInteractive_SystemWebview_Async()
         {
-            var customWebUi = Substitute.For<ICustomWebUi>();
-
             await AcquireTokenInteractiveParameterBuilder.Create(_harness.Executor, TestConstants.s_scope)
                                                          .WithUseEmbeddedWebView(false)
                                                          .ExecuteAsync()
@@ -129,7 +127,7 @@ namespace Microsoft.Identity.Test.Unit.ApiConfigTests
             _harness.ValidateInteractiveParameters(expectedEmbeddedWebView: WebViewPreference.System);
         }
 
-#if DESKTOP
+#if NETFRAMEWORK
         [TestMethod]
         public async Task TestAcquireTokenInteractive_Embedded_Async()
         {

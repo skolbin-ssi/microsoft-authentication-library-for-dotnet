@@ -20,7 +20,6 @@ using System.Windows.Navigation;
 using System.Windows.Shapes;
 using Microsoft.Identity.Client;
 using Microsoft.Identity.Client.Broker;
-using Microsoft.Identity.Client.Desktop;
 
 namespace NetDesktopWpf
 {
@@ -41,9 +40,9 @@ namespace NetDesktopWpf
 
         private IPublicClientApplication CreatePublicClient()
         {
-            var pca = WamExtension.WithWindowsBroker(PublicClientApplicationBuilder.Create(s_clientID)
+            var pca = PublicClientApplicationBuilder.Create(s_clientID)
                 .WithAuthority(s_authority)
-, true)
+                .WithBroker(new BrokerOptions(BrokerOptions.OperatingSystems.Windows))
                 .WithLogging((x, y, z) => Debug.WriteLine($"{x} {y}"), LogLevel.Verbose, true)
                 .Build();
 
@@ -54,9 +53,9 @@ namespace NetDesktopWpf
 
         private IPublicClientApplication CreatePublicClientForRuntime()
         {
-            var pca = BrokerExtension.WithWindowsBroker(PublicClientApplicationBuilder.Create(s_clientID)
+            var pca = PublicClientApplicationBuilder.Create(s_clientID)
                 .WithAuthority(s_authority)
-, true)
+                .WithBroker(new BrokerOptions(BrokerOptions.OperatingSystems.Windows))
                 .WithLogging((x, y, z) => Debug.WriteLine($"{x} {y}"), LogLevel.Verbose, true)
                 .Build();
 

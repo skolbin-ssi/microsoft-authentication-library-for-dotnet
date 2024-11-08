@@ -20,6 +20,7 @@ namespace Microsoft.Identity.Client
 
         #region High-Level cache operations
         Task RemoveAccountAsync(IAccount account, AuthenticationRequestParameters requestParameters);
+        Task<bool> StopLongRunningOboProcessAsync(string longRunningOboCacheKey, AuthenticationRequestParameters requestParameters);
         Task<IEnumerable<IAccount>> GetAccountsAsync(AuthenticationRequestParameters requestParameters);
 
         Task<Tuple<MsalAccessTokenCacheItem, MsalIdTokenCacheItem, Account>> SaveTokenResponseAsync(
@@ -62,14 +63,9 @@ namespace Microsoft.Identity.Client
         bool HasTokensNoLocks();
 
         /// <summary>
-        /// True when MSAL has been configured to fire the serialization events. This can be done by the app developer or by MSAL itself (on UWP).
+        /// True when MSAL has been configured to fire the serialization events i.e. external token caching is enabled.
         /// </summary>
         bool IsAppSubscribedToSerializationEvents();
-
-        /// <summary>
-        /// True when the app developer subscribed to token cache serialization events.
-        /// </summary>
-        bool IsExternalSerializationConfiguredByUser();
 
         #endregion
     }

@@ -13,7 +13,6 @@ namespace Microsoft.Identity.Client.Internal
         public const int CodeVerifierLength = 128;
         public const int CodeVerifierByteSize = 96;
 
-        public const string UapWEBRedirectUri = "https://sso"; // for WEB
         public const string DefaultRedirectUri = "urn:ietf:wg:oauth:2.0:oob";
         public const string NativeClientRedirectUri = "https://login.microsoftonline.com/common/oauth2/nativeclient";
         public const string LocalHostRedirectUri = "http://localhost";
@@ -40,22 +39,23 @@ namespace Microsoft.Identity.Client.Internal
         public const string BearerAuthHeaderPrefix = "Bearer";
 
         public const string ManagedIdentityClientId = "client_id";
+        public const string ManagedIdentityObjectId = "object_id";
         public const string ManagedIdentityResourceId = "mi_res_id";
+        public const string ManagedIdentityDefaultClientId = "system_assigned_managed_identity";
+        public const string ManagedIdentityDefaultTenant = "managed_identity";
+        public const string CiamAuthorityHostSuffix = ".ciamlogin.com";
+
+        public const int CallerSdkIdMaxLength = 10;
+        public const int CallerSdkVersionMaxLength = 20;
 
         public static string FormatEnterpriseRegistrationOnPremiseUri(string domain)
         {
-            return string.Format(
-                CultureInfo.InvariantCulture,
-                "https://enterpriseregistration.{0}/enrollmentserver/contract",
-                domain);
+            return $"https://enterpriseregistration.{domain}/enrollmentserver/contract";
         }
 
         public static string FormatEnterpriseRegistrationInternetUri(string domain)
         {
-            return string.Format(
-                CultureInfo.InvariantCulture,
-                "https://enterpriseregistration.windows.net/{0}/enrollmentserver/contract",
-                domain);
+            return $"https://enterpriseregistration.windows.net/{domain}/enrollmentserver/contract";
         }
 
         public const string WellKnownOpenIdConfigurationPath = ".well-known/openid-configuration";
@@ -64,12 +64,7 @@ namespace Microsoft.Identity.Client.Internal
         public const string TenantId = "{tenantid}";
         public static string FormatAdfsWebFingerUrl(string host, string resource)
         {
-            return string.Format(
-                CultureInfo.InvariantCulture,
-                "https://{0}/.well-known/webfinger?rel={1}&resource={2}",
-                host,
-                DefaultRealm,
-                resource);
+            return $"https://{host}/.well-known/webfinger?rel={DefaultRealm}&resource={resource}";
         }
     }
 }

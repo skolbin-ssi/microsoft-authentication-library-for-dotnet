@@ -25,7 +25,7 @@ namespace Microsoft.Identity.Client
     {
         private AcquireTokenForClientParameters Parameters { get; } = new AcquireTokenForClientParameters();
 
-        /// <inheritdoc />
+        /// <inheritdoc/>
         internal AcquireTokenForClientParameterBuilder(IConfidentialClientApplicationExecutor confidentialClientApplicationExecutor)
             : base(confidentialClientApplicationExecutor)
         {
@@ -39,12 +39,16 @@ namespace Microsoft.Identity.Client
         }
 
         /// <summary>
-        /// Specifies if the token request will ignore the access token in the application token cache
-        /// and will attempt to acquire a new access token using client credentials.
+        /// Specifies if the client application should ignore access tokens when reading the token cache. 
+        /// New tokens will still be written to the application token cache.
         /// By default the token is taken from the application token cache (forceRefresh=false)
         /// </summary>
-        /// <param name="forceRefresh">If <c>true</c>, the request will ignore the token cache. The default is <c>false</c>
+        /// <param name="forceRefresh">
+        /// If <c>true</c>, the request will ignore cached access tokens on read, but will still write them to the cache once obtained from the identity provider. The default is <c>false</c>
         /// </param>
+        /// <remarks>
+        /// Do not use this flag except in well understood cases. Identity providers will throttle clients that make too many similar token requests.
+        /// </remarks>
         /// <returns>The builder to chain the .With methods</returns>
         public AcquireTokenForClientParameterBuilder WithForceRefresh(bool forceRefresh)
         {
@@ -71,27 +75,6 @@ namespace Microsoft.Identity.Client
         }
 
         /// <summary>
-        /// Specifies to use the Managed Identity to fetch the token from the Managed Identity Endpoint.
-        /// For more details see https://aka.ms/msal-net-managed-identity.
-        /// </summary>
-        /// <param name="userAssignedClientIdOrResourceId">This is an optional parameter to pass client id or resource id for a user assigned managed identity. 
-        /// For system assigned managed identity, no need to pass a value to this parameter. </param>
-        /// <returns>The builder to chain the .With methods</returns>
-        public AcquireTokenForClientParameterBuilder WithManagedIdentity(string userAssignedClientIdOrResourceId = null)
-        {
-            ValidateUseOfExperimentalFeature("ManagedIdentity");
-
-            ServiceBundle.Config.UseManagedIdentity = true;
-
-            if (!userAssignedClientIdOrResourceId.IsNullOrEmpty())
-            {
-                ServiceBundle.Config.ManagedIdentityUserAssignedId = userAssignedClientIdOrResourceId;
-            }
-
-            return this;
-        }
-
-        /// <summary>
         /// Please use WithAzureRegion on the ConfidentialClientApplicationBuilder object
         /// </summary>
         [EditorBrowsable(EditorBrowsableState.Never)]
@@ -111,7 +94,7 @@ namespace Microsoft.Identity.Client
             throw new NotImplementedException();
         }
 
-        /// <inheritdoc />
+        /// <inheritdoc/>
         internal override Task<AuthenticationResult> ExecuteInternalAsync(CancellationToken cancellationToken)
         {
             return ConfidentialClientApplicationExecutor.ExecuteAsync(CommonParameters, Parameters, cancellationToken);
@@ -127,7 +110,7 @@ namespace Microsoft.Identity.Client
             }
         }
 
-        /// <inheritdoc />
+        /// <inheritdoc/>
         internal override ApiEvent.ApiIds CalculateApiEventId()
         {
             return ApiEvent.ApiIds.AcquireTokenForClient;

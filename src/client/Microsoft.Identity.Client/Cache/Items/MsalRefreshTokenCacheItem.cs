@@ -61,7 +61,7 @@ namespace Microsoft.Identity.Client.Cache.Items
             // FRT
             if (!string.IsNullOrWhiteSpace(FamilyId))
             {
-                string d = MsalCacheKeys.CacheKeyDelimiter;
+                char d = MsalCacheKeys.CacheKeyDelimiter;
                 key = $"{HomeAccountId}{d}{Environment}{d}{StorageJsonValues.CredentialTypeRefreshToken}{d}{FamilyId}{d}{d}".ToLowerInvariant();
 
             }
@@ -79,6 +79,17 @@ namespace Microsoft.Identity.Client.Cache.Items
             CacheKey = key;
 
             iOSCacheKeyLazy = new Lazy<IiOSKey>(() => InitiOSKey());
+        }
+
+        internal string ToLogString(bool piiEnabled = false)
+        {
+            return MsalCacheKeys.GetCredentialKey(
+                piiEnabled ? HomeAccountId : HomeAccountId?.GetHashCode().ToString(),
+                Environment,
+                StorageJsonValues.CredentialTypeRefreshToken,
+                ClientId,
+                tenantId: null,
+                scopes: null);
         }
 
         #region iOS

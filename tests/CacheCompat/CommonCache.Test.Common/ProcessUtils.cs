@@ -22,11 +22,6 @@ namespace CommonCache.Test.Common
         private static readonly object SyncRoot = new object();
         private static readonly HashSet<ProcessHelper> CurrentRunningProcesses = new HashSet<ProcessHelper>();
 
-        public ProcessUtils()
-        {
-
-        }
-
         public async Task<string> FindProgramAsync(string findArgs, CancellationToken cancellationToken)
         {
             if (File.Exists(findArgs))
@@ -83,13 +78,13 @@ namespace CommonCache.Test.Common
             }
         }
 
-        /// <inheritdoc />
+        /// <inheritdoc/>
         public ProcessRunResults RunProcess(string fileName, string arguments, Dictionary<string, string> environmentVars = null)
         {
             return RunProcess(fileName, arguments, environmentVars, null);
         }
 
-        /// <inheritdoc />
+        /// <inheritdoc/>
         public ProcessRunResults RunProcess(string fileName, string arguments, IEnumerable<int> successfulExitCodes)
         {
             return RunProcess(
@@ -101,7 +96,7 @@ namespace CommonCache.Test.Common
                 successfulExitCodes);
         }
 
-        /// <inheritdoc />
+        /// <inheritdoc/>
         public ProcessRunResults RunProcess(
             string fileName,
             string arguments,
@@ -118,7 +113,7 @@ namespace CommonCache.Test.Common
                 null);
         }
 
-        /// <inheritdoc />
+        /// <inheritdoc/>
         public ProcessRunResults RunProcess(
             string fileName,
             string arguments,
@@ -139,14 +134,6 @@ namespace CommonCache.Test.Common
             if (cancelWaitHandle != null && cancelWaitHandle.WaitOne(0))
             {
                 throw new OperationCanceledException();
-            }
-
-            if (environmentVars != null)
-            {
-                foreach (KeyValuePair<string, string> envVars in environmentVars)
-                {
-                    //_log.LogDebug("{0} : {1}", envVars.Key, envVars.Value);
-                }
             }
 
             if (successfulExitCodes == null)
@@ -204,25 +191,25 @@ namespace CommonCache.Test.Common
             }
         }
 
-        /// <inheritdoc />
+        /// <inheritdoc/>
         public Task<ProcessRunResults> RunProcessAsync(string fileName, string arguments)
         {
             return Task.Run(() => RunProcess(fileName, arguments));
         }
 
-        /// <inheritdoc />
+        /// <inheritdoc/>
         public Task<ProcessRunResults> RunProcessAsync(string fileName, string arguments, IEnumerable<int> successfulExitCodes)
         {
             return Task.Run(() => RunProcess(fileName, arguments, successfulExitCodes));
         }
 
-        /// <inheritdoc />
+        /// <inheritdoc/>
         public Task<ProcessRunResults> RunProcessAsync(string fileName, string arguments, CancellationToken cancellationToken)
         {
             return Task.Run(() => RunProcess(fileName, arguments, null, cancellationToken.WaitHandle), cancellationToken);
         }
 
-        /// <inheritdoc />
+        /// <inheritdoc/>
         public Task<ProcessRunResults> RunProcessAsync(
             string fileName,
             string arguments,
@@ -254,7 +241,7 @@ namespace CommonCache.Test.Common
                 cancellationToken);
         }
 
-        /// <inheritdoc />
+        /// <inheritdoc/>
         public ProcessRunResults RunProcessFromKnownDirectory(string fileName, string arguments, string processWorkingDirectory)
         {
             return RunProcess(
@@ -625,7 +612,7 @@ namespace CommonCache.Test.Common
                 }
 
                 // Note that earlier, we called Process.WaitForExit(1000).
-                // https://msdn.microsoft.com/en-us/library/fb4aw7b8(v=vs.110).aspx
+                // https://learn.microsoft.com/dotnet/api/system.diagnostics.process.waitforexit?view=net-8.0#System_Diagnostics_Process_WaitForExit
                 // According to msdn documentation, that overload has a caveat:
                 //   When standard output has been redirected to asynchronous event handlers,
                 //   it is possible that output processing will not have completed when this method returns.

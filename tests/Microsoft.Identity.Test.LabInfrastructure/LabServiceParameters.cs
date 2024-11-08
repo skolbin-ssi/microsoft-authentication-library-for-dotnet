@@ -1,20 +1,24 @@
 ﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+using System;
+
 namespace Microsoft.Identity.Test.LabInfrastructure
 {
     public enum FederationProvider
     {
         Unknown,
         None,
-        AdfsV2,
-        AdfsV3,
         AdfsV4,
+        [Obsolete("ADFSv3 is out of support, do not use. The Arlingthon lab is federated to ADFSv3, so this value is needed")]
+        AdfsV3,
         PingFederateV83,
         Shibboleth,
         ADFSv2019,
         B2C,
-        Ping
+        Ping,
+        CIAM,
+        CIAMCUD
     }
 
     public enum B2CIdentityProvider

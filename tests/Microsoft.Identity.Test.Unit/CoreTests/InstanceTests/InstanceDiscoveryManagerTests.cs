@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.Identity.Client;
+using Microsoft.Identity.Client.AppConfig;
 using Microsoft.Identity.Client.Core;
 using Microsoft.Identity.Client.Http;
 using Microsoft.Identity.Client.Instance;
@@ -216,7 +217,7 @@ namespace Microsoft.Identity.Test.Unit.CoreTests.InstanceTests
             // network fails with invalid_instance exception
             _networkMetadataProvider
                 .When(x => x.GetMetadataAsync(Arg.Any<Uri>(), _testRequestContext))
-                .Do(x => throw validationException);
+                .Do(_ => throw validationException);
 
             // Act
             var actualException = await AssertException.TaskThrowsAsync<MsalServiceException>(() =>
@@ -240,7 +241,7 @@ namespace Microsoft.Identity.Test.Unit.CoreTests.InstanceTests
             // network fails with something other than invalid_instance exception
             _networkMetadataProvider
                 .When(x => x.GetMetadataAsync(Arg.Any<Uri>(), _testRequestContext))
-                .Do(x => throw new MsalServiceException("endpoint_busy", "some exception message"));
+                .Do(_ => throw new MsalServiceException("endpoint_busy", "some exception message"));
 
             // Act
             var actualResult = await _discoveryManager.GetMetadataEntryAsync(
@@ -265,7 +266,7 @@ namespace Microsoft.Identity.Test.Unit.CoreTests.InstanceTests
             // network fails with something other than invalid_instance exception
             _networkMetadataProvider
                 .When(x => x.GetMetadataAsync(Arg.Any<Uri>(), _testRequestContext))
-                .Do(x => throw new MsalServiceException("endpoint_busy", "some exception message"));
+                .Do(_ => throw new MsalServiceException("endpoint_busy", "some exception message"));
 
             // Act
             var actualResult = await _discoveryManager.GetMetadataEntryAsync(
@@ -402,7 +403,7 @@ namespace Microsoft.Identity.Test.Unit.CoreTests.InstanceTests
 
             // Inject authority in service bundle
             var httpManager = new MockHttpManager();
-            var appConfig = new ApplicationConfiguration(isConfidentialClient: true)
+            var appConfig = new ApplicationConfiguration(MsalClientType.ConfidentialClient)
             {
                 HttpManager = httpManager,
                 Authority = Authority.CreateAuthority(TestAuthority, false)
@@ -415,7 +416,7 @@ namespace Microsoft.Identity.Test.Unit.CoreTests.InstanceTests
             // network fails with invalid_instance exception
             _networkMetadataProvider
                 .When(x => x.GetMetadataAsync(Arg.Any<Uri>(), requestContext))
-                .Do(x => throw validationException);
+                .Do(_ => throw validationException);
 
             InstanceDiscoveryMetadataEntry actualResult = await _discoveryManager.GetMetadataEntryAsync(
                 AuthorityInfo.FromAuthorityUri("https://some_env.com/tid", true),
@@ -423,23 +424,6 @@ namespace Microsoft.Identity.Test.Unit.CoreTests.InstanceTests
 
             // Since the validateAuthority is set to false, proceed without alias. 
             ValidateSingleEntryMetadata(new Uri(TestAuthority), actualResult);
-        }
-
-        [TestMethod]
-        public async Task InstanceDiscoveryIsSkippedForManagedIdentityAsync()
-        {
-            var httpManager = new MockHttpManager();
-            var appConfig = new ApplicationConfiguration(isConfidentialClient: true)
-            {
-                HttpManager = httpManager,
-                UseManagedIdentity = true
-            };
-
-            var serviceBundle = ServiceBundle.Create(appConfig);
-
-            RequestContext requestContext = new RequestContext(serviceBundle, Guid.NewGuid());
-
-            await ValidateSelfEntryAsync(new Uri("https://login.microsoftonline.com/common/"), requestContext).ConfigureAwait(false);
         }
 
         private async Task ValidateSelfEntryAsync(Uri authority, RequestContext requestContext = null)

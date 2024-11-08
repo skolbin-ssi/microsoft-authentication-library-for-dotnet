@@ -3,10 +3,9 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
+using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Threading.Tasks;
-using Microsoft.Identity.Client.ApiConfig;
 using Microsoft.Identity.Client.ApiConfig.Parameters;
 using Microsoft.Identity.Client.AppConfig;
 using Microsoft.Identity.Client.AuthScheme;
@@ -16,7 +15,6 @@ using Microsoft.Identity.Client.Extensibility;
 using Microsoft.Identity.Client.Instance;
 using Microsoft.Identity.Client.TelemetryCore.Internal.Events;
 using Microsoft.Identity.Client.Utils;
-using static Microsoft.Identity.Client.Extensibility.AbstractConfidentialClientAcquireTokenParameterBuilderExtension;
 
 namespace Microsoft.Identity.Client.Internal.Requests
 {
@@ -87,7 +85,7 @@ namespace Microsoft.Identity.Client.Internal.Requests
 
         public AuthorityInfo AuthorityInfo => AuthorityManager.Authority.AuthorityInfo;
 
-        public AuthorityInfo AuthorityOverride => _commonParameters.AuthorityOverride;
+        public AuthorityInfo AuthorityOverride => _commonParameters.AuthorityOverride;        
 
         #endregion
 
@@ -101,6 +99,8 @@ namespace Microsoft.Identity.Client.Internal.Requests
 
         public Guid CorrelationId => _commonParameters.CorrelationId;
 
+        public X509Certificate2 MtlsCertificate => _commonParameters.MtlsCertificate;
+
         /// <summary>
         /// Indicates if the user configured claims via .WithClaims. Not affected by Client Capabilities
         /// </summary>
@@ -113,7 +113,9 @@ namespace Microsoft.Identity.Client.Internal.Requests
             }
         }
 
-        public IAuthenticationScheme AuthenticationScheme => _commonParameters.AuthenticationScheme;
+        public IAuthenticationOperation AuthenticationScheme => _commonParameters.AuthenticationOperation;
+
+        public IEnumerable<string> PersistedCacheParameters => _commonParameters.AdditionalCacheParameters;
 
         #region TODO REMOVE FROM HERE AND USE FROM SPECIFIC REQUEST PARAMETERS
         // TODO: ideally, these can come from the particular request instance and not be in RequestBase since it's not valid for all requests.

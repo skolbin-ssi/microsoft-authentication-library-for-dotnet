@@ -8,6 +8,7 @@ using System.Globalization;
 using System.IO;
 using System.Net;
 using System.Net.Http;
+using System.Security.Cryptography.X509Certificates;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Identity.Client.Core;
@@ -24,131 +25,39 @@ namespace Microsoft.Identity.Client.Http
     /// </remarks>
     internal class HttpManager : IHttpManager
     {
-        private readonly IMsalHttpClientFactory _httpClientFactory;
-        //Determines whether or not to retry on 5xx errors. Configurable on application creation. default is true;
-        private readonly bool _retryConfig;
+        protected readonly IMsalHttpClientFactory _httpClientFactory;
+        private readonly IRetryPolicy _retryPolicy;
         public long LastRequestDurationInMs { get; private set; }
 
-        public HttpManager(IMsalHttpClientFactory httpClientFactory, bool retry = true)
+        /// <summary>
+        /// A new instance of the HTTP manager with a retry *condition*. The retry policy hardcodes: 
+        /// - the number of retries (1)
+        /// - the delay between retries (1 second)
+        /// </summary>
+        public HttpManager(
+            IMsalHttpClientFactory httpClientFactory,
+            IRetryPolicy retryPolicy)
         {
-            _httpClientFactory = httpClientFactory ?? 
+            _httpClientFactory = httpClientFactory ??
                 throw new ArgumentNullException(nameof(httpClientFactory));
-
-            _retryConfig = retry;
+            _retryPolicy = retryPolicy;
         }
 
-        protected virtual HttpClient GetHttpClient()
-        {
-            return _httpClientFactory.GetHttpClient();
-        }
-
-        public async Task<HttpResponse> SendPostAsync(
-            Uri endpoint,
-            IDictionary<string, string> headers,
-            IDictionary<string, string> bodyParameters,
-            ILoggerAdapter logger,
-            CancellationToken cancellationToken = default)
-        {
-            HttpContent body = bodyParameters == null ? null : new FormUrlEncodedContent(bodyParameters);
-            return await SendPostAsync(endpoint, headers, body, logger, cancellationToken).ConfigureAwait(false);
-        }
-
-        public async Task<HttpResponse> SendPostAsync(
-            Uri endpoint,
-            IDictionary<string, string> headers,
-            HttpContent body,
-            ILoggerAdapter logger,
-            CancellationToken cancellationToken = default)
-        {
-            return await ExecuteWithRetryAsync(endpoint, headers, body, HttpMethod.Post, logger, cancellationToken: cancellationToken).ConfigureAwait(false);
-        }
-
-        public async Task<HttpResponse> SendGetAsync(
-            Uri endpoint,
-            IDictionary<string, string> headers,
-            ILoggerAdapter logger,
-            bool retry = true,
-            CancellationToken cancellationToken = default)
-        {
-            return await ExecuteWithRetryAsync(endpoint, headers, null, HttpMethod.Get, logger, retry: retry, cancellationToken: cancellationToken).ConfigureAwait(false);
-        }
-
-        /// <summary>
-        /// Performs the GET request just like <see cref="SendGetAsync(Uri, IDictionary{string, string}, ILoggerAdapter, bool, CancellationToken)"/>
-        /// but does not throw a ServiceUnavailable service exception. Instead, it returns the <see cref="HttpResponse"/> associated
-        /// with the request.
-        /// </summary>
-        public async Task<HttpResponse> SendGetForceResponseAsync(
-            Uri endpoint,
-            IDictionary<string, string> headers,
-            ILoggerAdapter logger,
-            bool retry = true,
-            CancellationToken cancellationToken = default)
-        {
-            return await ExecuteWithRetryAsync(endpoint, headers, null, HttpMethod.Get, logger, retry: retry, doNotThrow: true, cancellationToken: cancellationToken).ConfigureAwait(false);
-        }
-
-        /// <summary>
-        /// Performs the POST request just like <see cref="SendPostAsync(Uri, IDictionary{string, string}, IDictionary{String, String}, ILoggerAdapter, CancellationToken)"/>
-        /// but does not throw a ServiceUnavailable service exception. Instead, it returns the <see cref="HttpResponse"/> associated
-        /// with the request.
-        /// </summary>
-        public async Task<HttpResponse> SendPostForceResponseAsync(
-            Uri uri,
-            IDictionary<string, string> headers,
-            IDictionary<string, string> bodyParameters,
-            ILoggerAdapter logger,
-            CancellationToken cancellationToken = default)
-        {
-            HttpContent body = bodyParameters == null ? null : new FormUrlEncodedContent(bodyParameters);
-            return await ExecuteWithRetryAsync(uri, headers, body, HttpMethod.Post, logger, doNotThrow: true, cancellationToken: cancellationToken).ConfigureAwait(false);
-        }
-
-        /// <summary>
-        /// Performs the POST request just like <see cref="SendPostAsync(Uri, IDictionary{string, string}, HttpContent, ILoggerAdapter, CancellationToken)"/>
-        /// but does not throw a ServiceUnavailable service exception. Instead, it returns the <see cref="HttpResponse"/> associated
-        /// with the request.
-        /// </summary>
-        public async Task<HttpResponse> SendPostForceResponseAsync(
-            Uri uri,
-            IDictionary<string, string> headers,
-            StringContent body,
-            ILoggerAdapter logger,
-            CancellationToken cancellationToken = default)
-        {
-            return await ExecuteWithRetryAsync(uri, headers, body, HttpMethod.Post, logger, doNotThrow: true, cancellationToken: cancellationToken).ConfigureAwait(false);
-        }
-
-        private HttpRequestMessage CreateRequestMessage(Uri endpoint, IDictionary<string, string> headers)
-        {
-            HttpRequestMessage requestMessage = new HttpRequestMessage { RequestUri = endpoint };
-            requestMessage.Headers.Accept.Clear();
-            if (headers != null)
-            {
-                foreach (KeyValuePair<string, string> kvp in headers)
-                {
-                    requestMessage.Headers.Add(kvp.Key, kvp.Value);
-                }
-            }
-
-            return requestMessage;
-        }
-
-        private async Task<HttpResponse> ExecuteWithRetryAsync(
+        public async Task<HttpResponse> SendRequestAsync(
             Uri endpoint,
             IDictionary<string, string> headers,
             HttpContent body,
             HttpMethod method,
             ILoggerAdapter logger,
-            bool doNotThrow = false,
-            bool retry = true,
-            CancellationToken cancellationToken = default)
+            bool doNotThrow,
+            X509Certificate2 bindingCertificate,
+            HttpClient customHttpClient,
+            CancellationToken cancellationToken, 
+            int retryCount = 0)
         {
             Exception timeoutException = null;
-            bool isRetryableStatusCode = false;
             HttpResponse response = null;
-            bool isRetryable;
-            
+
             try
             {
                 HttpContent clonedBody = body;
@@ -161,7 +70,15 @@ namespace Microsoft.Identity.Client.Http
 
                 using (logger.LogBlockDuration("[HttpManager] ExecuteAsync"))
                 {
-                    response = await ExecuteAsync(endpoint, headers, clonedBody, method, logger, cancellationToken).ConfigureAwait(false);
+                    response = await ExecuteAsync(
+                        endpoint,
+                        headers,
+                        clonedBody,
+                        method,
+                        bindingCertificate,
+                        customHttpClient,
+                        logger,
+                        cancellationToken).ConfigureAwait(false);
                 }
 
                 if (response.StatusCode == HttpStatusCode.OK)
@@ -172,36 +89,34 @@ namespace Microsoft.Identity.Client.Http
                 logger.Info(() => string.Format(CultureInfo.InvariantCulture,
                     MsalErrorMessage.HttpRequestUnsuccessful,
                     (int)response.StatusCode, response.StatusCode));
-
-                isRetryableStatusCode = IsRetryableStatusCode((int)response.StatusCode);
-                isRetryable = isRetryableStatusCode && _retryConfig && !HasRetryAfterHeader(response);
             }
             catch (TaskCanceledException exception)
             {
                 if (cancellationToken.IsCancellationRequested)
                 {
-                    logger.Info("The HTTP request was cancelled. ");
+                    logger.Info("The HTTP request was canceled. ");
                     throw;
                 }
 
                 logger.Error("The HTTP request failed. " + exception.Message);
-                isRetryable = true;
                 timeoutException = exception;
             }
 
-            if (isRetryable && retry)
+            while (_retryPolicy.pauseForRetry(response, timeoutException, retryCount))
             {
-                logger.Info("Retrying one more time..");
-                await Task.Delay(TimeSpan.FromSeconds(1)).ConfigureAwait(false);
-                return await ExecuteWithRetryAsync(
+                logger.Warning($"Retry condition met. Retry count: {retryCount++} after waiting {_retryPolicy.DelayInMilliseconds}ms.");
+                return await SendRequestAsync(
                     endpoint,
                     headers,
                     body,
                     method,
                     logger,
                     doNotThrow,
-                    retry: false,
-                    cancellationToken: cancellationToken).ConfigureAwait(false);
+                    bindingCertificate,
+                    customHttpClient,
+                    cancellationToken: cancellationToken,
+                    retryCount) // Pass the updated retry count
+                    .ConfigureAwait(false);
             }
 
             logger.Warning("Request retry failed.");
@@ -219,22 +134,52 @@ namespace Microsoft.Identity.Client.Http
             }
 
             // package 500 errors in a "service not available" exception
-            if (isRetryableStatusCode)
+            if ((int)response.StatusCode >= 500 && (int)response.StatusCode < 600)
             {
+                string requestUriScrubbed = $"{endpoint.AbsoluteUri.Split('?')[0]}";
                 throw MsalServiceExceptionFactory.FromHttpResponse(
                     MsalError.ServiceNotAvailable,
-                    "Service is unavailable to process the request",
+                    $"Service is unavailable to process the request. The request Uri is: {requestUriScrubbed} on port {endpoint.Port}",
                     response);
             }
 
             return response;
         }
 
-        private static bool HasRetryAfterHeader(HttpResponse response)
+        private HttpClient GetHttpClient(X509Certificate2 x509Certificate2, HttpClient customHttpClient) {
+            if (x509Certificate2 != null && customHttpClient != null)
+            {
+                throw new NotImplementedException("Mtls certificate cannot be used with service fabric. A custom http client is used for service fabric managed identity to validate the server certificate.");
+            }
+
+            if (customHttpClient != null)
+            {
+                return customHttpClient;
+            }
+
+            if (_httpClientFactory is IMsalMtlsHttpClientFactory msalMtlsHttpClientFactory)
+            {
+                // If the factory is an IMsalMtlsHttpClientFactory, use it to get an HttpClient with the certificate
+                return msalMtlsHttpClientFactory.GetHttpClient(x509Certificate2);
+            }
+
+            // If the factory is not an IMsalMtlsHttpClientFactory, use it to get a default HttpClient
+            return _httpClientFactory.GetHttpClient();
+        }
+
+        private static HttpRequestMessage CreateRequestMessage(Uri endpoint, IDictionary<string, string> headers)
         {
-            var retryAfter = response?.Headers?.RetryAfter;
-            return retryAfter != null &&
-                (retryAfter.Delta.HasValue || retryAfter.Date.HasValue);
+            HttpRequestMessage requestMessage = new HttpRequestMessage { RequestUri = endpoint };
+            requestMessage.Headers.Accept.Clear();
+            if (headers != null)
+            {
+                foreach (KeyValuePair<string, string> kvp in headers)
+                {
+                    requestMessage.Headers.Add(kvp.Key, kvp.Value);
+                }
+            }
+
+            return requestMessage;
         }
 
         private async Task<HttpResponse> ExecuteAsync(
@@ -242,6 +187,8 @@ namespace Microsoft.Identity.Client.Http
             IDictionary<string, string> headers,
             HttpContent body,
             HttpMethod method,
+            X509Certificate2 bindingCertificate,
+            HttpClient customHttpClient,
             ILoggerAdapter logger,
             CancellationToken cancellationToken = default)
         {
@@ -251,18 +198,18 @@ namespace Microsoft.Identity.Client.Http
                 requestMessage.Content = body;
 
                 logger.VerbosePii(
-                    () => $"[HttpManager] Sending request. Method: {method}. URI: {(endpoint == null ? "NULL" : $"{endpoint.Scheme}://{endpoint.Authority}{endpoint.AbsolutePath}")}. ",
-                    () => $"[HttpManager] Sending request. Method: {method}. Host: {(endpoint == null ? "NULL" : $"{endpoint.Scheme}://{endpoint.Authority}")}. ");
+                    () => $"[HttpManager] Sending request. Method: {method}. URI: {(endpoint == null ? "NULL" : $"{endpoint.Scheme}://{endpoint.Authority}{endpoint.AbsolutePath}")}. Binding Certificate: {bindingCertificate != null}. Endpoint: {endpoint} ",
+                    () => $"[HttpManager] Sending request. Method: {method}. Host: {(endpoint == null ? "NULL" : $"{endpoint.Scheme}://{endpoint.Authority}")}. Binding Certificate: {bindingCertificate != null} ");
 
                 Stopwatch sw = Stopwatch.StartNew();
 
-                HttpClient client = GetHttpClient();
+                HttpClient client = GetHttpClient(bindingCertificate, customHttpClient);
 
                 using (HttpResponseMessage responseMessage =
                     await client.SendAsync(requestMessage, cancellationToken).ConfigureAwait(false))
                 {
                     LastRequestDurationInMs = sw.ElapsedMilliseconds;
-                    logger.Verbose(()=>$"[HttpManager] Received response. Status code: {responseMessage.StatusCode}. ");
+                    logger.Verbose(() => $"[HttpManager] Received response. Status code: {responseMessage.StatusCode}. ");
 
                     HttpResponse returnValue = await CreateResponseAsync(responseMessage).ConfigureAwait(false);
                     returnValue.UserAgent = requestMessage.Headers.UserAgent.ToString();
@@ -271,20 +218,7 @@ namespace Microsoft.Identity.Client.Http
             }
         }
 
-        internal /* internal for test only */ static async Task<HttpResponse> CreateResponseAsync(HttpResponseMessage response)
-        {
-            var body = response.Content == null
-                           ? null
-                           : await response.Content.ReadAsStringAsync().ConfigureAwait(false);
-            return new HttpResponse
-            {
-                Headers = response.Headers,
-                Body = body,
-                StatusCode = response.StatusCode
-            };
-        }
-
-        private async Task<HttpContent> CloneHttpContentAsync(HttpContent httpContent)
+        protected static async Task<HttpContent> CloneHttpContentAsync(HttpContent httpContent)
         {
             var temp = new MemoryStream();
             await httpContent.CopyToAsync(temp).ConfigureAwait(false);
@@ -298,27 +232,23 @@ namespace Microsoft.Identity.Client.Http
                     clone.Headers.Add(h.Key, h.Value);
                 }
             }
-
-#if WINDOWS_APP
-            // WORKAROUND
-            // On UWP there is a bug in the HTTP stack that causes an exception to be thrown when moving around a stream.
-            // https://stackoverflow.com/questions/31774058/postasync-throwing-irandomaccessstream-error-when-targeting-windows-10-uwp
-            // LoadIntoBufferAsync is necessary to buffer content for multiple reads - see https://stackoverflow.com/questions/26942514/multiple-calls-to-httpcontent-readasasync
-            // Documentation is sparse, but it looks like loading the buffer into memory avoids the bug, without
-            // replacing the System.Net.HttpClient with Windows.Web.Http.HttpClient, which is not exactly a drop in replacement
-            await clone.LoadIntoBufferAsync().ConfigureAwait(false);
-#endif
-
             return clone;
         }
 
-        /// <summary>
-        /// In HttpManager, the retry policy is based on this simple condition.
-        /// Avoid changing this, as it's breaking change.
-        /// </summary>
-        private static bool IsRetryableStatusCode(int statusCode)
+        #region Helpers
+        internal /* internal for test only */ static async Task<HttpResponse> CreateResponseAsync(HttpResponseMessage response)
         {
-            return statusCode >= 500 && statusCode < 600;                
+            var body = response.Content == null
+                           ? null
+                           : await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+            return new HttpResponse
+            {
+                Headers = response.Headers,
+                Body = body,
+                StatusCode = response.StatusCode
+            };
         }
+
+        #endregion
     }
 }

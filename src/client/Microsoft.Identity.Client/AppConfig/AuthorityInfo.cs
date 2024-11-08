@@ -5,6 +5,7 @@ using System;
 using System.Globalization;
 using System.Linq;
 using System.Threading.Tasks;
+using Microsoft.Identity.Client.AppConfig;
 using Microsoft.Identity.Client.Instance;
 using Microsoft.Identity.Client.Instance.Validation;
 using Microsoft.Identity.Client.Internal;
@@ -21,7 +22,7 @@ namespace Microsoft.Identity.Client
             AuthorityType authorityType,
             string authority,
             bool validateAuthority)
-            : this(authorityType, new Uri(authority), validateAuthority)
+            : this(authorityType, ValidateAndCreateAuthorityUri(authority, authorityType), validateAuthority)
         {
 
         }
@@ -39,21 +40,19 @@ namespace Microsoft.Identity.Client
 
             switch (AuthorityType)
             {
+                case AuthorityType.Generic:
+                    CanonicalAuthority = authorityUri;
+                    break;
+                    
                 case AuthorityType.B2C:
-                    string[] pathSegments = AuthorityInfo.GetPathSegments(authorityUri.AbsolutePath);
+                    string[] pathSegments = GetPathSegments(authorityUri.AbsolutePath);
 
                     if (pathSegments.Length < 3)
                     {
                         throw new ArgumentException(MsalErrorMessage.B2cAuthorityUriInvalidPath);
                     }
 
-                    CanonicalAuthority = new Uri(string.Format(
-                        CultureInfo.InvariantCulture,
-                        "https://{0}/{1}/{2}/{3}/",
-                        authorityUri.Authority,
-                        pathSegments[0],
-                        pathSegments[1],
-                        pathSegments[2]));
+                    CanonicalAuthority = new Uri($"https://{authorityUri.Authority}/{pathSegments[0]}/{pathSegments[1]}/{pathSegments[2]}/");
                     break;
                 case AuthorityType.Dsts:
                     pathSegments = GetPathSegments(authorityUri.AbsolutePath);
@@ -63,38 +62,21 @@ namespace Microsoft.Identity.Client
                         throw new ArgumentException(MsalErrorMessage.DstsAuthorityUriInvalidPath);
                     }
 
-                    CanonicalAuthority = new Uri(string.Format(
-                        CultureInfo.InvariantCulture,
-                        "https://{0}/{1}/{2}/",
-                        authorityUri.Authority,
-                        pathSegments[0],
-                        pathSegments[1]));
+                    CanonicalAuthority = new Uri($"https://{authorityUri.Authority}/{pathSegments[0]}/{pathSegments[1]}/");
 
                     UserRealmUriPrefix = UriBuilderExtensions.GetHttpsUriWithOptionalPort(
-                        string.Format(
-                            CultureInfo.InvariantCulture,
-                            "https://{0}/{1}/common/userrealm/",
-                            authorityUri.Authority,
-                            pathSegments[0]),
+                        $"https://{authorityUri.Authority}/{pathSegments[0]}/common/userrealm/",
                         authorityUri.Port);
                     break;
                 default:
                     CanonicalAuthority = new Uri(
                         UriBuilderExtensions.GetHttpsUriWithOptionalPort(
-                            string.Format(
-                                CultureInfo.InvariantCulture,
-                                "https://{0}/{1}/",
-                                authorityUri.Authority,
-                                GetFirstPathSegment(authorityUri)),
+                            $"https://{authorityUri.Authority}/{GetFirstPathSegment(authorityUri)}/",
                             authorityUri.Port));
 
                     UserRealmUriPrefix = UriBuilderExtensions.GetHttpsUriWithOptionalPort(
-                        string.Format(
-                            CultureInfo.InvariantCulture,
-                            "https://{0}/common/userrealm/",
-                            Host),
+                        $"https://{Host}/common/userrealm/",
                         authorityUri.Port);
-
                     break;
             }
         }
@@ -117,7 +99,7 @@ namespace Microsoft.Identity.Client
             CanonicalAuthority = canonicalAuthority;
             AuthorityType = authorityType;
             UserRealmUriPrefix = userRealmUriPrefix;
-            ValidateAuthority = validateAuthority;
+            ValidateAuthority = validateAuthority;            
         }
 
         public string Host => CanonicalAuthority.Host;
@@ -132,43 +114,82 @@ namespace Microsoft.Identity.Client
 
         internal bool IsInstanceDiscoverySupported => AuthorityType == AuthorityType.Aad;
 
-        internal bool IsUserAssertionSupported => AuthorityType != AuthorityType.Adfs && AuthorityType != AuthorityType.B2C;
+        /// <summary>
+        /// For IWA
+        /// </summary>
+        internal bool IsWsTrustFlowSupported =>
+            AuthorityType == AuthorityType.Aad ||
+            AuthorityType == AuthorityType.Dsts;
 
-        internal bool IsTenantOverrideSupported => AuthorityType == AuthorityType.Aad;
-        internal bool IsMultiTenantSupported => AuthorityType != AuthorityType.Adfs;
-        internal bool IsClientInfoSupported => AuthorityType == AuthorityType.Aad || AuthorityType == AuthorityType.Dsts || AuthorityType == AuthorityType.B2C;
+        /// <summary>
+        /// Authority supports multi-tenancy. ADFS and Generic authorities are not tenanted.
+        /// B2C doesn't allow multi-tenancy scenarios, but the authority itself is tenanted. 
+        /// For CIAM, we allow multi-tenancy scenarios, and expect the STS to fail.
+        /// </summary>
+        internal bool CanBeTenanted => 
+            AuthorityType == AuthorityType.Aad  ||
+            AuthorityType == AuthorityType.Dsts ||
+            AuthorityType == AuthorityType.B2C  ||
+            AuthorityType == AuthorityType.Ciam;
+
+        internal bool IsClientInfoSupported =>
+            AuthorityType == AuthorityType.Aad ||
+            AuthorityType == AuthorityType.Dsts ||
+            AuthorityType == AuthorityType.B2C ||
+            AuthorityType == AuthorityType.Ciam;
+
+        /// <summary>
+        /// True if SHA2 and PSS can be used for creating the client credential from a certificate 
+        /// </summary>
+        internal bool IsSha2CredentialSupported =>
+            AuthorityType != AuthorityType.Dsts &&
+            AuthorityType != AuthorityType.Generic &&
+            AuthorityType != AuthorityType.Adfs;
 
         #region Builders
         internal static AuthorityInfo FromAuthorityUri(string authorityUri, bool validateAuthority)
         {
-            string canonicalUri = CanonicalizeAuthorityUri(authorityUri);
-            ValidateAuthorityUri(canonicalUri);
+            string canonicalAuthority = CanonicalizeAuthorityUri(authorityUri);
 
-            var authorityType = GetAuthorityType(canonicalUri);
+            Uri canonicalAuthorityUri = ValidateAndCreateAuthorityUri(canonicalAuthority);
 
-            // If the authority type is B2C, validateAuthority must be false.
-            if (authorityType == AuthorityType.B2C)
+            canonicalAuthorityUri = TransformIfCiamAuthority(canonicalAuthorityUri);
+
+            var authorityType = GetAuthorityType(canonicalAuthorityUri);
+
+            // Authority validation is only supported for AAD 
+            if (authorityType == AuthorityType.B2C || authorityType == AuthorityType.Generic)
             {
                 validateAuthority = false;
             }
 
-            return new AuthorityInfo(authorityType, canonicalUri, validateAuthority);
+            return new AuthorityInfo(authorityType, canonicalAuthorityUri, validateAuthority);
         }
 
-        internal static AuthorityInfo FromAadAuthority(Uri cloudInstanceUri, Guid tenantId, bool validateAuthority)
+        private static Uri TransformIfCiamAuthority(Uri authorityUri)
+        {
+            if (IsCiamAuthority(authorityUri))
+            {
+                return CiamAuthority.TransformAuthority(authorityUri);
+            }
+
+            return authorityUri;
+        }
+
+        internal static AuthorityInfo FromAadAuthority(string cloudInstanceUri, Guid tenantId, bool validateAuthority)
         {
 #pragma warning disable CA1305 // Specify IFormatProvider
-            return FromAuthorityUri(new Uri(cloudInstanceUri, tenantId.ToString("D")).AbsoluteUri, validateAuthority);
+            return FromAuthorityUri($"{cloudInstanceUri.Trim().TrimEnd('/')}/{tenantId.ToString("D")}", validateAuthority);
 #pragma warning restore CA1305 // Specify IFormatProvider
         }
 
-        internal static AuthorityInfo FromAadAuthority(Uri cloudInstanceUri, string tenant, bool validateAuthority)
+        internal static AuthorityInfo FromAadAuthority(string cloudInstanceUri, string tenant, bool validateAuthority)
         {
             if (Guid.TryParse(tenant, out Guid tenantId))
             {
                 return FromAadAuthority(cloudInstanceUri, tenantId, validateAuthority);
             }
-            return FromAuthorityUri(new Uri(cloudInstanceUri, tenant).AbsoluteUri, validateAuthority);
+            return FromAuthorityUri($"{cloudInstanceUri.Trim().TrimEnd('/')}/{tenant}", validateAuthority);
         }
 
         internal static AuthorityInfo FromAadAuthority(
@@ -211,11 +232,6 @@ namespace Microsoft.Identity.Client
             return new AuthorityInfo(AuthorityType.Aad, authorityUri, validateAuthority);
         }
 
-        internal static AuthorityInfo FromAadAuthority(string authorityUri, bool validateAuthority)
-        {
-            return new AuthorityInfo(AuthorityType.Aad, authorityUri, validateAuthority);
-        }
-
         internal static AuthorityInfo FromAdfsAuthority(string authorityUri, bool validateAuthority)
         {
             return new AuthorityInfo(AuthorityType.Adfs, authorityUri, validateAuthority);
@@ -224,6 +240,12 @@ namespace Microsoft.Identity.Client
         internal static AuthorityInfo FromB2CAuthority(string authorityUri)
         {
             return new AuthorityInfo(AuthorityType.B2C, authorityUri, false);
+        }
+
+        internal static AuthorityInfo FromGenericAuthority(string authorityUri)
+        {
+            var authorityInfo = new AuthorityInfo(AuthorityType.Generic, authorityUri, false);
+            return authorityInfo;
         }
 
         #endregion
@@ -305,6 +327,12 @@ namespace Microsoft.Identity.Client
                 case AuthorityType.Dsts:
                     return new DstsAuthority(this);
 
+                case AuthorityType.Ciam: 
+                    return new CiamAuthority(this);
+
+                case AuthorityType.Generic:
+                    return new GenericAuthority(this);
+                
                 default:
                     throw new MsalClientException(
                         MsalError.InvalidAuthorityType,
@@ -314,7 +342,12 @@ namespace Microsoft.Identity.Client
 
         #endregion
 
-        private static void ValidateAuthorityUri(string authority)
+        /// <summary>
+        /// Validates the authority string and creates a Uri object out of it.
+        /// Authority must not be null or whitespace, must be a well-formed URI (e.g. not include spaces), and must have an HTTPS schema.
+        /// Non-generic authorities must have at least one segment in the path.
+        /// </summary>
+        private static Uri ValidateAndCreateAuthorityUri(string authority, AuthorityType? authorityType = null)
         {
             if (string.IsNullOrWhiteSpace(authority))
             {
@@ -327,22 +360,28 @@ namespace Microsoft.Identity.Client
             }
 
             var authorityUri = new Uri(authority);
+
             if (authorityUri.Scheme != "https")
             {
                 throw new ArgumentException(MsalErrorMessage.AuthorityUriInsecure, nameof(authority));
             }
 
-            string path = authorityUri.AbsolutePath.Substring(1);
-            if (string.IsNullOrWhiteSpace(path))
+            if (authorityType is not AuthorityType.Generic)
             {
-                throw new ArgumentException(MsalErrorMessage.AuthorityUriInvalidPath, nameof(authority));
+                string path = authorityUri.AbsolutePath.Substring(1);
+                if (string.IsNullOrWhiteSpace(path) && !IsCiamAuthority(authorityUri))
+                {
+                    throw new ArgumentException(MsalErrorMessage.AuthorityUriInvalidPath, nameof(authority));
+                }
+
+                string[] pathSegments = path.Split('/');
+                if (pathSegments == null || pathSegments.Length == 0)
+                {
+                    throw new ArgumentException(MsalErrorMessage.AuthorityUriInvalidPath);
+                }
             }
 
-            string[] pathSegments = authorityUri.AbsolutePath.Substring(1).Split('/');
-            if (pathSegments == null || pathSegments.Length == 0)
-            {
-                throw new ArgumentException(MsalErrorMessage.AuthorityUriInvalidPath);
-            }
+            return authorityUri;
         }
 
         private static string GetAuthorityUri(
@@ -353,13 +392,7 @@ namespace Microsoft.Identity.Client
             string cloudUrl = GetCloudUrl(azureCloudInstance);
             string tenantValue = GetAadAuthorityAudienceValue(authorityAudience, tenantId);
 
-            return string.Format(CultureInfo.InvariantCulture, "{0}/{1}", cloudUrl, tenantValue);
-        }
-
-        internal static string GetFirstPathSegment(string authority)
-        {
-            var uri = new Uri(authority);
-            return GetFirstPathSegment(uri);
+            return $"{cloudUrl}/{tenantValue}";
         }
 
         internal static string GetFirstPathSegment(Uri authority)
@@ -373,12 +406,6 @@ namespace Microsoft.Identity.Client
             throw new InvalidOperationException(MsalErrorMessage.AuthorityDoesNotHaveTwoSegments);
         }
 
-        internal static string GetSecondPathSegment(string authority)
-        {
-            var uri = new Uri(authority);
-            return GetSecondPathSegment(uri);
-        }
-
         internal static string GetSecondPathSegment(Uri authority)
         {
             if (authority.Segments.Length >= 3)
@@ -390,9 +417,14 @@ namespace Microsoft.Identity.Client
             throw new InvalidOperationException(MsalErrorMessage.DstsAuthorityDoesNotHaveThreeSegments);
         }
 
-        private static AuthorityType GetAuthorityType(string authority)
+        private static AuthorityType GetAuthorityType(Uri authorityUri)
         {
-            string firstPathSegment = GetFirstPathSegment(authority);
+            if (IsCiamAuthority(authorityUri))
+            {
+                return AuthorityType.Ciam;
+            }
+
+            string firstPathSegment = GetFirstPathSegment(authorityUri);
 
             if (string.Equals(firstPathSegment, "adfs", StringComparison.OrdinalIgnoreCase))
             {
@@ -410,6 +442,11 @@ namespace Microsoft.Identity.Client
             }
 
             return AuthorityType.Aad;
+        }
+
+        private static bool IsCiamAuthority(Uri authorityUri)
+        {
+            return authorityUri.Host.EndsWith(Constants.CiamAuthorityHostSuffix);
         }
 
         private static string[] GetPathSegments(string absolutePath)
@@ -439,6 +476,8 @@ namespace Microsoft.Identity.Client
                         return new AadAuthorityValidator(requestContext);
                     case AuthorityType.B2C:
                     case AuthorityType.Dsts:
+                    case AuthorityType.Ciam:
+                    case AuthorityType.Generic:                        
                         return new NullAuthorityValidator();
                     default:
                         throw new InvalidOperationException("Invalid AuthorityType");
@@ -469,7 +508,8 @@ namespace Microsoft.Identity.Client
                 AuthorityInfo requestAuthorityInfo,
                 IAccount account = null)
             {
-                var configAuthorityInfo = requestContext.ServiceBundle.Config.Authority.AuthorityInfo;
+                var configAuthority = requestContext.ServiceBundle.Config.Authority;
+                var configAuthorityInfo = configAuthority.AuthorityInfo;
 
                 if (configAuthorityInfo == null)
                 {
@@ -480,19 +520,25 @@ namespace Microsoft.Identity.Client
 
                 await ValidateSameHostAsync(requestAuthorityInfo, requestContext).ConfigureAwait(false);
 
-                AuthorityInfo nonNullAuthInfo = requestAuthorityInfo ?? configAuthorityInfo;
+                AuthorityInfo requestOrConfig = requestAuthorityInfo ?? configAuthorityInfo;
 
                 switch (configAuthorityInfo.AuthorityType)
                 {
                     // ADFS is tenant-less, no need to consider tenant
                     case AuthorityType.Adfs:
-                        return new AdfsAuthority(nonNullAuthInfo);
+                        return new AdfsAuthority(requestOrConfig);
 
                     case AuthorityType.Dsts:
-                        return new DstsAuthority(nonNullAuthInfo);
+                        return new DstsAuthority(requestOrConfig);
 
                     case AuthorityType.B2C:
-                        return new B2CAuthority(nonNullAuthInfo);
+                        return new B2CAuthority(requestOrConfig);
+
+                    case AuthorityType.Ciam:
+                        return new CiamAuthority(requestOrConfig);
+
+                    case AuthorityType.Generic:
+                        return new GenericAuthority(requestOrConfig);
 
                     case AuthorityType.Aad:
 
@@ -501,8 +547,14 @@ namespace Microsoft.Identity.Client
                         if (requestAuthorityInfo == null)
                         {
                             return updateEnvironment ?
-                                CreateAuthorityWithTenant(CreateAuthorityWithEnvironment(configAuthorityInfo, account.Environment).AuthorityInfo, account?.HomeAccountId?.TenantId) :
-                                CreateAuthorityWithTenant(configAuthorityInfo, account?.HomeAccountId?.TenantId);
+                                CreateAuthorityWithTenant(
+                                    CreateAuthorityWithEnvironment(configAuthorityInfo, account.Environment),
+                                    account?.HomeAccountId?.TenantId, 
+                                    forceSpecifiedTenant: false) :
+                                CreateAuthorityWithTenant(
+                                    configAuthority, 
+                                    account?.HomeAccountId?.TenantId, 
+                                    forceSpecifiedTenant: false);
                         }
 
                         // In case the authority is defined only at the request level
@@ -515,15 +567,22 @@ namespace Microsoft.Identity.Client
                         var requestAuthority = updateEnvironment ?
                             new AadAuthority(CreateAuthorityWithEnvironment(requestAuthorityInfo, account?.Environment).AuthorityInfo) :
                             new AadAuthority(requestAuthorityInfo);
-                        if (!requestAuthority.IsCommonOrganizationsOrConsumersTenant())
+                        if (!requestAuthority.IsCommonOrganizationsOrConsumersTenant() || 
+                            requestAuthority.IsOrganizationsTenantWithMsaPassthroughEnabled(requestContext.ServiceBundle.Config.IsBrokerEnabled && requestContext.ServiceBundle.Config.BrokerOptions != null && requestContext.ServiceBundle.Config.BrokerOptions.MsaPassthrough, account?.HomeAccountId?.TenantId))
                         {
                             return requestAuthority;
                         }
 
                         return updateEnvironment ?
-                                CreateAuthorityWithTenant(CreateAuthorityWithEnvironment(configAuthorityInfo, account.Environment).AuthorityInfo, account?.HomeAccountId?.TenantId) :
-                                CreateAuthorityWithTenant(configAuthorityInfo, account?.HomeAccountId?.TenantId);
-
+                                CreateAuthorityWithTenant(
+                                    CreateAuthorityWithEnvironment(configAuthorityInfo, account.Environment),
+                                    account?.HomeAccountId?.TenantId, 
+                                    forceSpecifiedTenant: false) :
+                                CreateAuthorityWithTenant(
+                                    configAuthority, 
+                                    account?.HomeAccountId?.TenantId,
+                                    forceSpecifiedTenant: false);
+                    
                     default:
                         throw new MsalClientException(
                             MsalError.InvalidAuthorityType,
@@ -531,18 +590,11 @@ namespace Microsoft.Identity.Client
                 }
             }
 
-            internal static Authority CreateAuthorityWithTenant(AuthorityInfo authorityInfo, string tenantId)
-            {
-                Authority initialAuthority = authorityInfo.CreateAuthority();
+            internal static Authority CreateAuthorityWithTenant(Authority authority, string tenantId, bool forceSpecifiedTenant)
+            {                
+                string tenantedAuthority = authority.GetTenantedAuthority(tenantId, forceSpecifiedTenant);
 
-                if (string.IsNullOrEmpty(tenantId))
-                {
-                    return initialAuthority;
-                }
-
-                string tenantedAuthority = initialAuthority.GetTenantedAuthority(tenantId);
-
-                return Authority.CreateAuthority(tenantedAuthority, authorityInfo.ValidateAuthority);
+                return Authority.CreateAuthority(tenantedAuthority, authority.AuthorityInfo.ValidateAuthority);
             }
 
             internal static Authority CreateAuthorityWithEnvironment(AuthorityInfo authorityInfo, string environment)
@@ -580,6 +632,13 @@ namespace Microsoft.Identity.Client
                     if (requestAuthorityInfo.AuthorityType == AuthorityType.B2C)
                     {
                         throw new MsalClientException(MsalError.B2CAuthorityHostMismatch, MsalErrorMessage.B2CAuthorityHostMisMatch);
+                    }
+
+                    // Do not try to be smart here, let the STS figure it out
+                    if ( requestAuthorityInfo.AuthorityType == AuthorityType.Ciam || 
+                        requestAuthorityInfo.AuthorityType == AuthorityType.Generic)
+                    {
+                        return;
                     }
 
                     // This check should be done when validating the request parameters, however we've allowed

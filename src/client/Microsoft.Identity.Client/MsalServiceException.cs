@@ -5,14 +5,15 @@ using System;
 using System.Globalization;
 using System.Net;
 using System.Net.Http.Headers;
-using Microsoft.Identity.Client.Http;
 using Microsoft.Identity.Client.Utils;
+
 #if SUPPORTS_SYSTEM_TEXT_JSON
 using System.Text.Json.Serialization;
 using JObject = System.Text.Json.Nodes.JsonObject;
 #else
 using Microsoft.Identity.Json.Linq;
 #endif
+
 namespace Microsoft.Identity.Client
 {
 
@@ -148,8 +149,7 @@ namespace Microsoft.Identity.Client
         #region Public Properties
         /// <summary>
         /// Gets the status code returned from HTTP layer. This status code is either the <c>HttpStatusCode</c> in the inner
-        /// <see cref="System.Net.Http.HttpRequestException"/> response or the NavigateError Event Status Code in a browser based flow (See
-        /// http://msdn.microsoft.com/en-us/library/bb268233(v=vs.85).aspx).
+        /// <see cref="System.Net.Http.HttpRequestException"/> response or the NavigateError Event Status Code in a browser based flow (see <see href="https://learn.microsoft.com/previous-versions/bb268233(v=vs.85)">NavigateError Event Status Codes</see>).
         /// You can use this code for purposes such as implementing retry logic or error investigation.
         /// </summary>
         public int StatusCode
@@ -164,7 +164,7 @@ namespace Microsoft.Identity.Client
         /// <summary>
         /// Additional claims requested by the service. When this property is not null or empty, this means that the service requires the user to
         /// provide additional claims, such as doing two factor authentication. The are two cases:
-        /// <list type="bullent">
+        /// <list type="bullet">
         /// <item><description>
         /// If your application is a <see cref="IPublicClientApplication"/>, you should just call <see cref="IPublicClientApplication.AcquireTokenInteractive(System.Collections.Generic.IEnumerable{string})"/>
         /// and add the <see cref="AbstractAcquireTokenParameterBuilder{T}.WithClaims(string)"/> modifier.
@@ -209,11 +209,6 @@ namespace Microsoft.Identity.Client
             }
         }
 
-        /// <summary>
-        /// An ID that can used to piece up a single authentication flow.
-        /// </summary>
-        public string CorrelationId { get; set; }
-
         #endregion
 
         /// <remarks>
@@ -222,16 +217,21 @@ namespace Microsoft.Identity.Client
         internal string SubError { get; set; }
 
         /// <summary>
+        /// A list of STS-specific error codes that can help in diagnostics.
+        /// </summary>
+        internal string[] ErrorCodes { get; set; }
+
+        /// <summary>
         /// As per discussion with Evo, AAD 
         /// </summary>
-        private void UpdateIsRetryable()
+        protected virtual void UpdateIsRetryable()
         {
             IsRetryable =
-                (StatusCode >= 500 && StatusCode < 600) ||
-                StatusCode == 429 || // too many requests
-                StatusCode == (int)HttpStatusCode.RequestTimeout ||
-                string.Equals(ErrorCode, MsalError.RequestTimeout, StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(ErrorCode, "temporarily_unavailable", StringComparison.OrdinalIgnoreCase); // as per https://docs.microsoft.com/en-us/azure/active-directory/develop/reference-aadsts-error-codes#handling-error-codes-in-your-application
+                    (StatusCode >= 500 && StatusCode < 600) ||
+                    StatusCode == 429 || // too many requests
+                    StatusCode == (int)HttpStatusCode.RequestTimeout ||
+                    string.Equals(ErrorCode, MsalError.RequestTimeout, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(ErrorCode, "temporarily_unavailable", StringComparison.OrdinalIgnoreCase); // as per https://learn.microsoft.com/entra/identity-platform/reference-error-codes#handling-error-codes-in-your-application
         }
 
         /// <summary>
@@ -249,27 +249,24 @@ namespace Microsoft.Identity.Client
         }
 
         #region Serialization
-
-        // DEPRECATE / OBSOLETE - this functionality is not used and should be removed in a next major version
-
-        internal override void PopulateJson(JObject jobj)
+        internal override void PopulateJson(JObject jObject)
         {
-            base.PopulateJson(jobj);
+            base.PopulateJson(jObject);
 
-            jobj[ClaimsKey] = Claims;
-            jobj[ResponseBodyKey] = ResponseBody;
-            jobj[CorrelationIdKey] = CorrelationId;
-            jobj[SubErrorKey] = SubError;
+            jObject[ClaimsKey] = Claims;
+            jObject[ResponseBodyKey] = ResponseBody;
+            jObject[CorrelationIdKey] = CorrelationId;
+            jObject[SubErrorKey] = SubError;
         }
 
-        internal override void PopulateObjectFromJson(JObject jobj)
+        internal override void PopulateObjectFromJson(JObject jObject)
         {
-            base.PopulateObjectFromJson(jobj);
+            base.PopulateObjectFromJson(jObject);
 
-            Claims = JsonHelper.GetExistingOrEmptyString(jobj, ClaimsKey);
-            ResponseBody = JsonHelper.GetExistingOrEmptyString(jobj, ResponseBodyKey);
-            CorrelationId = JsonHelper.GetExistingOrEmptyString(jobj, CorrelationIdKey);
-            SubError = JsonHelper.GetExistingOrEmptyString(jobj, SubErrorKey);
+            Claims = JsonHelper.GetExistingOrEmptyString(jObject, ClaimsKey);
+            ResponseBody = JsonHelper.GetExistingOrEmptyString(jObject, ResponseBodyKey);
+            CorrelationId = JsonHelper.GetExistingOrEmptyString(jObject, CorrelationIdKey);
+            SubError = JsonHelper.GetExistingOrEmptyString(jObject, SubErrorKey);
         }
         #endregion
     }

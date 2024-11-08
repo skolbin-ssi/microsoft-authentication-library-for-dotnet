@@ -48,6 +48,7 @@ namespace Microsoft.Identity.Client.Cache.Items
             string preferredCacheEnv,
             string clientInfo,
             string homeAccountId,
+            string accountSource,
             IdToken idToken,
             string preferredUsername,
             string tenantId,
@@ -56,9 +57,10 @@ namespace Microsoft.Identity.Client.Cache.Items
         {
             Init(
                 preferredCacheEnv,
-                idToken?.ObjectId,
+                idToken?.GetUniqueId(),
                 clientInfo,
                 homeAccountId,
+                accountSource,
                 idToken?.Name,
                 preferredUsername,
                 tenantId,
@@ -72,6 +74,7 @@ namespace Microsoft.Identity.Client.Cache.Items
             string localAccountId,
             string rawClientInfo,
             string homeAccountId,
+            string accountSource,
             string name,
             string preferredUsername,
             string tenantId,
@@ -85,6 +88,7 @@ namespace Microsoft.Identity.Client.Cache.Items
                 localAccountId,
                 rawClientInfo,
                 homeAccountId,
+                accountSource,
                 name,
                 preferredUsername,
                 tenantId,
@@ -96,13 +100,15 @@ namespace Microsoft.Identity.Client.Cache.Items
         internal MsalAccountCacheItem(
             string environment, 
             string tenantId, 
-            string homeAccountId, 
+            string homeAccountId,
+            string accountSource,
             string preferredUsername)
             : this()
         {
             Environment = environment;
             TenantId = tenantId;
             HomeAccountId = homeAccountId;
+            AccountSource = accountSource;
             PreferredUsername = preferredUsername;
 
             InitCacheKey();
@@ -114,10 +120,11 @@ namespace Microsoft.Identity.Client.Cache.Items
         internal string GivenName { get; set; }
         internal string FamilyName { get; set; }
         internal string LocalAccountId { get; set; }
+        internal string AccountSource { get; set; }
         internal string AuthorityType { get; set; }
 
         /// <summary>
-        /// WAM special implementation: MSA accounts (and also AAD accounts on UWP) cannot be discovered through WAM
+        /// WAM special implementation: MSA accounts (and also AAD accounts) cannot be discovered through WAM
         /// however the broker offers an interactive experience for the user to login, even with an MSA account.
         /// After an interactive login, MSAL must be able to silently login the MSA user. To do this, MSAL must save the 
         /// account ID in its token cache. Accounts with associated WAM account ID can be used in silent WAM flows.
@@ -133,6 +140,7 @@ namespace Microsoft.Identity.Client.Cache.Items
             string localAccountId,
             string rawClientInfo,
             string homeAccountId,
+            string accountSource,
             string name,
             string preferredUsername,
             string tenantId,
@@ -149,6 +157,7 @@ namespace Microsoft.Identity.Client.Cache.Items
             GivenName = givenName;
             FamilyName = familyName;
             HomeAccountId = homeAccountId;
+            AccountSource = accountSource;
             WamAccountIds = wamAccountIds;
 
             InitCacheKey();
@@ -156,15 +165,9 @@ namespace Microsoft.Identity.Client.Cache.Items
 
         internal void InitCacheKey()
         {
-            var stringBuilder = new StringBuilder();
+            CacheKey =  $"{HomeAccountId}{MsalCacheKeys.CacheKeyDelimiter}{Environment}{MsalCacheKeys.CacheKeyDelimiter}{TenantId}";
 
-            stringBuilder.Append(HomeAccountId + MsalCacheKeys.CacheKeyDelimiter);
-            stringBuilder.Append(Environment + MsalCacheKeys.CacheKeyDelimiter);
-            stringBuilder.Append(TenantId);
-
-            CacheKey = stringBuilder.ToString();
-
-            iOSCacheKeyLazy = new Lazy<IiOSKey>(() => InitiOSKey());
+            iOSCacheKeyLazy = new Lazy<IiOSKey>(InitiOSKey);
         }
 
         #region iOS
@@ -208,7 +211,8 @@ namespace Microsoft.Identity.Client.Cache.Items
                 LocalAccountId = JsonHelper.ExtractExistingOrEmptyString(j, StorageJsonKeys.LocalAccountId),
                 AuthorityType = JsonHelper.ExtractExistingOrEmptyString(j, StorageJsonKeys.AuthorityType),
                 TenantId = JsonHelper.ExtractExistingOrEmptyString(j, StorageJsonKeys.Realm),
-                WamAccountIds = JsonHelper.ExtractInnerJsonAsDictionary(j, StorageJsonKeys.WamAccountIds)
+                WamAccountIds = JsonHelper.ExtractInnerJsonAsDictionary(j, StorageJsonKeys.WamAccountIds),
+                AccountSource = JsonHelper.ExtractExistingOrEmptyString(j, StorageJsonKeys.AccountSource)
             };
 
             item.PopulateFieldsFromJObject(j);
@@ -229,6 +233,7 @@ namespace Microsoft.Identity.Client.Cache.Items
             SetItemIfValueNotNull(json, StorageJsonKeys.LocalAccountId, LocalAccountId);
             SetItemIfValueNotNull(json, StorageJsonKeys.AuthorityType, AuthorityType);
             SetItemIfValueNotNull(json, StorageJsonKeys.Realm, TenantId);
+            SetItemIfValueNotNull(json, StorageJsonKeys.AccountSource, AccountSource);
             if (WamAccountIds != null && WamAccountIds.Any())
             {
 #if SUPPORTS_SYSTEM_TEXT_JSON

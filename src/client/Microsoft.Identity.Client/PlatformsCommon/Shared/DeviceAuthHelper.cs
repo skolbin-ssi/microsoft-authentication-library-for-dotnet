@@ -18,16 +18,16 @@ namespace Microsoft.Identity.Client.PlatformsCommon.Shared
         {
             IDictionary<string, string> data = new Dictionary<string, string>();
             string wwwAuthenticate = responseHeaders.GetValues(PKeyAuthConstants.WwwAuthenticateHeader).SingleOrDefault();
-            wwwAuthenticate = wwwAuthenticate.Substring(PKeyAuthConstants.PKeyAuthName.Length + 1);
+            wwwAuthenticate = wwwAuthenticate?.Substring(PKeyAuthConstants.PKeyAuthName.Length + 1);
             if (string.IsNullOrEmpty(wwwAuthenticate))
             {
                 return data;
             }
 
-            List<string> headerPairs = CoreHelpers.SplitWithQuotes(wwwAuthenticate, ',');
+            var headerPairs = CoreHelpers.SplitWithQuotes(wwwAuthenticate, ',');
             foreach (string pair in headerPairs)
             {
-                List<string> keyValue = CoreHelpers.SplitWithQuotes(pair, '=');
+                var keyValue = CoreHelpers.SplitWithQuotes(pair, '=');
                 if (keyValue.Count == 2)
                 {
                     data.Add(keyValue[0].Trim(), keyValue[1].Trim().Replace("\"", ""));
@@ -74,9 +74,13 @@ namespace Microsoft.Identity.Client.PlatformsCommon.Shared
         //This corresponds to windows 7, 8, 8.1 and their server equivalents.       
         public static bool CanOSPerformPKeyAuth()
         {
-#if NET_CORE || NET6_WIN || DESKTOP || NETSTANDARD
+#if NET_CORE || NETFRAMEWORK || NETSTANDARD
             try
             {
+                // No support on Mac or Linux
+                if (!DesktopOsHelper.IsWindows())
+                    return false;
+
                 return !DesktopOsHelper.IsWin10OrServerEquivalent();
             }
             catch (DllNotFoundException)

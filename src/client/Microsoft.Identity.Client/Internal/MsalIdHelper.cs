@@ -23,11 +23,6 @@ namespace Microsoft.Identity.Client.Internal
         public const string Version = "x-client-Ver";
 
         /// <summary>
-        ///     CPU platform with x86, x64 or ARM as value
-        /// </summary>
-        public const string CpuPlatform = "x-client-CPU";
-
-        /// <summary>
         ///     Version of the operating system. This will not be sent on WinRT
         /// </summary>
         public const string OS = "x-client-OS";
@@ -47,7 +42,7 @@ namespace Microsoft.Identity.Client.Internal
         private static readonly Lazy<string> s_msalVersion = new Lazy<string>(
             () =>
             {
-                string fullVersion = typeof(MsalIdHelper).GetTypeInfo().Assembly.FullName;
+                string fullVersion = typeof(MsalIdHelper).Assembly.FullName;
                 var regex = new Regex(@"Version=[\d]+.[\d+]+.[\d]+.[\d]+");
                 var match = regex.Match(fullVersion);
                 if (!match.Success)
@@ -64,7 +59,7 @@ namespace Microsoft.Identity.Client.Internal
                 return version[1];
             });
 
-        public static IDictionary<string, string> GetMsalIdParameters(ILoggerAdapter logger)
+        public static Dictionary<string, string> GetMsalIdParameters(ILoggerAdapter logger)
         {
             var platformProxy = PlatformProxyFactory.CreatePlatformProxy(logger);
             if (platformProxy == null)
@@ -79,12 +74,6 @@ namespace Microsoft.Identity.Client.Internal
                 [MsalIdParameter.Product] = platformProxy.GetProductName(),
                 [MsalIdParameter.Version] = GetMsalVersion()
             };
-
-            string processorInformation = platformProxy.GetProcessorArchitecture();
-            if (processorInformation != null)
-            {
-                parameters[MsalIdParameter.CpuPlatform] = processorInformation;
-            }
 
             string osInformation = platformProxy.GetOperatingSystem();
             if (osInformation != null)

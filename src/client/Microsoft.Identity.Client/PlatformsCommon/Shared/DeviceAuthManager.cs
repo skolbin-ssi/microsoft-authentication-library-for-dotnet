@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Net.Http.Headers;
+using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using Microsoft.Identity.Client.OAuth2;
 using Microsoft.Identity.Client.PlatformsCommon.Interfaces;
@@ -12,11 +13,14 @@ using Microsoft.Identity.Client.Utils;
 
 namespace Microsoft.Identity.Client.PlatformsCommon.Shared
 {
-    internal abstract class DeviceAuthManager : IDeviceAuthManager
+    internal class DeviceAuthManager : IDeviceAuthManager
     {
-        protected abstract DeviceAuthJWTResponse GetDeviceAuthJwtResponse(string submitUrl, string nonce, X509Certificate2 certificate);
+        private readonly ICryptographyManager _cryptographyManager;
 
-        protected abstract byte[] SignWithCertificate(DeviceAuthJWTResponse responseJwt, X509Certificate2 certificate);
+        public DeviceAuthManager(ICryptographyManager cryptographyManager)
+        {
+            _cryptographyManager = cryptographyManager;
+        }
 
         public bool TryCreateDeviceAuthChallengeResponse(HttpResponseHeaders responseHeaders, Uri endpointUri, out string responseHeader)
         {
@@ -53,28 +57,32 @@ namespace Microsoft.Identity.Client.PlatformsCommon.Shared
                 }
             }
 
-            DeviceAuthJWTResponse responseJWT = GetDeviceAuthJwtResponse(submitUrl, challengeData["nonce"], certificate);
+            DeviceAuthJWTResponse responseJwt = GetDeviceAuthJwtResponse(submitUrl, challengeData["nonce"], certificate);
 
-            byte[] signedResponse = SignWithCertificate(responseJWT, certificate);
+            string responseToSign = responseJwt.GetResponseToSign();
+            byte[] signedResponse = _cryptographyManager.SignWithCertificate(responseToSign, certificate, RSASignaturePadding.Pkcs1);
 
-            FormatResponseHeader(responseJWT, signedResponse, challengeData, out responseHeader);
+            FormatResponseHeader(signedResponse, challengeData, responseToSign, out responseHeader);
 
             return true;
         }
 
-        private void FormatResponseHeader(
-            DeviceAuthJWTResponse responseJWT,
-            byte[] signedResponse,
-            IDictionary<string, string> challengeData,
-            out string responseHeader)
+        private static DeviceAuthJWTResponse GetDeviceAuthJwtResponse(string submitUrl, string nonce, X509Certificate2 certificate)
         {
-            string signedJwt = $"{responseJWT.GetResponseToSign()}.{Base64UrlHelpers.Encode(signedResponse)}";
-            string authToken = $"AuthToken=\"{signedJwt}\"";
-
-            responseHeader = $"PKeyAuth {authToken}, Context=\"{challengeData["Context"]}\", Version=\"{challengeData["Version"]}\"";
+            return new DeviceAuthJWTResponse(submitUrl, nonce, Convert.ToBase64String(certificate.GetRawCertData()));
         }
 
-        private X509Certificate2 FindCertificate(IDictionary<string, string> challengeData)
+        private static void FormatResponseHeader(byte[] signedResponse,
+            IDictionary<string, string> challengeData,
+            string responseToSign,
+            out string responseHeader)
+        {
+            string encoded = Base64UrlHelpers.Encode(signedResponse);
+
+            responseHeader = $"PKeyAuth AuthToken=\"{responseToSign}.{encoded}\", Context=\"{challengeData["Context"]}\", Version=\"{challengeData["Version"]}\"";
+        }
+
+        private static X509Certificate2 FindCertificate(IDictionary<string, string> challengeData)
         {
             var store = new X509Store(StoreName.My, StoreLocation.CurrentUser);
             try
@@ -86,9 +94,7 @@ namespace Microsoft.Identity.Client.PlatformsCommon.Shared
                     return FindCertificateByCertAuthorities(challengeData, certCollection);
                 }
 
-                X509Certificate2Collection signingCert = null;
-                signingCert = certCollection.Find(X509FindType.FindByThumbprint, challengeData["CertThumbprint"],
-                    false);
+                X509Certificate2Collection signingCert = certCollection.Find(X509FindType.FindByThumbprint, challengeData["CertThumbprint"], false);
                 if (signingCert.Count == 0)
                 {
                     throw new MsalException(MsalError.DeviceCertificateNotFound,
@@ -101,7 +107,7 @@ namespace Microsoft.Identity.Client.PlatformsCommon.Shared
             finally
             {
 
-#if NETSTANDARD || WINDOWS_APP
+#if NETSTANDARD 
                 store.Dispose();
 #else
                 store.Close();
@@ -109,7 +115,7 @@ namespace Microsoft.Identity.Client.PlatformsCommon.Shared
             }
         }
 
-        private X509Certificate2 FindCertificateByCertAuthorities(IDictionary<string, string> challengeData, X509Certificate2Collection certCollection)
+        private static X509Certificate2 FindCertificateByCertAuthorities(IDictionary<string, string> challengeData, X509Certificate2Collection certCollection)
         {
             X509Certificate2Collection signingCert = null;
             string[] certAuthorities = challengeData["CertAuthorities"].Split(new[] { ";" },

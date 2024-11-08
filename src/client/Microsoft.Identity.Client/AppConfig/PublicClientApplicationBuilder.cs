@@ -7,6 +7,9 @@ using Microsoft.Identity.Client.Cache;
 using Microsoft.Identity.Client.Kerberos;
 using Microsoft.Identity.Client.PlatformsCommon.Factories;
 using Microsoft.Identity.Client.PlatformsCommon.Shared;
+using System.Runtime.CompilerServices;
+using Microsoft.Identity.Client.AppConfig;
+using Microsoft.Identity.Client.Instance;
 
 #if iOS
 using UIKit;
@@ -16,7 +19,7 @@ using UIKit;
 using Android.App;
 #endif
 
-#if DESKTOP || NET6_WIN
+#if NETFRAMEWORK 
 using System.Windows.Forms;
 #endif
 
@@ -28,9 +31,10 @@ namespace Microsoft.Identity.Client
 {
     /// <summary>
     /// </summary>
-    public sealed class PublicClientApplicationBuilder : AbstractApplicationBuilder<PublicClientApplicationBuilder>
+    public sealed class PublicClientApplicationBuilder : 
+        AbstractApplicationBuilder<PublicClientApplicationBuilder>
     {
-        /// <inheritdoc />
+        /// <inheritdoc/>
         internal PublicClientApplicationBuilder(ApplicationConfiguration configuration)
             : base(configuration)
         {
@@ -45,7 +49,7 @@ namespace Microsoft.Identity.Client
         /// parameters, and to create a public client application instance</returns>
         public static PublicClientApplicationBuilder CreateWithApplicationOptions(PublicClientApplicationOptions options)
         {
-            var config = new ApplicationConfiguration(isConfidentialClient: false);
+            var config = new ApplicationConfiguration(MsalClientType.PublicClient);
             return new PublicClientApplicationBuilder(config)
                 .WithOptions(options)
                 .WithKerberosTicketClaim(options.KerberosServicePrincipalName, options.TicketContainer);
@@ -61,7 +65,7 @@ namespace Microsoft.Identity.Client
         /// parameters, and to create a public client application instance</returns>
         public static PublicClientApplicationBuilder Create(string clientId)
         {
-            var config = new ApplicationConfiguration(isConfidentialClient: false);
+            var config = new ApplicationConfiguration(MsalClientType.PublicClient);
             return new PublicClientApplicationBuilder(config).WithClientId(clientId);
         }
 
@@ -81,12 +85,8 @@ namespace Microsoft.Identity.Client
         /// </listheader>
         /// <item>
         /// <term>.NET desktop</term>
-        /// <Description><c>https://login.microsoftonline.com/common/oauth2/nativeclient</c></Description>
-        /// </item>
-        /// <item>
-        /// <term>UWP</term>
-        /// <Description>value of <c>WebAuthenticationBroker.GetCurrentApplicationCallbackUri()</c></Description>
-        /// </item>
+        /// <Description><c>`https://login.microsoftonline.com/common/oauth2/nativeclient`</c></Description>
+        /// </item>     
         /// <item>
         /// <term>For system browser on .NET Core</term>
         /// <Description><c>http://localhost</c></Description>
@@ -105,7 +105,7 @@ namespace Microsoft.Identity.Client
 
         /// <summary>
         /// Enables multi cloud support for this instance of public client application.
-        /// It enables applications to use in a global public cloud authority to the library and can still get tokens for resources from national clouds.
+        /// It enables applications to use in a global public cloud authority to the library and can still get tokens for resources from sovereign clouds.
         /// </summary>
         /// <param name="enableMultiCloudSupport">Enable or disable multi cloud support.</param>
         /// <returns>A <see cref="PublicClientApplicationBuilder"/> from which to set more
@@ -138,90 +138,64 @@ namespace Microsoft.Identity.Client
             return this;
         }
 
+#if ANDROID || iOS
         /// <summary>
-        /// Brokers enable Single-Sign-On, device identification,
+        /// Brokers (Microsoft Authenticator, Intune Company Portal) enable Single-Sign-On, device identification,
+
         /// and application identification verification. To enable one of these features,
-        /// you need to set the WithBroker() parameters to true. See https://aka.ms/msal-net-brokers 
-        /// for more information on platform specific settings required to enable the broker.
-        /// 
-        /// On iOS and Android, Authenticator and Company Portal serve as brokers.
-        /// On Windows, WAM (Windows Account Manager) serves as broker. See https://aka.ms/msal-net-wam
+        /// you need to set the WithBroker(bool) parameters to true on Android and iOS. 
+        /// On desktop platforms, install the NuGet package Microsoft.Identity.Client.Broker and call the extension method .WithBroker(BrokerOptions)
+        /// See https://aka.ms/msal-net-wam for desktop platforms.
         /// </summary>
         /// <param name="enableBroker">Determines whether or not to use broker with the default set to true.</param>
         /// <returns>A <see cref="PublicClientApplicationBuilder"/> from which to set more
         /// parameters, and to create a public client application instance</returns>
-        /// <remarks>If your app uses .NET classic or .NET Core 3.x, and you wish to use the Windows broker, 
-        /// please install the NuGet package Microsoft.Identity.Client.Desktop and call .WithDesktopFeatures()</remarks>
+        /// <remarks>On desktop (.NET, .NET Framework) install the NuGet package Microsoft.Identity.Client.Broker and call .WithBroker(BrokerOptions).
+        /// This is not needed for MAUI apps.</remarks>
         public PublicClientApplicationBuilder WithBroker(bool enableBroker = true)
         {
-#pragma warning disable CS0162 // Unreachable code detected
-
-#if NET45
-            throw new PlatformNotSupportedException(
-                "The Windows broker is not available on .NET Framework 4.5, use at least .NET Framework 4.6.2");
-#endif
-
-#if NET461
-            if (Config.BrokerCreatorFunc == null)
-            {
-                throw new PlatformNotSupportedException(
-                    "The Windows broker is not directly available on MSAL for .NET Framework. " +
-                    "To use it, install the NuGet package named Microsoft.Identity.Client.Desktop " +
-                    "and call the extension method .WithWindowsBroker() first. " +
-                    "If you want to try the new broker preview, install the NuGet package named Microsoft.Identity.Client.Broker " +
-                    "and call the extension method .WithBrokerPreview(). For details see https://aka.ms/msal-net-wam ");
-            }
-#endif
-
-#if NET_CORE
-            if (Config.BrokerCreatorFunc == null && DesktopOsHelper.IsWindows())
-            {
-                throw new PlatformNotSupportedException(
-                    "If you have a .NET Core 3.1 application, install the NuGet package Microsoft.Identity.Client.Desktop and call the extension method .WithWindowsBroker() first. " +
-
-                    "\n\r\n\rIf you have a Windows application which targets net5.0, net5.0-windows, net6.0, or net6.0-windows, change the target to at least net6.0-windows10.0.17763.0. \nYour app can still run on earlier versions of Windows such as Windows 7 if you add <SupportedOSPlatformVersion>7</SupportedOSPlatformVersion> in the csproj.\n The Windows broker (WAM) is available only on Windows 10+ and Windows Server 2019+; this library will fallback to a browser on older systems. " +
-
-                    "\n\r\n\rIf you have a .NET 6 cross-platform (Windows, Mac, Linux) application, dual target net6.0 and net6.0-windows10.0.17763.0. Your installer should deploy the net6.0 version on Mac and Linux and the net6.0-window10.0.17763.0 on Windows." +
-
-                    "\n\r\n\rIf you want to try the new broker preview, install the NuGet package Microsoft.Identity.Client.Broker and call the extension method .WithBrokerPreview(). " +
-                    "\n\rFor details, see https://aka.ms/msal-net-wam and https://github.com/dotnet/designs/blob/main/accepted/2020/platform-checks/platform-checks.md ");
-            }
-#endif
-
             Config.IsBrokerEnabled = enableBroker;
             return this;
-#pragma warning restore CS0162 // Unreachable code detected
         }
+#else
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="enableBroker"></param>
+        /// <returns></returns>
+        /// <exception cref="PlatformNotSupportedException"></exception>
+        [EditorBrowsable(EditorBrowsableState.Never)]
+        [Obsolete("The desktop broker is not directly available in the MSAL package. Install the NuGet package Microsoft.Identity.Client.Broker and call the extension method .WithBroker(BrokerOptions). For details, see https://aka.ms/msal-net-wam", true)]
+        public PublicClientApplicationBuilder WithBroker(bool enableBroker = true)
+        {
+            throw new PlatformNotSupportedException(
+                  "The desktop broker is not directly available in the Microsoft.Identity.Client package. " +
+                  "\n\rTo use it, install the NuGet package named Microsoft.Identity.Client.Broker " +
+                  "and call the extension method .WithBroker(BrokerOptions) from namespace Microsoft.Identity.Client.Broker" +
+                  "\n\rFor details see https://aka.ms/msal-net-wam ");
+        }
+#endif
 
         /// <summary>
-        /// Allows customization of the Windows 10 Broker experience
+        /// Allows customization of the Windows 10 Broker experience. 
         /// </summary>
 #if !SUPPORTS_BROKER || __MOBILE__
         [EditorBrowsable(EditorBrowsableState.Never)]
 #endif
+#if !__MOBILE__
+        [Obsolete("This API has been replaced with WithBroker(BrokerOptions), which can be found in Microsoft.Identity.Client.Broker package. See https://aka.ms/msal-net-wam for details.", false)]
+#endif
+
         public PublicClientApplicationBuilder WithWindowsBrokerOptions(WindowsBrokerOptions options)
         {
             WindowsBrokerOptions.ValidatePlatformAvailability();
-            Config.WindowsBrokerOptions = options;
+            var newOptions = BrokerOptions.CreateFromWindowsOptions(options);
+            Config.BrokerOptions = newOptions; 
             return this;
         }
 
-#if WINDOWS_APP
         /// <summary>
-        /// Flag to enable authentication with the user currently signed-in on Windows.
-        /// </summary>
-        /// <param name="useCorporateNetwork">When set to true, the application will try to connect to the corporate network using Windows Integrated Authentication.</param>
-        /// <returns>A <see cref="PublicClientApplicationBuilder"/> from which to set more
-        /// parameters, and to create a public client application instance</returns>
-        public PublicClientApplicationBuilder WithUseCorporateNetwork(bool useCorporateNetwork)
-        {
-            Config.UseCorporateNetwork = useCorporateNetwork;
-            return this;
-        }
-#endif
-
-        /// <summary>
-        ///  Sets a reference to the ViewController (if using Xamarin.iOS), Activity (if using Xamarin.Android)
+        ///  Sets a reference to the ViewController (if using iOS), Activity (if using Android)
         ///  IWin32Window or IntPtr (if using .Net Framework). Used for invoking the browser.
         /// </summary>
         /// <remarks>
@@ -245,10 +219,31 @@ namespace Microsoft.Identity.Client
             return this;
         }
 
+        /// <summary>
+        /// Adds a known authority corresponding to a generic OpenIdConnect Identity Provider. 
+        /// MSAL will append ".well-known/openid-configuration" to the authority and retrieve the OIDC 
+        /// metadata from there, to figure out the endpoints.
+        /// See https://openid.net/specs/openid-connect-core-1_0.html#Terminology
+        /// </summary>
+        /// <remarks>
+        /// Experimental on public clients.
+        /// Do not use this method with Entra ID authorities (e.g. https://login.microsfoftonline.com/common).
+        /// Use WithAuthority(string) instead.
+        /// </remarks>
+        public PublicClientApplicationBuilder WithOidcAuthority(string authorityUri) 
+        {
+            ValidateUseOfExperimentalFeature("WithOidcAuthority");
+
+            var authorityInfo = AuthorityInfo.FromGenericAuthority(authorityUri);
+            Config.Authority = Authority.CreateAuthority(authorityInfo);
+
+            return this;
+        }
+
 #if ANDROID
         /// <summary>
         /// Sets a reference to the current Activity that triggers the browser to be shown. Required
-        /// for MSAL to be able to show the browser when using Xamarin.Android
+        /// for MSAL to be able to show the browser when using Android
         /// </summary>
         /// <param name="activityFunc">A function to return the current Activity</param>
         /// <returns>The builder to chain the .With methods</returns>
@@ -282,7 +277,7 @@ namespace Microsoft.Identity.Client
         }
 #endif
 
-#if DESKTOP || NET6_WIN
+#if NETFRAMEWORK
         /// <summary>
         /// Sets a reference to the current IWin32Window that triggers the browser to be shown.
         /// Used to center the browser that pop-up onto this window.
@@ -297,11 +292,11 @@ namespace Microsoft.Identity.Client
                 throw new ArgumentNullException(nameof(windowFunc));
             }
 
-            return WithParentFunc(() => windowFunc());
+            return WithParentFunc(windowFunc);
         }
 #endif
 
-#if DESKTOP || NET6_WIN || NET_CORE || NETSTANDARD         
+#if NETFRAMEWORK || NET_CORE || NETSTANDARD
         /// <summary>
         /// Sets a reference to the IntPtr to a window that triggers the browser to be shown.
         /// Used to center the browser that pop-up onto this window.
@@ -324,8 +319,12 @@ namespace Microsoft.Identity.Client
         /// Sets the parameters required to get a Kerberos Ticket from Azure AD service.
         /// </summary>
         /// <param name="servicePrincipalName">Service principal name to get Kerberos Service Ticket.</param>
-        /// <param name="ticketContainer">Container to use for Kerberos Ticket.</param>
-        /// <returns>The builder to chain the .With methods</returns>
+        /// <param name="ticketContainer">Specify where the Kerberos ticket will be returned - as a claim in the ID token or as a claim in the access token. 
+        /// If the ticket is for the client application, use the ID token. If the ticket is for the downstream API, use the access token.</param>
+        /// <remarks>
+        /// The expiry of the Kerberos ticket is tied to the expiry of the token that contains it.
+        /// MSAL provides several helper APIs to read and write Kerberos tickets from the Windows Ticket Cache - see <see cref="KerberosSupplementalTicketManager"/>.
+        /// </remarks>
         public PublicClientApplicationBuilder WithKerberosTicketClaim(string servicePrincipalName, KerberosTicketContainer ticketContainer)
         {
             Config.KerberosServicePrincipalName = servicePrincipalName;
@@ -341,12 +340,11 @@ namespace Microsoft.Identity.Client
         /// <list type="bullet">
         /// <item><description>On Windows, the broker (WAM) can be used on Windows 10 and is always installed. See https://aka.ms/msal-net-wam </description></item>
         /// <item><description>On Mac, Linux, and older versions of Windows a broker is not available.</description></item>
-        /// <item><description>In .NET 6 apps, target <c>net6.0-windows10.0.17763.0</c> for all Windows versions and target <c>net6.0</c> for Linux and Mac.</description></item>
-        /// <item><description>In .NET classic or .NET Core 3.1 apps, install Microsoft.Identity.Client.Desktop first and call <c>WithDesktopFeatures()</c>.</description></item>
+        /// <item><description>In .NET classic or .NET, install Microsoft.Identity.Client.Desktop first and call <c>WithDesktopFeatures()</c>.</description></item>
         /// <item><description>In mobile apps, the device must be Intune joined and Authenticator or Company Portal must be installed. See https://aka.ms/msal-brokers </description></item>
         /// </list>
         /// </remarks>
-#if ANDROID || iOS || WINDOWS_APP
+#if ANDROID || iOS
         [Obsolete("This method is obsolete. Applications should rely on the library automatically falling back to a browser if the broker is not available. ", false)]
 #endif
         public bool IsBrokerAvailable()
@@ -356,33 +354,27 @@ namespace Microsoft.Identity.Client
         }
 
         /// <summary>
+        /// Builds an instance of <see cref="IPublicClientApplication"/> 
+        /// from the parameters set in the <see cref="PublicClientApplicationBuilder"/>.
         /// </summary>
-        /// <returns></returns>
+        /// <exception cref="MsalClientException">Thrown when errors occur locally in the library itself (for example, because of incorrect configuration).</exception>
+        /// <returns>An instance of <see cref="IPublicClientApplication"/></returns>
         public IPublicClientApplication Build()
         {
             return BuildConcrete();
         }
 
-        /// <summary>
-        /// </summary>
-        /// <returns></returns>
         internal PublicClientApplication BuildConcrete()
         {
             return new PublicClientApplication(BuildConfiguration());
         }
 
-        /// <inheritdoc />
+        /// <inheritdoc/>
         internal override void Validate()
         {
             base.Validate();
 
-            //ADFS does not require client id to be in the form of a GUID.
-            if (Config.Authority.AuthorityInfo?.AuthorityType != AuthorityType.Adfs && !Guid.TryParse(Config.ClientId, out _))
-            {
-                throw new MsalClientException(MsalError.ClientIdMustBeAGuid, MsalErrorMessage.ClientIdMustBeAGuid);
-            }
-
-#if IS_XAMARIN_OR_UWP
+#if __MOBILE__
             if (Config.IsBrokerEnabled && Config.MultiCloudSupportEnabled)
             {
                 // TODO: https://github.com/AzureAD/microsoft-authentication-library-for-dotnet/issues/3139
@@ -395,7 +387,7 @@ namespace Microsoft.Identity.Client
                                                          .GetDefaultRedirectUri(Config.ClientId, Config.UseRecommendedDefaultRedirectUri);
             }
 
-            if (!Uri.TryCreate(Config.RedirectUri, UriKind.Absolute, out Uri uriResult))
+            if (!Uri.TryCreate(Config.RedirectUri, UriKind.Absolute, out Uri _))
             {
                 throw new InvalidOperationException(MsalErrorMessage.InvalidRedirectUriReceived(Config.RedirectUri));
             }

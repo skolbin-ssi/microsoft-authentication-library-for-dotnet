@@ -2,20 +2,27 @@
 // Licensed under the MIT License.
 
 using System;
-using System.Security.Cryptography.X509Certificates;
+using System.IO;
 using System.Threading.Tasks;
 using Microsoft.Identity.Client.AuthScheme.PoP;
 using Microsoft.Identity.Client.Cache;
-using Microsoft.Identity.Client.Cache.CacheImpl;
 using Microsoft.Identity.Client.Core;
 using Microsoft.Identity.Client.Internal.Broker;
+#if SUPPORTS_OTEL
+using Microsoft.Identity.Client.Platforms.Features.OpenTelemetry;
+#endif
 using Microsoft.Identity.Client.PlatformsCommon.Interfaces;
+using Microsoft.Identity.Client.TelemetryCore.OpenTelemetry;
 using Microsoft.Identity.Client.UI;
 
 namespace Microsoft.Identity.Client.PlatformsCommon.Shared
 {
     internal abstract class AbstractPlatformProxy : IPlatformProxy
     {
+        
+        public const string MacOsDescriptionForSTS = "MacOS";
+        public const string LinuxOSDescriptionForSTS = "Linux";
+
         private readonly Lazy<string> _callingApplicationName;
         private readonly Lazy<string> _callingApplicationVersion;
         private readonly Lazy<ICryptographyManager> _cryptographyManager;
@@ -26,6 +33,7 @@ namespace Microsoft.Identity.Client.PlatformsCommon.Shared
         private readonly Lazy<string> _processorArchitecture;
         private readonly Lazy<string> _productName;
         private readonly Lazy<string> _runtimeVersion;
+        private readonly Lazy<IOtelInstrumentation> _otelInstrumentation;
 
         protected AbstractPlatformProxy(ILoggerAdapter logger)
         {
@@ -40,13 +48,31 @@ namespace Microsoft.Identity.Client.PlatformsCommon.Shared
             _cryptographyManager = new Lazy<ICryptographyManager>(InternalGetCryptographyManager);
             _platformLogger = new Lazy<IPlatformLogger>(InternalGetPlatformLogger);
             _runtimeVersion = new Lazy<string>(InternalGetRuntimeVersion);
+            _otelInstrumentation = new Lazy<IOtelInstrumentation>(InternalGetOtelInstrumentation);
+        }
+
+        private IOtelInstrumentation InternalGetOtelInstrumentation()
+        {
+#if SUPPORTS_OTEL
+            try
+            {
+                return new OtelInstrumentation();
+            } catch (FileNotFoundException ex) 
+            {
+                // Can happen in in-process Azure Functions: https://github.com/AzureAD/microsoft-authentication-library-for-dotnet/issues/4456
+                Logger.Warning("Failed instantiating OpenTelemetry instrumentation. Exception: " + ex.Message);
+                return new NullOtelInstrumentation();
+            }
+#else
+            return new NullOtelInstrumentation();
+#endif
         }
 
         protected IFeatureFlags OverloadFeatureFlags { get; set; }
 
         protected ILoggerAdapter Logger { get; }
 
-        /// <inheritdoc />
+        /// <inheritdoc/>
         public IWebUIFactory GetWebUiFactory(ApplicationConfiguration appConfig)
         {
             return appConfig.WebUiFactoryCreator != null ?
@@ -54,61 +80,61 @@ namespace Microsoft.Identity.Client.PlatformsCommon.Shared
               CreateWebUiFactory();
         }
 
-        /// <inheritdoc />
+        /// <inheritdoc/>
         public string GetDeviceModel()
         {
             return _deviceModel.Value;
         }
 
-        /// <inheritdoc />
+        /// <inheritdoc/>
         public string GetOperatingSystem()
         {
             return _operatingSystem.Value;
         }
 
-        /// <inheritdoc />
+        /// <inheritdoc/>
         public string GetProcessorArchitecture()
         {
             return _processorArchitecture.Value;
         }
 
-        /// <inheritdoc />
+        /// <inheritdoc/>
         public abstract Task<string> GetUserPrincipalNameAsync();
 
-        /// <inheritdoc />
+        /// <inheritdoc/>
         public string GetCallingApplicationName()
         {
             return _callingApplicationName.Value;
         }
 
-        /// <inheritdoc />
+        /// <inheritdoc/>
         public string GetCallingApplicationVersion()
         {
             return _callingApplicationVersion.Value;
         }
 
-        /// <inheritdoc />
+        /// <inheritdoc/>
         public string GetDeviceId()
         {
             return _deviceId.Value;
         }
 
-        /// <inheritdoc />
+        /// <inheritdoc/>
         public abstract string GetDefaultRedirectUri(string clientId, bool useRecommendedRedirectUri = false);
 
-        /// <inheritdoc />
+        /// <inheritdoc/>
         public string GetProductName()
         {
             return _productName.Value;
         }
 
-        /// <inheritdoc />
+        /// <inheritdoc/>
         public string GetRuntimeVersion()
         {
             return _runtimeVersion.Value;
         }
 
-        /// <inheritdoc />
+        /// <inheritdoc/>
         public abstract ILegacyCachePersistence CreateLegacyCachePersistence();
 
         public ITokenCacheAccessor UserTokenCacheAccessorForTest { get; set; }
@@ -128,11 +154,13 @@ namespace Microsoft.Identity.Client.PlatformsCommon.Shared
             }
         }
 
-        /// <inheritdoc />
+        /// <inheritdoc/>
         public ICryptographyManager CryptographyManager => _cryptographyManager.Value;
 
-        /// <inheritdoc />
+        /// <inheritdoc/>
         public IPlatformLogger PlatformLogger => _platformLogger.Value;
+
+        public IOtelInstrumentation OtelInstrumentation => _otelInstrumentation.Value;
 
         protected abstract IWebUIFactory CreateWebUiFactory();
         protected abstract IFeatureFlags CreateFeatureFlags();
@@ -150,16 +178,11 @@ namespace Microsoft.Identity.Client.PlatformsCommon.Shared
         // RuntimeInformation.FrameworkDescription is available on all platforms except .NET Framework 4.7 and lower.
         protected virtual string InternalGetRuntimeVersion()
         {
-#if !DESKTOP
+#if !NETFRAMEWORK
             return System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription;
 #else
-            return string.Empty; // For DESKTOP this should not be hit, since NetDesktopPlatformProxy will take over
+            return string.Empty; // For NETFRAMEWORK this should not be hit, since NetDesktopPlatformProxy will take over
 #endif
-        }
-
-        public virtual ICacheSerializationProvider CreateTokenCacheBlobStorage()
-        {
-            return null;
         }
 
         public virtual IFeatureFlags GetFeatureFlags()
@@ -207,7 +230,7 @@ namespace Microsoft.Identity.Client.PlatformsCommon.Shared
         }
 
         /// <summary>
-        /// On Android, iOS and UWP, MSAL will save the legacy ADAL cache in a known location.
+        /// On Android and iOS, MSAL will save the legacy ADAL cache in a known location.
         /// On other platforms, the app developer must use the serialization callbacks
         /// </summary>
         public virtual bool LegacyCacheRequiresSerialization => true;

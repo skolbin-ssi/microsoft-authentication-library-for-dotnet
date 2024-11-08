@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -60,24 +61,20 @@ namespace Microsoft.Identity.Client.Internal.Requests.Silent
                        UiRequiredExceptionClassification.AcquireTokenSilentFailed);
                 }
 
-                if (isBrokerConfigured)
+                var account = AuthenticationRequestParameters.Account as Account;
+                bool isAccountSourceDeviceCodeFlow = account !=null &&
+                                               account.AccountSource == "device_code_flow";
+
+                if (isBrokerConfigured && !isAccountSourceDeviceCodeFlow)
                 {
                     _logger.Info("Broker is configured and enabled, attempting to use broker instead.");
                     var brokerResult = await _brokerStrategyLazy.Value.ExecuteAsync(cancellationToken).ConfigureAwait(false);
 
+                    // fallback to local cache if broker fails
                     if (brokerResult != null)
                     {
                         _logger.Verbose(() => "Broker responded to silent request.");
                         return brokerResult;
-                    }
-                    else
-                    {
-                        _logger.Verbose(() => "Broker could not satisfy the silent request.");
-                        throw new MsalUiRequiredException(
-                           MsalError.FailedToAcquireTokenSilentlyFromBroker,
-                           "Broker could not satisfy the silent request.",
-                           null,
-                           UiRequiredExceptionClassification.AcquireTokenSilentFailed);
                     }
                 }
 
@@ -92,15 +89,15 @@ namespace Microsoft.Identity.Client.Internal.Requests.Silent
             }
         }
 
-        internal new async Task<AuthenticationResult> CacheTokenResponseAndCreateAuthenticationResultAsync(MsalTokenResponse response)
+        internal new Task<AuthenticationResult> CacheTokenResponseAndCreateAuthenticationResultAsync(MsalTokenResponse response)
         {
-            return await base.CacheTokenResponseAndCreateAuthenticationResultAsync(response).ConfigureAwait(false);
+            return base.CacheTokenResponseAndCreateAuthenticationResultAsync(response);
         }
 
         //internal for test
-        internal async Task<AuthenticationResult> ExecuteTestAsync(CancellationToken cancellationToken)
+        internal Task<AuthenticationResult> ExecuteTestAsync(CancellationToken cancellationToken)
         {
-            return await ExecuteAsync(cancellationToken).ConfigureAwait(false);
+            return ExecuteAsync(cancellationToken);
         }
 
         private async Task UpdateRequestWithAccountAsync()
@@ -164,6 +161,39 @@ namespace Microsoft.Identity.Client.Internal.Requests.Silent
             }
 
             return await GetSingleAccountForLoginHintAsync(loginHint).ConfigureAwait(false);
+        }
+
+        protected override void ValidateAccountIdentifiers(ClientInfo fromServer)
+        {
+            if (fromServer == null ||
+                AuthenticationRequestParameters?.Account?.HomeAccountId == null ||
+                PublicClientApplication.IsOperatingSystemAccount(AuthenticationRequestParameters?.Account))
+            {
+                return;
+            }
+
+            if (AuthenticationRequestParameters.AuthorityInfo.AuthorityType == AuthorityType.B2C &&
+                fromServer.UniqueTenantIdentifier.Equals(AuthenticationRequestParameters.Account.HomeAccountId.TenantId,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            if (fromServer.UniqueObjectIdentifier.Equals(AuthenticationRequestParameters.Account.HomeAccountId.ObjectId,
+                    StringComparison.OrdinalIgnoreCase) &&
+                fromServer.UniqueTenantIdentifier.Equals(AuthenticationRequestParameters.Account.HomeAccountId.TenantId,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            AuthenticationRequestParameters.RequestContext.Logger.Error("Returned user identifiers do not match the sent user identifier");
+
+            AuthenticationRequestParameters.RequestContext.Logger.ErrorPii(
+                $"User identifier returned by AAD (uid:{fromServer.UniqueObjectIdentifier} utid:{fromServer.UniqueTenantIdentifier}) does not match the user identifier sent. (uid:{AuthenticationRequestParameters.Account.HomeAccountId.ObjectId} utid:{AuthenticationRequestParameters.Account.HomeAccountId.TenantId})",
+                string.Empty);
+
+            throw new MsalClientException(MsalError.UserMismatch, MsalErrorMessage.UserMismatchSaveToken);
         }
     }
 }

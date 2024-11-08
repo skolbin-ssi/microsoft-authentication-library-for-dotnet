@@ -8,10 +8,15 @@ using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Threading.Tasks;
+using Microsoft.Identity.Client.AppConfig;
 using Microsoft.Identity.Client.Instance;
 using Microsoft.Identity.Client.Instance.Discovery;
+using Microsoft.Identity.Client.Internal;
+using Microsoft.Identity.Client.ManagedIdentity;
 using Microsoft.Identity.Client.Utils;
+using Microsoft.Identity.Test.Common.Core.Helpers;
 using Microsoft.Identity.Test.Unit;
+using static Microsoft.Identity.Test.Common.Core.Helpers.ManagedIdentityTestUtil;
 
 namespace Microsoft.Identity.Test.Common.Core.Mocks
 {
@@ -192,6 +197,28 @@ namespace Microsoft.Identity.Test.Common.Core.Mocks
             return handler;
         }
 
+        public static MockHttpMessageHandler AddMockHandlerSuccessfulClientCredentialTokenResponseWithAdditionalParamsMessage(
+            this MockHttpManager httpManager,
+            string token = "header.payload.signature",
+            string expiresIn = "3599",
+            string tokenType = "Bearer",
+            IList<string> unexpectedHttpHeaders = null,
+            string additionalparams = ",\"additional_param1\":\"value1\",\"additional_param2\":\"value2\",\"additional_param3\":\"value3\",\"additional_param4\":[\"GUID\",\"GUID2\",\"GUID3\"],\"additional_param5\":{\"value5json\":\"value5\"}",
+            IDictionary<string, string> expectedRequestHeaders = null)
+        {
+            var handler = new MockHttpMessageHandler()
+            {
+                ExpectedMethod = HttpMethod.Post,
+                ResponseMessage = MockHelpers.CreateSuccessfulClientCredentialTokenResponseWithAdditionalParamsMessage(token, expiresIn, tokenType, additionalparams),
+                UnexpectedRequestHeaders = unexpectedHttpHeaders,
+                ExpectedRequestHeaders = expectedRequestHeaders
+            };
+
+            httpManager.AddMockHandler(handler);
+
+            return handler;
+        }
+
         public static MockHttpMessageHandler AddMockHandlerForThrottledResponseMessage(
             this MockHttpManager httpManager)
         {
@@ -216,7 +243,7 @@ namespace Microsoft.Identity.Test.Common.Core.Mocks
                     {
                         Content = new StringContent("Foo")
                     },
-                    ExceptionToThrow = new InvalidOperationException("Error")
+                    ExceptionToThrow = exceptionToThrow
                 });
         }
 
@@ -241,6 +268,8 @@ namespace Microsoft.Identity.Test.Common.Core.Mocks
                 ResponseMessage = MockHelpers.CreateAdfsSuccessTokenResponseMessage()
             });
         }
+
+       
 
         public static MockHttpMessageHandler AddAllMocks(this MockHttpManager httpManager, TokenResponseType aadResponse)
         {
@@ -332,8 +361,8 @@ namespace Microsoft.Identity.Test.Common.Core.Mocks
             string expectedUrl,
             string resource,
             string response,
-            ManagedIdentitySourceType managedIdentitySourceType,
-            string userAssignedClientIdOrResourceId = null,
+            ManagedIdentitySource managedIdentitySourceType,
+            string userAssignedId = null,
             UserAssignedIdentityId userAssignedIdentityId = UserAssignedIdentityId.None,
             HttpStatusCode statusCode = HttpStatusCode.OK
             )
@@ -346,12 +375,17 @@ namespace Microsoft.Identity.Test.Common.Core.Mocks
 
             if (userAssignedIdentityId == UserAssignedIdentityId.ClientId)
             {
-                httpMessageHandler.ExpectedQueryParams.Add("client_id", userAssignedClientIdOrResourceId);
+                httpMessageHandler.ExpectedQueryParams.Add(Constants.ManagedIdentityClientId, userAssignedId);
             }
 
             if (userAssignedIdentityId == UserAssignedIdentityId.ResourceId)
             {
-                httpMessageHandler.ExpectedQueryParams.Add("mi_res_id", userAssignedClientIdOrResourceId);
+                httpMessageHandler.ExpectedQueryParams.Add(Constants.ManagedIdentityResourceId, userAssignedId);
+            }
+
+            if (userAssignedIdentityId == UserAssignedIdentityId.ObjectId)
+            {
+                httpMessageHandler.ExpectedQueryParams.Add(Constants.ManagedIdentityObjectId, userAssignedId);
             }
 
             httpMessageHandler.ResponseMessage = responseMessage;
@@ -360,7 +394,8 @@ namespace Microsoft.Identity.Test.Common.Core.Mocks
             httpManager.AddMockHandler(httpMessageHandler);
         }
 
-        private static MockHttpMessageHandler BuildMockHandlerForManagedIdentitySource(ManagedIdentitySourceType managedIdentitySourceType, string resource)
+            
+        private static MockHttpMessageHandler BuildMockHandlerForManagedIdentitySource(ManagedIdentitySource managedIdentitySourceType, string resource)
         {
             MockHttpMessageHandler httpMessageHandler = new MockHttpMessageHandler();
             IDictionary<string, string> expectedQueryParams = new Dictionary<string, string>();
@@ -368,32 +403,31 @@ namespace Microsoft.Identity.Test.Common.Core.Mocks
 
             switch (managedIdentitySourceType)
             {
-            
-                case ManagedIdentitySourceType.AppService:
+                case ManagedIdentitySource.AppService:
                     httpMessageHandler.ExpectedMethod = HttpMethod.Get;
                     expectedQueryParams.Add("api-version", "2019-08-01");
                     expectedQueryParams.Add("resource", resource);
                     expectedRequestHeaders.Add("X-IDENTITY-HEADER", "secret");
                     break;
-                case ManagedIdentitySourceType.AzureArc:
+                case ManagedIdentitySource.AzureArc:
                     httpMessageHandler.ExpectedMethod = HttpMethod.Get;
                     expectedQueryParams.Add("api-version", "2019-11-01");
                     expectedQueryParams.Add("resource", resource);
                     expectedRequestHeaders.Add("Metadata", "true");
                     break;
-                case ManagedIdentitySourceType.IMDS:
+                case ManagedIdentitySource.Imds:
                     httpMessageHandler.ExpectedMethod = HttpMethod.Get;
                     expectedQueryParams.Add("api-version", "2018-02-01");
                     expectedQueryParams.Add("resource", resource);
                     expectedRequestHeaders.Add("Metadata", "true");
                     break;
-                case ManagedIdentitySourceType.CloudShell:
+                case ManagedIdentitySource.CloudShell:
                     httpMessageHandler.ExpectedMethod = HttpMethod.Post;
                     expectedRequestHeaders.Add("Metadata", "true");
                     expectedRequestHeaders.Add("ContentType", "application/x-www-form-urlencoded");
                     httpMessageHandler.ExpectedPostData = new Dictionary<string, string> { { "resource", resource } };
                     break;
-                case ManagedIdentitySourceType.ServiceFabric:
+                case ManagedIdentitySource.ServiceFabric:
                     httpMessageHandler.ExpectedMethod = HttpMethod.Get;
                     expectedRequestHeaders.Add("secret", "secret");
                     expectedQueryParams.Add("api-version", "2019-07-01-preview");
@@ -401,7 +435,7 @@ namespace Microsoft.Identity.Test.Common.Core.Mocks
                     break;
             }
 
-            if (managedIdentitySourceType != ManagedIdentitySourceType.CloudShell)
+            if (managedIdentitySourceType != ManagedIdentitySource.CloudShell)
             {
                 httpMessageHandler.ExpectedQueryParams = expectedQueryParams;
             }
@@ -462,21 +496,5 @@ namespace Microsoft.Identity.Test.Common.Core.Mocks
         /// Normal server exception
         /// </summary>
         InvalidClient
-    }
-
-    public enum UserAssignedIdentityId
-    {
-        None,
-        ClientId,
-        ResourceId
-    }
-
-    public enum ManagedIdentitySourceType
-    {
-        IMDS,
-        AppService,
-        AzureArc,
-        CloudShell,
-        ServiceFabric
     }
  }

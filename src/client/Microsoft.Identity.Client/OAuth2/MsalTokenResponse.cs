@@ -9,6 +9,7 @@ using Microsoft.Identity.Client.Core;
 using Microsoft.Identity.Client.Extensibility;
 using Microsoft.Identity.Client.Http;
 using Microsoft.Identity.Client.Internal.Broker;
+using Microsoft.Identity.Client.ManagedIdentity;
 using Microsoft.Identity.Client.Utils;
 #if SUPPORTS_SYSTEM_TEXT_JSON
 using System.Text.Json.Serialization;
@@ -18,6 +19,7 @@ using JObject = System.Text.Json.Nodes.JsonObject;
 using JsonProperty = System.Text.Json.Serialization.JsonPropertyNameAttribute;
 #else
 using Microsoft.Identity.Json;
+using Microsoft.Identity.Json.Linq;
 #endif
 
 namespace Microsoft.Identity.Client.OAuth2
@@ -38,13 +40,15 @@ namespace Microsoft.Identity.Client.OAuth2
         public const string Authority = "authority";
         public const string FamilyId = "foci";
         public const string RefreshIn = "refresh_in";
-        public const string SpaCode = "spa_code";
         public const string ErrorSubcode = "error_subcode";
         public const string ErrorSubcodeCancel = "cancel";
 
         public const string TenantId = "tenant_id";
         public const string Upn = "username";
         public const string LocalAccountId = "local_account_id";
+
+        // Hybrid SPA - see https://github.com/AzureAD/microsoft-authentication-library-for-dotnet/issues/3994
+        public const string SpaCode = "spa_code";
     }
 
     [JsonObject]
@@ -58,6 +62,67 @@ namespace Microsoft.Identity.Client.OAuth2
 
         private const string iOSBrokerErrorMetadata = "error_metadata";
         private const string iOSBrokerHomeAccountId = "home_account_id";
+
+        // Due to AOT + JSON serializer https://github.com/AzureAD/microsoft-authentication-library-for-dotnet/issues/4082
+        // disable this functionality (better fix would be to move to System.Text.Json)
+#if !__MOBILE__
+        // All properties not explicitly defined are added to this dictionary
+        // See JSON overflow https://learn.microsoft.com/dotnet/standard/serialization/system-text-json/handle-overflow?pivots=dotnet-7-0
+#if SUPPORTS_SYSTEM_TEXT_JSON
+        [JsonExtensionData]
+        public Dictionary<string, JsonElement> ExtensionData { get; set; }
+#else
+        [JsonExtensionData]
+        public Dictionary<string, JToken> ExtensionData { get; set; }
+#endif
+#endif
+        // Exposes only scalar properties from ExtensionData
+        public IReadOnlyDictionary<string, string> CreateExtensionDataStringMap()
+        {
+#if __MOBILE__
+            return CollectionHelpers.GetEmptyDictionary<string, string>();
+#else
+            if (ExtensionData == null || ExtensionData.Count == 0)
+            {
+                return CollectionHelpers.GetEmptyDictionary<string, string>();
+            }
+
+            Dictionary<string, string> stringExtensionData = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+#if SUPPORTS_SYSTEM_TEXT_JSON
+            foreach (KeyValuePair<string, JsonElement> item in ExtensionData)
+            {
+                if (item.Value.ValueKind != JsonValueKind.Undefined ||
+                    item.Value.ValueKind != JsonValueKind.Null)
+                {
+                    stringExtensionData.Add(item.Key, item.Value.ToString());
+                }
+            }
+#else
+            foreach (KeyValuePair<string, JToken> item in ExtensionData)
+            {
+                if (item.Value.Type == JTokenType.String ||
+                   item.Value.Type == JTokenType.Uri ||
+                   item.Value.Type == JTokenType.Boolean ||
+                   item.Value.Type == JTokenType.Date ||
+                   item.Value.Type == JTokenType.Float ||
+                   item.Value.Type == JTokenType.Guid ||
+                   item.Value.Type == JTokenType.Integer ||
+                   item.Value.Type == JTokenType.TimeSpan ||
+                   item.Value.Type == JTokenType.Null)
+                {
+                    stringExtensionData.Add(item.Key, item.Value.ToString());
+                }
+                else if (item.Value.Type == JTokenType.Array || item.Value.Type == JTokenType.Object)
+                {
+                    stringExtensionData.Add(item.Key, item.Value.ToString(Formatting.None));
+                }
+            }
+#endif
+            return stringExtensionData;
+#endif
+        }
+
         [JsonProperty(TokenResponseClaim.TokenType)]
         public string TokenType { get; set; }
 
@@ -122,7 +187,7 @@ namespace Microsoft.Identity.Client.OAuth2
         {
             if (responseDictionary.TryGetValue(BrokerResponseConst.BrokerErrorCode, out string errorCode))
             {
-                string metadataOriginal = responseDictionary.ContainsKey(MsalTokenResponse.iOSBrokerErrorMetadata) ? responseDictionary[MsalTokenResponse.iOSBrokerErrorMetadata] : null;
+                string metadataOriginal = responseDictionary.TryGetValue(MsalTokenResponse.iOSBrokerErrorMetadata, out string iOSBrokerErrorMetadata) ? iOSBrokerErrorMetadata : null;
                 Dictionary<string, string> metadataDictionary = null;
 
                 if (metadataOriginal != null)
@@ -144,20 +209,20 @@ namespace Microsoft.Identity.Client.OAuth2
                 return new MsalTokenResponse
                 {
                     Error = errorCode,
-                    ErrorDescription = responseDictionary.ContainsKey(BrokerResponseConst.BrokerErrorDescription) ? CoreHelpers.UrlDecode(responseDictionary[BrokerResponseConst.BrokerErrorDescription]) : string.Empty,
-                    SubError = responseDictionary.ContainsKey(OAuth2ResponseBaseClaim.SubError) ? responseDictionary[OAuth2ResponseBaseClaim.SubError] : string.Empty,
+                    ErrorDescription = responseDictionary.TryGetValue(BrokerResponseConst.BrokerErrorDescription, out string brokerErrorDescription) ? CoreHelpers.UrlDecode(brokerErrorDescription) : string.Empty,
+                    SubError = responseDictionary.TryGetValue(OAuth2ResponseBaseClaim.SubError, out string subError) ? subError : string.Empty,
                     AccountUserId = homeAcctId != null ? AccountId.ParseFromString(homeAcctId).ObjectId : null,
                     TenantId = homeAcctId != null ? AccountId.ParseFromString(homeAcctId).TenantId : null,
                     Upn = (metadataDictionary?.ContainsKey(TokenResponseClaim.Upn) ?? false) ? metadataDictionary[TokenResponseClaim.Upn] : null,
-                    CorrelationId = responseDictionary.ContainsKey(BrokerResponseConst.CorrelationId) ? responseDictionary[BrokerResponseConst.CorrelationId] : null,
+                    CorrelationId = responseDictionary.TryGetValue(BrokerResponseConst.CorrelationId, out string correlationId) ? correlationId : null,
                 };
             }
 
             var response = new MsalTokenResponse
             {
                 AccessToken = responseDictionary[BrokerResponseConst.AccessToken],
-                RefreshToken = responseDictionary.ContainsKey(BrokerResponseConst.RefreshToken)
-                    ? responseDictionary[BrokerResponseConst.RefreshToken]
+                RefreshToken = responseDictionary.TryGetValue(BrokerResponseConst.RefreshToken, out string refreshToken)
+                    ? refreshToken
                     : null,
                 IdToken = responseDictionary[BrokerResponseConst.IdToken],
                 TokenType = BrokerResponseConst.Bearer,
@@ -166,20 +231,59 @@ namespace Microsoft.Identity.Client.OAuth2
                 ExpiresIn = responseDictionary.TryGetValue(BrokerResponseConst.ExpiresOn, out string expiresOn) ?
                                 DateTimeHelpers.GetDurationFromNowInSeconds(expiresOn) :
                                 0,
-                ClientInfo = responseDictionary.ContainsKey(BrokerResponseConst.ClientInfo)
-                                ? responseDictionary[BrokerResponseConst.ClientInfo]
+                ClientInfo = responseDictionary.TryGetValue(BrokerResponseConst.ClientInfo, out string clientInfo)
+                                ? clientInfo
                                 : null,
                 TokenSource = TokenSource.Broker
             };
 
-            if (responseDictionary.ContainsKey(TokenResponseClaim.RefreshIn))
+            if (responseDictionary.TryGetValue(TokenResponseClaim.RefreshIn, out string refreshIn))
             {
                 response.RefreshIn = long.Parse(
-                    responseDictionary[TokenResponseClaim.RefreshIn],
+                    refreshIn,
                     CultureInfo.InvariantCulture);
             }
 
             return response;
+        }
+
+        internal static MsalTokenResponse CreateFromManagedIdentityResponse(ManagedIdentityResponse managedIdentityResponse)
+        {
+            // Validate that the access token is present. If it is missing, handle the error accordingly.
+            if (string.IsNullOrEmpty(managedIdentityResponse.AccessToken))
+            {
+                HandleInvalidExternalValueError(nameof(managedIdentityResponse.AccessToken));
+            }
+
+            // Parse and validate the "ExpiresOn" timestamp, which indicates when the token will expire.
+            long expiresIn = DateTimeHelpers.GetDurationFromManagedIdentityTimestamp(managedIdentityResponse.ExpiresOn);
+
+            if (expiresIn <= 0)
+            {
+                HandleInvalidExternalValueError(nameof(managedIdentityResponse.ExpiresOn));
+            }
+
+            // Construct and return an MsalTokenResponse object with the necessary details.
+            return new MsalTokenResponse
+            {
+                AccessToken = managedIdentityResponse.AccessToken,
+                ExpiresIn = expiresIn,
+                TokenType = managedIdentityResponse.TokenType,
+                TokenSource = TokenSource.IdentityProvider,
+                RefreshIn = InferManagedIdentityRefreshInValue(expiresIn)
+            };
+        }
+
+        // Compute refresh_in as 1/2 expires_in, but only if expires_in > 2h.
+        private static long? InferManagedIdentityRefreshInValue(long expiresIn)
+
+        {
+            if (expiresIn > 2 * 3600)
+            {
+                return expiresIn / 2;
+            }
+
+            return null;
         }
 
         internal static MsalTokenResponse CreateFromAppProviderResponse(AppTokenProviderResult tokenProviderResponse)
@@ -195,12 +299,21 @@ namespace Microsoft.Identity.Client.OAuth2
                 ExpiresIn = tokenProviderResponse.ExpiresInSeconds,
                 ClientInfo = null,
                 TokenSource = TokenSource.IdentityProvider,
-                TenantId = null //Leaving as null so MSAL can use the original request Tid. This is ok for confidential client scenarios
+                TenantId = null, // Leave as null so MSAL can use the original request Tid. This is ok for confidential client scenarios
+                RefreshIn = tokenProviderResponse.RefreshInSeconds ?? EstimateRefreshIn(tokenProviderResponse.ExpiresInSeconds)
             };
 
-            response.RefreshIn = tokenProviderResponse.RefreshInSeconds;
-
             return response;
+        }
+
+        private static long? EstimateRefreshIn(long expiresInSeconds)
+        {
+            if (expiresInSeconds >= 2 * 3600)
+            {
+                return expiresInSeconds / 2;
+            }
+
+            return null;
         }
 
         private static void ValidateTokenProviderResult(AppTokenProviderResult TokenProviderResult)
@@ -269,38 +382,42 @@ namespace Microsoft.Identity.Client.OAuth2
         {
             if (logger.IsLoggingEnabled(logLevel))
             {
-                StringBuilder withPii = new StringBuilder();
-                StringBuilder withoutPii = new StringBuilder();
+                var withPii =
+                    $"""
 
-                withPii.AppendLine($"{Environment.NewLine}[MsalTokenResponse]");
-                withPii.AppendLine($"Error: {Error}");
-                withPii.AppendLine($"ErrorDescription: {ErrorDescription}");
-                withPii.AppendLine($"Scopes: {Scope} ");
-                withPii.AppendLine($"ExpiresIn: {ExpiresIn}");
-                withPii.AppendLine($"RefreshIn: {RefreshIn}");
-                withPii.AppendLine($"AccessToken returned: {!string.IsNullOrEmpty(AccessToken)}");
-                withPii.AppendLine($"AccessToken Type: {TokenType}");
-                withPii.AppendLine($"RefreshToken returned: {!string.IsNullOrEmpty(RefreshToken)}");
-                withPii.AppendLine($"IdToken returned: {!string.IsNullOrEmpty(IdToken)}");
-                withPii.AppendLine($"ClientInfo: {ClientInfo}");
-                withPii.AppendLine($"FamilyId: {FamilyId}");
-                withPii.AppendLine($"WamAccountId exists: {!string.IsNullOrEmpty(WamAccountId)}");
+                     [MsalTokenResponse]
+                     Error: {Error}
+                     ErrorDescription: {ErrorDescription}
+                     Scopes: {Scope}
+                     ExpiresIn: {ExpiresIn}
+                     RefreshIn: {RefreshIn}
+                     AccessToken returned: {!string.IsNullOrEmpty(AccessToken)}
+                     AccessToken Type: {TokenType}
+                     RefreshToken returned: {!string.IsNullOrEmpty(RefreshToken)}
+                     IdToken returned: {!string.IsNullOrEmpty(IdToken)}
+                     ClientInfo: {ClientInfo}
+                     FamilyId: {FamilyId}
+                     WamAccountId exists: {!string.IsNullOrEmpty(WamAccountId)}
+                     """;
+                var withoutPii =
+                    $"""
 
-                withoutPii.AppendLine($"{Environment.NewLine}[MsalTokenResponse]");
-                withoutPii.AppendLine($"Error: {Error}");
-                withoutPii.AppendLine($"ErrorDescription: {ErrorDescription}");
-                withoutPii.AppendLine($"Scopes: {Scope} ");
-                withoutPii.AppendLine($"ExpiresIn: {ExpiresIn}");
-                withoutPii.AppendLine($"RefreshIn: {RefreshIn}");
-                withoutPii.AppendLine($"AccessToken returned: {!string.IsNullOrEmpty(AccessToken)}");
-                withoutPii.AppendLine($"AccessToken Type: {TokenType}");
-                withoutPii.AppendLine($"RefreshToken returned: {!string.IsNullOrEmpty(RefreshToken)}");
-                withoutPii.AppendLine($"IdToken returned: {!string.IsNullOrEmpty(IdToken)}");
-                withoutPii.AppendLine($"ClientInfo returned: {!string.IsNullOrEmpty(ClientInfo)}");
-                withoutPii.AppendLine($"FamilyId: {FamilyId}");
-                withoutPii.AppendLine($"WamAccountId exists: {!string.IsNullOrEmpty(WamAccountId)}");
+                     [MsalTokenResponse]
+                     Error: {Error}
+                     ErrorDescription: {ErrorDescription}
+                     Scopes: {Scope}
+                     ExpiresIn: {ExpiresIn}
+                     RefreshIn: {RefreshIn}
+                     AccessToken returned: {!string.IsNullOrEmpty(AccessToken)}
+                     AccessToken Type: {TokenType}
+                     RefreshToken returned: {!string.IsNullOrEmpty(RefreshToken)}
+                     IdToken returned: {!string.IsNullOrEmpty(IdToken)}
+                     ClientInfo returned: {!string.IsNullOrEmpty(ClientInfo)}
+                     FamilyId: {FamilyId}
+                     WamAccountId exists: {!string.IsNullOrEmpty(WamAccountId)}
+                     """;
 
-                logger.Log(logLevel, withPii.ToString(), withoutPii.ToString());
+                logger.Log(logLevel, withPii, withoutPii);
             }
         }
     }

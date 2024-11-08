@@ -1,0 +1,36 @@
+# template-OneBranch-Tests-libsandsamples.yaml
+# Performs Nuget Restore and Build of LibsAndSamples.sln based on BuildPlatform and BuildConfiguration
+
+parameters:
+  BuildPlatform: 'any cpu'
+  BuildConfiguration: 'release'
+  MsalClientSemVer: '4.0.0-devopsbuild'
+  MsalSourceDir: '' #Default MSAL Location
+
+steps:
+
+- task: UseDotNet@2
+  displayName: 'Use the latest .NET 6'
+  inputs:
+    version: 6.x
+
+- template: template-restore-build-libsandsamples.yaml
+  parameters:
+    Solution: 'LibsAndSamples.sln'    
+
+  # Run All Desktop Tests
+- template: template-run-all-tests.yaml
+  parameters:
+    BuildConfiguration: '$(BuildConfiguration)'
+
+- task: VSTest@2
+  displayName: 'Run cache compat tests'
+  condition: and(succeeded(), eq(variables['RunTests'], 'true'))
+  inputs:
+    testSelector: 'testAssemblies'
+    testAssemblyVer2: '**\CacheCompat\CommonCache.Test.Unit\bin\**\CommonCache.Test.Unit.dll'
+    searchFolder: '$(System.DefaultWorkingDirectory)'
+    codeCoverageEnabled: true
+    failOnMinTestsNotRun: true
+    minimumExpectedTests: '1'
+    runInParallel: true

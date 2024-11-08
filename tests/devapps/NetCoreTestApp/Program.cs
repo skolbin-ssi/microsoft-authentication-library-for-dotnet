@@ -6,11 +6,13 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Security;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Identity.Client;
-using Microsoft.Identity.Client.Desktop;
+using Microsoft.Identity.Client.AppConfig;
+using Microsoft.Identity.Client.Broker;
 using Microsoft.Identity.Client.Extensibility;
 using Microsoft.Identity.Test.Integration.NetFx.Infrastructure;
 using NetCoreTestApp.Experimental;
@@ -49,6 +51,11 @@ namespace NetCoreTestApp
 
         private static int s_currentTid = 0;
 
+        private static string s_scope = "https://management.azure.com";
+
+        [DllImport("kernel32.dll")]
+        static extern IntPtr GetConsoleWindow();
+
         public static void Main(string[] args)
         {
             var ccaSettings = ConfidentialAppSettings.GetSettings(Cloud.Public);
@@ -68,6 +75,7 @@ namespace NetCoreTestApp
 
         private static IPublicClientApplication CreatePca(bool withWamBroker = false)
         {
+            // <PCABootstrapSample>
             var pcaBuilder = PublicClientApplicationBuilder
                             .Create(s_clientIdForPublicApp)
                             .WithAuthority(GetAuthority())
@@ -75,8 +83,10 @@ namespace NetCoreTestApp
 
             if(withWamBroker)
             {
-                pcaBuilder.WithWindowsDesktopFeatures()
-                            .WithBroker();
+                IntPtr consoleWindowHandle = GetConsoleWindow();
+                Func<IntPtr> consoleWindowHandleProvider = () => consoleWindowHandle;
+                pcaBuilder.WithBroker(new BrokerOptions(BrokerOptions.OperatingSystems.Windows) { Title = "Only Windows" })
+                          .WithParentActivityOrWindow(consoleWindowHandleProvider);
             }
 
             Console.WriteLine($"IsBrokerAvailable: {pcaBuilder.IsBrokerAvailable()}");
@@ -99,7 +109,17 @@ namespace NetCoreTestApp
                     File.WriteAllBytes(CacheFilePath, notificationArgs.TokenCache.SerializeMsalV3());
                 }
             });
+            // </PCABootstrapSample>
             return pca;
+        }
+
+        private static IManagedIdentityApplication CreateMia()
+        {
+            IManagedIdentityApplication mia = ManagedIdentityApplicationBuilder
+                            .Create(ManagedIdentityId.SystemAssigned)
+                            .Build();
+
+            return mia;
         }
 
         private static async Task RunConsoleAppLogicAsync(IPublicClientApplication pca)
@@ -129,7 +149,9 @@ namespace NetCoreTestApp
                         9. Rotate Tenant ID
                        10. Acquire Token Interactive with Chrome
                        11. AcquireTokenForClient with multiple threads
-                       12. Acquire Token Interactive with Legacy Broker
+                       12. Acquire Token Interactive with Broker
+                       13. Acquire Token using Managed Identity (VM)
+                       14. Acquire Token using Managed Identity (VM) - multiple requests in parallel
                         0. Exit App
                     Enter your Selection: ");
                 int.TryParse(Console.ReadLine(), out var selection);
@@ -298,6 +320,53 @@ namespace NetCoreTestApp
                             }
                             break;
 
+                        case 13: // managed identity on a vm
+
+                            IManagedIdentityApplication mia1 = CreateMia();
+
+                            AuthenticationResult authenticationResult1 = await mia1.AcquireTokenForManagedIdentity(s_scope)
+                                .ExecuteAsync()
+                                .ConfigureAwait(false);
+
+                            Console.WriteLine($"Managed Identity token - {authenticationResult1.AccessToken}");
+
+                            break;
+
+                        case 14: // managed identity on a vm - multi threaded
+
+                            IManagedIdentityApplication mia2 = CreateMia();
+                            int identityProviderHits = 0;
+                            int cacheHits = 0;
+
+                            Task[] miTasks = new Task[10];
+                            for (int i = 0; i < 10; i++)
+                            {
+                                miTasks[i] = Task.Run(async () =>
+                                {
+                                    AuthenticationResult authResult = await mia2.AcquireTokenForManagedIdentity(s_scope)
+                                    .ExecuteAsync()
+                                    .ConfigureAwait(false);
+
+                                    if (authResult.AuthenticationResultMetadata.TokenSource == TokenSource.IdentityProvider)
+                                    {
+                                        // Increment identity hits count
+                                        Interlocked.Increment(ref identityProviderHits);
+                                    }
+                                    else
+                                    {
+                                        // Increment cache hits count
+                                        Interlocked.Increment(ref cacheHits);
+                                    }
+                                });
+                            }
+
+                            await Task.WhenAll(miTasks).ConfigureAwait(false);
+
+                            Console.WriteLine($"identity Provider Hits (must be 1 always) - {identityProviderHits}");
+                            Console.WriteLine($"cache Hits - {cacheHits}");
+
+                            break;
+
                         case 0:
                             return;
 
@@ -457,10 +526,12 @@ namespace NetCoreTestApp
                 {
                     try
                     {
+#pragma warning disable CS0618 // Type or member is obsolete
                         Task<AuthenticationResult> authenticationResultTask = Task.Run(() =>
                             AcquireTokenBuilder
                                 .WithAuthority(s_ccaAuthority, true)
                                 .ExecuteAsync());
+#pragma warning restore CS0618 // Type or member is obsolete
 
                         authenticationResultTask.Wait();
                     }

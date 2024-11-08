@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Security.Claims;
 using System.Threading.Tasks;
 using Microsoft.Identity.Client;
 using Microsoft.Identity.Client.Cache.Items;
@@ -20,6 +21,7 @@ using NSubstitute;
 
 namespace Microsoft.Identity.Test.Unit.PublicApiTests
 {
+
     [TestClass]
     public class AccountTests
     {
@@ -59,7 +61,7 @@ namespace Microsoft.Identity.Test.Unit.PublicApiTests
         public async Task CallsToPublicCloudDoNotHitTheNetworkAsync()
         {
             IMsalHttpClientFactory factoryThatThrows = Substitute.For<IMsalHttpClientFactory>();
-            factoryThatThrows.When(x => x.GetHttpClient()).Do(x => { Assert.Fail("A network call is being performed"); });
+            factoryThatThrows.When(x => x.GetHttpClient()).Do(_ => { Assert.Fail("A network call is being performed"); });
 
             // Arrange
             PublicClientApplication pca = PublicClientApplicationBuilder
@@ -171,7 +173,7 @@ namespace Microsoft.Identity.Test.Unit.PublicApiTests
         {
             // if a network call is made, this test will fail
             IMsalHttpClientFactory factoryThatThrows = Substitute.For<IMsalHttpClientFactory>();
-            factoryThatThrows.When(x => x.GetHttpClient()).Do(x => { Assert.Fail("A network call is being performed"); });
+            factoryThatThrows.When(x => x.GetHttpClient()).Do(_ => { Assert.Fail("A network call is being performed"); });
 
             var pcaDe = PublicClientApplicationBuilder
               .Create(ClientIdInFile)
@@ -262,6 +264,7 @@ namespace Microsoft.Identity.Test.Unit.PublicApiTests
                     homeAccountId2,
                     null,
                     null,
+                    null,
                     "uTId1",
                     null,
                     null,
@@ -269,7 +272,7 @@ namespace Microsoft.Identity.Test.Unit.PublicApiTests
 
                 app.UserTokenCacheInternal.Accessor.SaveAccount(accountCacheItem);
 
-                Assert.AreEqual(2, app.UserTokenCacheInternal.Accessor.GetAllRefreshTokens().Count());
+                Assert.AreEqual(2, app.UserTokenCacheInternal.Accessor.GetAllRefreshTokens().Count);
                 accounts = app.GetAccountsAsync().Result;
                 Assert.IsNotNull(accounts);
                 Assert.AreEqual(2, accounts.Count()); // scoped by env
@@ -287,7 +290,7 @@ namespace Microsoft.Identity.Test.Unit.PublicApiTests
                     homeAccountId3);
 
                 app.UserTokenCacheInternal.Accessor.SaveRefreshToken(rtItem);
-                Assert.AreEqual(3, app.UserTokenCacheInternal.Accessor.GetAllRefreshTokens().Count());
+                Assert.AreEqual(3, app.UserTokenCacheInternal.Accessor.GetAllRefreshTokens().Count);
                 accounts = app.GetAccountsAsync().Result;
                 Assert.IsNotNull(accounts);
                 Assert.AreEqual(2, accounts.Count());
@@ -364,8 +367,50 @@ namespace Microsoft.Identity.Test.Unit.PublicApiTests
                 app.RemoveAsync(user).Wait();
             }
 
-            Assert.AreEqual(0, app.UserTokenCacheInternal.Accessor.GetAllAccessTokens().Count());
-            Assert.AreEqual(0, app.UserTokenCacheInternal.Accessor.GetAllRefreshTokens().Count());
+            Assert.AreEqual(0, app.UserTokenCacheInternal.Accessor.GetAllAccessTokens().Count);
+            Assert.AreEqual(0, app.UserTokenCacheInternal.Accessor.GetAllRefreshTokens().Count);
+        }
+
+        [TestMethod]
+        public void ToClaimsPrincipal_Success()
+        {
+            // copied from https://github.com/AzureAD/microsoft-identity-web/blob/master/src/Microsoft.Identity.Web/AccountExtensions.cs#L13
+            static ClaimsPrincipal ToClaimsPrincipal(IAccount account)
+            {
+                ClaimsIdentity identity = new ClaimsIdentity(new[]
+                    {
+                    new Claim(ClaimTypes.Upn, account.Username),
+                });
+
+                if (!string.IsNullOrEmpty(account.HomeAccountId?.ObjectId))
+                {
+                    identity.AddClaim(new Claim("oid", account.HomeAccountId.ObjectId));
+                }
+
+                if (!string.IsNullOrEmpty(account.HomeAccountId?.TenantId))
+                {
+                    identity.AddClaim(new Claim("tid", account.HomeAccountId.TenantId));
+                }
+
+                return new ClaimsPrincipal(identity);
+            }
+
+            var username = "username@test.com";
+            var oid = "objectId";
+            var tid = "tenantId";
+
+            IAccount account = Substitute.For<IAccount>();
+            account.Username.Returns(username);
+            var accId = new AccountId($"{oid}.{tid}", oid, tid);
+            account.HomeAccountId.Returns(accId);
+
+            var claimsIdentityResult = ToClaimsPrincipal(account).Identity as ClaimsIdentity;
+
+            Assert.IsNotNull(claimsIdentityResult, "The ClaimsIdentity should not be null.");
+            Assert.AreEqual(3, claimsIdentityResult.Claims.Count(), "Expected 3 claims in the ClaimsIdentity.");
+            Assert.AreEqual(username, claimsIdentityResult.FindFirst(ClaimTypes.Upn)?.Value, "UPN claim value should match.");
+            Assert.AreEqual(oid, claimsIdentityResult.FindFirst("oid")?.Value, "OID claim value should match.");
+            Assert.AreEqual(tid, claimsIdentityResult.FindFirst("tid")?.Value, "TID claim value should match.");
         }
 
         private async Task ValidateGetAccountsWithDiscoveryAsync(string tokenCacheAsString)
@@ -392,7 +437,7 @@ namespace Microsoft.Identity.Test.Unit.PublicApiTests
 
         private PublicClientApplication InitPcaFromCacheFile(
             AzureCloudInstance cloud,
-            HttpManager httpManager,
+            IHttpManager httpManager,
             string tokenCacheFile)
         {
             return InitPcaFromCacheString(
@@ -404,7 +449,7 @@ namespace Microsoft.Identity.Test.Unit.PublicApiTests
 
         private PublicClientApplication InitPcaFromCacheString(
             AzureCloudInstance cloud,
-            HttpManager httpManager,
+            IHttpManager httpManager,
             string tokenCacheString)
         {
             PublicClientApplication pca = PublicClientApplicationBuilder

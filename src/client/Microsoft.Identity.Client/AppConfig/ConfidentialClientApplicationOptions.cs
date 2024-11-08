@@ -22,7 +22,7 @@ namespace Microsoft.Identity.Client
         /// "TryAutoDetect" and MSAL.NET will attempt to auto-detect the region. 
         /// </summary>
         /// <remarks>
-        /// Region names as per https://docs.microsoft.com/en-us/dotnet/api/microsoft.azure.management.resourcemanager.fluent.core.region?view=azure-dotnet.
+        /// Region names as per <see href="https://learn.microsoft.com/dotnet/api/microsoft.azure.management.resourcemanager.fluent.core.region?view=azure-dotnet-legacy">Region class documentation</see>.
         /// Not all auth flows can use the regional token service. 
         /// Service To Service (client credential flow) tokens can be obtained from the regional service.
         /// Requires configuration at the tenant level.
@@ -36,13 +36,13 @@ namespace Microsoft.Identity.Client
         /// <summary>
         /// When set to <c>true</c>, MSAL will lock cache access at the <see cref="ConfidentialClientApplication"/> level, i.e.
         /// the block of code between BeforeAccessAsync and AfterAccessAsync callbacks will be synchronized. 
-        /// Apps can set this flag to <c>false</c> to enable an optimistic cache locking strategy, which may result in better performance, especially 
-        /// when ConfidentialClientApplication objects are reused.
+        /// Apps can set this flag to <c>false</c> to enable an optimistic cache locking strategy, which may result in better performance
+        /// at the cost of cache consistency. 
+        /// Setting this flag to <c>false</c> is only recommended for apps which create a new <see cref="ConfidentialClientApplication"/> per request.
         /// </summary>
         /// <remarks>
-        /// False by default.
-        /// Not recommended for apps that call RemoveAsync
+        /// This flag is <c>true</c> by default. The default behavior is recommended.
         /// </remarks>
-        public bool EnableCacheSynchronization { get; set; } = false;
+        public bool EnableCacheSynchronization { get; set; } = true;
     }
 }

@@ -1,25 +1,19 @@
 ﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+using System;
 using System.Security.Cryptography;
-using Microsoft.Identity.Client.AuthScheme.PoP;
 using Microsoft.Identity.Client.Utils;
 
 namespace Microsoft.Identity.Client.AuthScheme.PoP
 {
-
     /// <summary>
     /// The default implementation will store a key in memory    
     /// </summary>
     internal class InMemoryCryptoProvider : IPoPCryptoProvider
     {
         internal /* internal for test only */ const int RsaKeySize = 2048;
-
-#if NET45
-        private RSACryptoServiceProvider _signingKey;
-#else
         private RSA _signingKey;
-#endif
 
         public InMemoryCryptoProvider()
         {
@@ -28,16 +22,19 @@ namespace Microsoft.Identity.Client.AuthScheme.PoP
 
         public string CannonicalPublicKeyJwk { get; private set; }
 
-        public string CryptographicAlgorithm { get => "RS256"; }
+        public string CryptographicAlgorithm { get => "PS256"; }
 
         private void InitializeSigningKey()
         {
-#if NET45
-            _signingKey = new RSACryptoServiceProvider(RsaKeySize);
+#if NETFRAMEWORK
+            // This method was obsolete in .NET,
+            // but Create() on .NET FWK defaults to PKCS1 padding.
+            _signingKey = RSA.Create("RSAPSS");
 #else
             _signingKey = RSA.Create();
-            _signingKey.KeySize = RsaKeySize;
 #endif
+
+            _signingKey.KeySize = RsaKeySize;
             RSAParameters publicKeyInfo = _signingKey.ExportParameters(false);
 
             CannonicalPublicKeyJwk = ComputeCanonicalJwk(publicKeyInfo);
@@ -45,7 +42,10 @@ namespace Microsoft.Identity.Client.AuthScheme.PoP
 
         public byte[] Sign(byte[] payload)
         {
-            return Sign(_signingKey, payload);
+            return _signingKey.SignData(
+                payload,
+                HashAlgorithmName.SHA256,
+                RSASignaturePadding.Pss);
         }
 
         /// <summary>
@@ -54,16 +54,16 @@ namespace Microsoft.Identity.Client.AuthScheme.PoP
         /// </summary>
         private static string ComputeCanonicalJwk(RSAParameters rsaPublicKey)
         {
+            //Important: This format cannot be modified as it needs to be the same as what is used in the service when calculating hashes.
             return $@"{{""{JsonWebKeyParameterNames.E}"":""{Base64UrlHelpers.Encode(rsaPublicKey.Exponent)}"",""{JsonWebKeyParameterNames.Kty}"":""{JsonWebAlgorithmsKeyTypes.RSA}"",""{JsonWebKeyParameterNames.N}"":""{Base64UrlHelpers.Encode(rsaPublicKey.Modulus)}""}}";
         }
 
-        public static byte[] Sign(RSA RsaKey, byte[] payload)
+        /// <summary>
+        /// For internal testing only
+        /// </summary>
+        internal RSAParameters GetPublicKeyParameters()
         {
-#if NET45
-            return ((RSACryptoServiceProvider)RsaKey).SignData(payload, CryptoConfig.MapNameToOID("SHA256"));
-#else
-            return RsaKey.SignData(payload, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
-#endif
+            return _signingKey.ExportParameters(false);
         }
     }
 }

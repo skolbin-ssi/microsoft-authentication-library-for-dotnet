@@ -66,7 +66,7 @@ namespace Microsoft.Identity.Client.Platforms.Android
             return global::Android.OS.Build.Model;
         }
 
-        /// <inheritdoc />
+        /// <inheritdoc/>
         public override string GetDefaultRedirectUri(string clientId, bool useRecommendedRedirectUri = false)
         {
             return string.Format(CultureInfo.InvariantCulture, AndroidDefaultRedirectUriTemplate, clientId);
@@ -92,7 +92,9 @@ namespace Microsoft.Identity.Client.Platforms.Android
         /// <returns>Version of the calling application</returns>
         protected override string InternalGetCallingApplicationVersion()
         {
+#pragma warning disable CS0618 // Type or member is obsolete
             return global::Android.App.Application.Context.PackageManager.GetPackageInfo(global::Android.App.Application.Context.PackageName, 0)?.VersionName;
+#pragma warning restore CS0618 // Type or member is obsolete
         }
 
         /// <summary>
@@ -106,13 +108,13 @@ namespace Microsoft.Identity.Client.Platforms.Android
                 global::Android.Provider.Settings.Secure.AndroidId);
         }
 
-        /// <inheritdoc />
+        /// <inheritdoc/>
         public override ILegacyCachePersistence CreateLegacyCachePersistence()
         {
             return new AndroidLegacyCachePersistence(Logger);
         }
 
-        /// <inheritdoc />
+        /// <inheritdoc/>
         public override ITokenCacheAccessor CreateTokenCacheAccessor(
             CacheOptions cacheOptions, 
             bool isApplicationTokenCache = false)
@@ -120,7 +122,7 @@ namespace Microsoft.Identity.Client.Platforms.Android
             return new AndroidTokenCacheAccessor();
         }
 
-        /// <inheritdoc />
+        /// <inheritdoc/>
         protected override IWebUIFactory CreateWebUiFactory()
         {
             return new AndroidWebUIFactory();

@@ -4,7 +4,11 @@
 using System;
 using System.Diagnostics;
 using System.Linq;
+using System.Net.Http;
+using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Identity.Client.Core;
+using Microsoft.Identity.Client.Http;
 using Microsoft.Identity.Client.Internal;
 
 namespace Microsoft.Identity.Client.Instance
@@ -49,12 +53,12 @@ namespace Microsoft.Identity.Client.Instance
         /// - if the authority is defined at app level, and the request level authority of is of different type, throw an exception
         ///
         /// </summary>
-        public static async Task<Authority> CreateAuthorityForRequestAsync(
+        public static Task<Authority> CreateAuthorityForRequestAsync(
             RequestContext requestContext,
             AuthorityInfo requestAuthorityInfo,
             IAccount account = null)
         {
-            return await AuthorityInfo.AuthorityInfoHelper.CreateAuthorityForRequestAsync(requestContext, requestAuthorityInfo, account).ConfigureAwait(false);
+            return AuthorityInfo.AuthorityInfoHelper.CreateAuthorityForRequestAsync(requestContext, requestAuthorityInfo, account);
         }
 
         public static Authority CreateAuthority(string authority, bool validateAuthority = false)
@@ -76,13 +80,25 @@ namespace Microsoft.Identity.Client.Instance
                 return initialAuthority;
             }
 
-            string tenantedAuthority = initialAuthority.GetTenantedAuthority(tenantId);
+            string tenantedAuthority = initialAuthority.GetTenantedAuthority(tenantId, forceSpecifiedTenant: false);
 
-            return CreateAuthority(tenantedAuthority, authorityInfo.ValidateAuthority);
+            // don't re-create the whole authority info, no need for parsing, as the type cannot change
+            var newAuthorityInfo = new AuthorityInfo(
+                initialAuthority.AuthorityInfo.AuthorityType,
+                tenantedAuthority,
+                initialAuthority.AuthorityInfo.ValidateAuthority);
+
+            return CreateAuthority(newAuthorityInfo);
         }
 
         internal static Authority CreateAuthorityWithEnvironment(AuthorityInfo authorityInfo, string environment)
         {
+            // don't change the environment if it's not supported
+            if (!authorityInfo.IsInstanceDiscoverySupported)
+            {
+                return CreateAuthority(authorityInfo);
+            }
+
             var uriBuilder = new UriBuilder(authorityInfo.CanonicalAuthority)
             {
                 Host = environment
@@ -97,16 +113,17 @@ namespace Microsoft.Identity.Client.Instance
         internal abstract string TenantId { get; }
 
         /// <summary>
-        /// Gets a tenanted authority if the current authority is tenant-less.
-        /// Returns the original authority on B2C and ADFS
+        /// Changes the tenant ID of the authority, if the authority supports tenants. If not, throws exception.
         /// </summary>
-        internal abstract string GetTenantedAuthority(string tenantId, bool forceTenantless = false);
+        /// <param name="tenantId">The new tenant ID</param>
+        /// <param name="forceSpecifiedTenant">Forces the change, even if the current tenant is not "common" or "organizations" or "consumers"</param>
+        internal abstract string GetTenantedAuthority(string tenantId, bool forceSpecifiedTenant);
+       
+        internal abstract Task<string> GetTokenEndpointAsync(RequestContext requestContext);
 
-        internal abstract string GetTokenEndpoint();
+        internal abstract Task<string> GetAuthorizationEndpointAsync(RequestContext requestContext);
 
-        internal abstract string GetAuthorizationEndpoint();
-
-        internal abstract string GetDeviceCodeEndpoint();
+        internal abstract Task<string> GetDeviceCodeEndpointAsync(RequestContext requestContext);
         #endregion
 
         internal static string GetEnvironment(string authority)

@@ -55,7 +55,7 @@ namespace Microsoft.Identity.Client
         string Name { get; }
 
         /// <summary>
-        /// In MSAL.NET 1.x was the URL of the identity provider (e.g. https://login.microsoftonline.com/tenantId).
+        /// In MSAL.NET 1.x was the URL of the identity provider (e.g. `https://login.microsoftonline.com/tenantId`).
         /// From MSAL.NET 2.x use <see cref="IAccount.Environment"/> which retrieves the host only (e.g. login.microsoftonline.com).
         /// See https://aka.ms/msal-net-2-released for more details.
         /// </summary>
@@ -215,10 +215,7 @@ namespace Microsoft.Identity.Client
         #endregion MSAL3X deprecations
     }
 
-    /// <summary>
-    /// Abstract class containing common API methods and properties. Both <see cref="T:PublicClientApplication"/> and <see cref="T:ConfidentialClientApplication"/>
-    /// extend this class. For details see https://aka.ms/msal-net-client-applications
-    /// </summary>
+    /// <inheritdoc/>
     public partial class ClientApplicationBase
     {
         /// <summary>
@@ -387,15 +384,6 @@ namespace Microsoft.Identity.Client
 
     public partial interface IPublicClientApplication
     {
-#if WINDOWS_APP
-        /// <summary>
-        /// Flag to enable authentication with the user currently signed-in on Windows.
-        /// When set to true, the application will try to connect to the corporate network using Windows Integrated Authentication.
-        /// </summary>
-        [EditorBrowsable(EditorBrowsableState.Never)]
-        [Obsolete("PublicClientApplication is now immutable, you can set this property using the PublicClientApplicationBuilder and read it using IAppConfig.  See https://aka.ms/msal-net-3-breaking-changes and https://aka.ms/msal-net-application-configuration", true)]
-        bool UseCorporateNetwork { get; set; }
-#endif // WINDOWS_APP
 
         #region MSAL3X deprecations
 
@@ -799,22 +787,8 @@ namespace Microsoft.Identity.Client
         #endregion MSAL3X deprecations
     }
 
-    /// <summary>
-    /// Abstract class containing common API methods and properties.
-    /// For details see https://aka.ms/msal-net-client-applications
-    /// </summary>
     public partial class PublicClientApplication
     {
-#if WINDOWS_APP
-        /// <summary>
-        /// Flag to enable authentication with the user currently signed-in on Windows.
-        /// When set to true, the application will try to connect to the corporate network using Windows Integrated Authentication.
-        /// </summary>
-        [EditorBrowsable(EditorBrowsableState.Never)]
-        [Obsolete("PublicClientApplication is now immutable, you can set this property using the PublicClientApplicationBuilder and read it using IAppConfig.  See https://aka.ms/msal-net-3-breaking-changes and https://aka.ms/msal-net-application-configuration", true)]
-        public bool UseCorporateNetwork { get; set; }
-#endif
-
 #if iOS
         /// <summary>
         /// Xamarin iOS specific property enabling the application to share the token cache with other applications sharing the same keychain security group.
@@ -826,7 +800,7 @@ namespace Microsoft.Identity.Client
         [Obsolete("Use iOSKeychainSecurityGroup instead (See https://aka.ms/msal-net-ios-keychain-security-group)", true)]
         public string KeychainSecurityGroup { get { throw new NotImplementedException(); } }
 
-        /// <inheritdoc />
+        /// <inheritdoc/>
         [EditorBrowsable(EditorBrowsableState.Never)]
         [DebuggerBrowsable(DebuggerBrowsableState.Never)]
         [Obsolete("See https://aka.ms/msal-net-3-breaking-changes and https://aka.ms/msal-net-application-configuration", true)]
@@ -840,7 +814,7 @@ namespace Microsoft.Identity.Client
         #region MSAL3X deprecations
 
         /// <summary>
-        /// Constructor of the application. It will use https://login.microsoftonline.com/common as the default authority.
+        /// Constructor of the application. It will use `https://login.microsoftonline.com/common` as the default authority.
         /// </summary>
         /// <param name="clientId">Client ID (also known as App ID) of the application as registered in the
         /// application registration portal (https://aka.ms/msal-net-register-app)/. REQUIRED</param>
@@ -1321,7 +1295,7 @@ namespace Microsoft.Identity.Client
         /// <remarks>
         /// On Windows Universal Platform, the following capabilities need to be provided:
         /// Enterprise Authentication, Private Networks (Client and Server), User Account Information
-        /// Supported on .net desktop and UWP
+        /// Supported on .net desktop 
         /// </remarks>
         /// <param name="scopes">Scopes requested to access a protected API</param>
         /// <returns>Authentication result containing a token for the requested scopes and for the currently signed-in user in Windows</returns>
@@ -1370,10 +1344,6 @@ namespace Microsoft.Identity.Client
         #endregion MSAL3X deprecations
     }
 
-    /// <summary>
-    /// Interface defining common API methods and properties.
-    /// For details see https://aka.ms/msal-net-client-applications
-    /// </summary>
     public partial interface IPublicClientApplication
     {
 #if iOS
@@ -1402,10 +1372,7 @@ namespace Microsoft.Identity.Client
     }
 
 #if SUPPORTS_CONFIDENTIAL_CLIENT
-    /// <summary>
-    /// Component to be used with confidential client applications like web apps/APIs.
-    /// </summary>
-    public partial interface IConfidentialClientApplication
+     public partial interface IConfidentialClientApplication
     {
     #region MSAL3X deprecations
 
@@ -1572,7 +1539,7 @@ namespace Microsoft.Identity.Client
     {
 #if SUPPORTS_CONFIDENTIAL_CLIENT
         /// <summary>
-        /// [V2 API] Constructor for a confidential client application requesting tokens with the default authority (<see cref="ClientApplicationBase.DefaultAuthority"/>)
+        /// [V2 API] Constructor for a confidential client application requesting tokens with the default authority (<see cref="ApplicationBase.DefaultAuthority"/>)
         /// </summary>
         /// <param name="clientId">Client ID (also known as App ID) of the application as registered in the
         /// application registration portal (https://aka.ms/msal-net-register-app)/. REQUIRED</param>

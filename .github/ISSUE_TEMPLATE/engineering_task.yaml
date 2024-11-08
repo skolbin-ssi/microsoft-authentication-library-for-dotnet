@@ -1,0 +1,43 @@
+name: Engineering task
+description: New engineering task (for internal use only).
+labels: ["untriaged", "internal"]
+title : '[Engineering task]'
+body:     
+- type: markdown
+  attributes:
+    value: |
+      ## Engineering task **(for internal use only)**
+      
+- type: dropdown
+  attributes:
+    label: Task type
+    multiple: true
+    options: 
+      - "Design"
+      - "Test"
+      - "Evaluation"
+      - "Prototype"
+      - "Builds"
+      - "Development"
+      - "Best practices"
+      - "Supportability"
+      - "Engineering excellence"
+      - "Performance"
+      - "Security"
+      - "Other"
+  validations:
+    required: true
+
+- type: textarea
+  attributes:
+    label: Description
+    description: "Please describe briefly what this task is about."
+  validations: 
+    required: true
+
+- type: textarea
+  attributes:
+    label: Solution
+    description: "Describe the solution you'd like."
+  validations: 
+    required: false

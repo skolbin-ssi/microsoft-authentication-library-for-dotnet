@@ -4,10 +4,12 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Identity.Client.ApiConfig.Parameters;
 using Microsoft.Identity.Client.AuthScheme;
+using Microsoft.Identity.Client.Core;
 using Microsoft.Identity.Client.Instance;
 using Microsoft.Identity.Client.Internal;
 using Microsoft.Identity.Client.TelemetryCore.Internal.Events;
@@ -15,52 +17,18 @@ using Microsoft.Identity.Client.Utils;
 
 namespace Microsoft.Identity.Client
 {
-    /// <summary>
-    /// Base class for builders of token requests, which attempt to acquire a token
-    /// based on the provided parameters.
-    /// </summary>
+    /// <inheritdoc/>
     /// <typeparam name="T"></typeparam>
-    public abstract class AbstractAcquireTokenParameterBuilder<T>
-        where T : AbstractAcquireTokenParameterBuilder<T>
+    public abstract class AbstractAcquireTokenParameterBuilder<T> : BaseAbstractAcquireTokenParameterBuilder<T>
+        where T : BaseAbstractAcquireTokenParameterBuilder<T>
     {
-
-        internal IServiceBundle ServiceBundle { get; }
 
         /// <summary>
         /// Default constructor for AbstractAcquireTokenParameterBuilder.
         /// </summary>
-        protected AbstractAcquireTokenParameterBuilder() { }
+        protected AbstractAcquireTokenParameterBuilder() : base() { }
 
-        internal AbstractAcquireTokenParameterBuilder(IServiceBundle serviceBundle)
-        {
-            ServiceBundle = serviceBundle;
-        }
-
-        internal AcquireTokenCommonParameters CommonParameters { get; } = new AcquireTokenCommonParameters();
-
-        /// <summary>
-        /// Executes the Token request asynchronously, with a possibility of canceling the
-        /// asynchronous method.
-        /// </summary>
-        /// <param name="cancellationToken">Cancellation token. See <see cref="CancellationToken"/> </param>
-        /// <returns>Authentication result containing a token for the requested scopes and parameters
-        /// set in the builder.</returns>
-        /// <remarks>Cancellation is not guaranteed, it is best effort. If the operation reaches a point of no return, e.g.
-        /// tokens are acquired and written to the cache, the task will complete even if cancellation was requested.
-        /// Do not rely on cancellation tokens for strong consistency.</remarks>
-        public abstract Task<AuthenticationResult> ExecuteAsync(CancellationToken cancellationToken);
-
-        internal abstract ApiEvent.ApiIds CalculateApiEventId();
-
-        /// <summary>
-        /// Executes the Token request asynchronously.
-        /// </summary>
-        /// <returns>Authentication result containing a token for the requested scopes and parameters
-        /// set in the builder.</returns>
-        public Task<AuthenticationResult> ExecuteAsync()
-        {
-            return ExecuteAsync(CancellationToken.None);
-        }
+        internal AbstractAcquireTokenParameterBuilder(IServiceBundle serviceBundle) : base(serviceBundle) { }
 
         /// <summary>
         /// Specifies which scopes to request. This method is used when your application needs
@@ -75,21 +43,7 @@ namespace Microsoft.Identity.Client
         protected T WithScopes(IEnumerable<string> scopes)
         {
             CommonParameters.Scopes = scopes;
-            return (T)this;
-        }
-
-        /// <summary>
-        /// Sets Extra Query Parameters for the query string in the HTTP authentication request.
-        /// </summary>
-        /// <param name="extraQueryParameters">This parameter will be appended as is to the query string in the HTTP authentication request to the authority
-        /// as a string of segments of the form <c>key=value</c> separated by an ampersand character.
-        /// The parameter can be null.</param>
-        /// <returns>The builder to chain the .With methods.</returns>
-        public T WithExtraQueryParameters(Dictionary<string, string> extraQueryParameters)
-        {
-            CommonParameters.ExtraQueryParameters = extraQueryParameters ??
-                new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            return (T)this;
+            return this as T;
         }
 
         /// <summary>
@@ -103,7 +57,7 @@ namespace Microsoft.Identity.Client
         public T WithClaims(string claims)
         {
             CommonParameters.Claims = claims;
-            return (T)this;
+            return this as T;
         }
 
         /// <summary>
@@ -119,7 +73,7 @@ namespace Microsoft.Identity.Client
             {
                 return WithExtraQueryParameters(CoreHelpers.ParseKeyValueList(extraQueryParameters, '&', true, null));
             }
-            return (T)this;
+            return this as T;
         }
 
         /// <summary>
@@ -136,7 +90,8 @@ namespace Microsoft.Identity.Client
         /// the application registration portal.</param>
         /// <param name="validateAuthority">Whether the authority should be validated against the server metadata.</param>
         /// <returns>The builder to chain the .With methods.</returns>
-        [EditorBrowsable(EditorBrowsableState.Never)] // Soft deprecate
+        [EditorBrowsable(EditorBrowsableState.Never)]
+        [Obsolete("This API has been deprecated. You can override the tenant ID in the request using WithTenantId. See https://aka.ms/msal-net-authority-override ")]
         public T WithAuthority(string authorityUri, bool validateAuthority = true)
         {
             if (string.IsNullOrWhiteSpace(authorityUri))
@@ -144,7 +99,7 @@ namespace Microsoft.Identity.Client
                 throw new ArgumentNullException(nameof(authorityUri));
             }
             CommonParameters.AuthorityOverride = AuthorityInfo.FromAuthorityUri(authorityUri, validateAuthority);
-            return (T)this;
+            return this as T;
         }
 
         /// <summary>
@@ -158,6 +113,7 @@ namespace Microsoft.Identity.Client
         /// <param name="validateAuthority">Whether the authority should be validated against the server metadata.</param>
         /// <returns>The builder to chain the .With methods.</returns>
         [EditorBrowsable(EditorBrowsableState.Never)] // Soft deprecate
+        [Obsolete("This API has been deprecated. You can override the tenant ID in the request using WithTenantId. See https://aka.ms/msal-net-authority-override ")]
         public T WithAuthority(
             string cloudInstanceUri,
             Guid tenantId,
@@ -167,8 +123,8 @@ namespace Microsoft.Identity.Client
             {
                 throw new ArgumentNullException(nameof(cloudInstanceUri));
             }
-            CommonParameters.AuthorityOverride = AuthorityInfo.FromAadAuthority(new Uri(cloudInstanceUri), tenantId, validateAuthority);
-            return (T)this;
+            CommonParameters.AuthorityOverride = AuthorityInfo.FromAadAuthority(cloudInstanceUri, tenantId, validateAuthority);
+            return this as T;
         }
 
         /// <summary>
@@ -189,6 +145,7 @@ namespace Microsoft.Identity.Client
         /// </remarks>
         /// <returns>The builder to chain the .With methods.</returns>
         [EditorBrowsable(EditorBrowsableState.Never)] // Soft deprecate
+        [Obsolete("This API has been deprecated. You can override the tenant ID in the request using WithTenantId. See https://aka.ms/msal-net-authority-override ")]
         public T WithAuthority(
             string cloudInstanceUri,
             string tenant,
@@ -198,8 +155,8 @@ namespace Microsoft.Identity.Client
             {
                 throw new ArgumentNullException(nameof(cloudInstanceUri));
             }
-            CommonParameters.AuthorityOverride = AuthorityInfo.FromAadAuthority(new Uri(cloudInstanceUri), tenant, validateAuthority);
-            return (T)this;
+            CommonParameters.AuthorityOverride = AuthorityInfo.FromAadAuthority(cloudInstanceUri, tenant, validateAuthority);
+            return this as T;
         }
 
         /// <summary>
@@ -215,13 +172,14 @@ namespace Microsoft.Identity.Client
         /// <param name="validateAuthority">Whether the authority should be validated against the server metadata.</param>
         /// <returns>The builder to chain the .With methods.</returns>
         [EditorBrowsable(EditorBrowsableState.Never)] // Soft deprecate
+        [Obsolete("This API has been deprecated. You can override the tenant ID in the request using WithTenantId. See https://aka.ms/msal-net-authority-override ")]
         public T WithAuthority(
             AzureCloudInstance azureCloudInstance,
             Guid tenantId,
             bool validateAuthority = true)
         {
             CommonParameters.AuthorityOverride = AuthorityInfo.FromAadAuthority(azureCloudInstance, tenantId, validateAuthority);
-            return (T)this;
+            return this as T;
         }
 
         /// <summary>
@@ -236,14 +194,15 @@ namespace Microsoft.Identity.Client
         /// <param name="tenant">Tenant Id of the tenant from which to sign-in users. This can also be a GUID.</param>
         /// <param name="validateAuthority">Whether the authority should be validated against the server metadata.</param>
         /// <returns>The builder to chain the .With methods.</returns>
-        [EditorBrowsable(EditorBrowsableState.Never)] // Soft deprecate
+        [EditorBrowsable(EditorBrowsableState.Never)] // Soft deprecate\
+        [Obsolete("This API has been deprecated. You can override the tenant ID in the request using WithTenantId. See https://aka.ms/msal-net-authority-override ")]
         public T WithAuthority(
             AzureCloudInstance azureCloudInstance,
             string tenant,
             bool validateAuthority = true)
         {
             CommonParameters.AuthorityOverride = AuthorityInfo.FromAadAuthority(azureCloudInstance, tenant, validateAuthority);
-            return (T)this;
+            return this as T;
         }
 
         /// <summary>
@@ -258,10 +217,11 @@ namespace Microsoft.Identity.Client
         /// <param name="validateAuthority">Whether the authority should be validated against the server metadata.</param>
         /// <returns>The builder to chain the .With methods.</returns>
         [EditorBrowsable(EditorBrowsableState.Never)] // Soft deprecate
+        [Obsolete("This API has been deprecated. You can override the tenant ID in the request using WithTenantId. See https://aka.ms/msal-net-authority-override ")]
         public T WithAuthority(AzureCloudInstance azureCloudInstance, AadAuthorityAudience authorityAudience, bool validateAuthority = true)
         {
             CommonParameters.AuthorityOverride = AuthorityInfo.FromAadAuthority(azureCloudInstance, authorityAudience, validateAuthority);
-            return (T)this;
+            return this as T;
         }
 
         /// <summary>
@@ -276,24 +236,28 @@ namespace Microsoft.Identity.Client
         /// <param name="validateAuthority">Whether the authority should be validated against the server metadata.</param>
         /// <returns>The builder to chain the .With methods.</returns>        
         [EditorBrowsable(EditorBrowsableState.Never)] // Soft deprecate
+        [Obsolete("This API has been deprecated. You can override the tenant ID in the request using WithTenantId. See https://aka.ms/msal-net-authority-override ")]
         public T WithAuthority(AadAuthorityAudience authorityAudience, bool validateAuthority = true)
         {
             CommonParameters.AuthorityOverride = AuthorityInfo.FromAadAuthority(authorityAudience, validateAuthority);
-            return (T)this;
+            return this as T;
         }
 
         /// <summary>
         /// Overrides the tenant ID specified in the authority at the application level. This operation preserves the authority host (environment).
         /// 
-        /// If an authority was not specified at the application level, the default used is https://login.microsoftonline.com/common.
+        /// If an authority was not specified at the application level, the default used is `https://login.microsoftonline.com/common`.
         /// </summary>
-        /// <param name="tenantId">The tenant ID, which can be either in GUID format or a domain name. Also known as the Directory ID.</param>
+        /// <param name="tenantId">Tenant ID of the Microsoft Entra ID tenant
+        /// or a domain associated with this Microsoft Entra ID tenant, in order to sign-in a user of a specific organization only.</param>
         /// <returns>The builder to chain the .With methods.</returns>
-        /// <exception cref="ArgumentNullException">Thrown if tenantId is null or an empty string</exception>
-        /// <exception cref="MsalClientException">Thrown if the application was configured with an authority that is not AAD specific (e.g. ADFS or B2C).</exception>
+        /// <exception cref="ArgumentNullException">Thrown if <paramref name="tenantId"/> is null or an empty string.</exception>
+        /// <exception cref="ArgumentException">Thrown if <paramref name="tenantId"/> is not well-formatted (for example, has spaces).</exception>
+        /// <exception cref="MsalClientException">Thrown in more general exception scenarios (for ex. if the application was configured with an authority that does not allow tenants).</exception>
         /// <remarks>
         /// The tenant should be more restrictive than the one configured at the application level, e.g. don't use "common".
-        /// Does not affect authority validation, which is specified at the application level.</remarks>
+        /// Does not affect authority validation, which is specified at the application level.
+        /// </remarks>
         public T WithTenantId(string tenantId)
         {
             if (string.IsNullOrEmpty(tenantId))
@@ -301,37 +265,29 @@ namespace Microsoft.Identity.Client
                 throw new ArgumentNullException(nameof(tenantId));
             }
 
-            if (!ServiceBundle.Config.Authority.AuthorityInfo.IsTenantOverrideSupported)
-            {
-                throw new MsalClientException(
-                    MsalError.TenantOverrideNonAad,
-                    MsalErrorMessage.TenantOverrideNonAad);
-            }
+            Authority newAuthority = AuthorityInfo.AuthorityInfoHelper.CreateAuthorityWithTenant(
+                ServiceBundle.Config.Authority, 
+                tenantId, 
+                true);
 
-            AadAuthority aadAuthority = (AadAuthority)ServiceBundle.Config.Authority;
-            string tenantedAuthority = aadAuthority.GetTenantedAuthority(tenantId, true);
-            var newAuthorityInfo = AuthorityInfo.FromAadAuthority(
-                tenantedAuthority,
-                ServiceBundle.Config.Authority.AuthorityInfo.ValidateAuthority);
+            CommonParameters.AuthorityOverride = newAuthority.AuthorityInfo;
 
-            CommonParameters.AuthorityOverride = newAuthorityInfo;
-
-            return (T)this;
+            return this as T;
         }
 
         /// <summary>
         /// Extracts the tenant ID from the provided authority URI and overrides the tenant ID specified in the authority at the application level. This operation preserves the authority host (environment) provided to the application builder.
-        /// 
-        /// If an authority was not provided to the application builder, this method will replace the tenant ID in the default authority - https://login.microsoftonline.com/common.
+        /// If an authority was not provided to the application builder, this method will replace the tenant ID in the default authority - `https://login.microsoftonline.com/common`.
         /// </summary>
         /// <param name="authorityUri">URI from which to extract the tenant ID</param>
-
         /// <returns>The builder to chain the .With methods.</returns>
-        /// <exception cref="ArgumentNullException">Thrown if <paramref name="authorityUri"/> is null or an empty string</exception>
-        /// <exception cref="MsalClientException">Thrown if the application was configured with an authority that is not AAD specific (e.g. ADFS or B2C).</exception>
+        /// <exception cref="ArgumentNullException">Thrown if <paramref name="authorityUri"/> is null or an empty string.</exception>
+        /// <exception cref="ArgumentException">Thrown if <paramref name="authorityUri"/> is not well-formatted (for example, has spaces).</exception>
+        /// <exception cref="MsalClientException">Thrown in general exception scenarios (for example if the application was configured with an authority that does not allow tenants).</exception>
         /// <remarks>
         /// The tenant should be more restrictive than the one configured at the application level, e.g. don't use "common".
-        /// Does not affect authority validation, which is specified at the application level.</remarks>
+        /// Does not affect authority validation, which is specified at the application level.
+        /// </remarks>
         public T WithTenantIdFromAuthority(Uri authorityUri)
         {
             if (authorityUri == null)
@@ -339,15 +295,8 @@ namespace Microsoft.Identity.Client
                 throw new ArgumentNullException(nameof(authorityUri));
             }
 
-            if (!ServiceBundle.Config.Authority.AuthorityInfo.IsTenantOverrideSupported)
-            {
-                throw new MsalClientException(
-                    MsalError.TenantOverrideNonAad,
-                    MsalErrorMessage.TenantOverrideNonAad);
-            }
-
             var authorityInfo = AuthorityInfo.FromAuthorityUri(authorityUri.ToString(), false);
-            var authority = authorityInfo.CreateAuthority();
+            var authority = Authority.CreateAuthority(authorityInfo);
             return WithTenantId(authority.TenantId);
         }
 
@@ -365,7 +314,7 @@ namespace Microsoft.Identity.Client
                 throw new ArgumentNullException(nameof(authorityUri));
             }
             CommonParameters.AuthorityOverride = new AuthorityInfo(AuthorityType.Adfs, authorityUri, validateAuthority);
-            return (T)this;
+            return this as T;
         }
 
         /// <summary>
@@ -382,50 +331,14 @@ namespace Microsoft.Identity.Client
                 throw new ArgumentNullException(nameof(authorityUri));
             }
             CommonParameters.AuthorityOverride = new AuthorityInfo(AuthorityType.B2C, authorityUri, false);
-            return (T)this;
+            return this as T;
         }
 
-        /// <summary>
-        /// Sets the correlation id to be used in the authentication request. Used to track a request in the logs of both the SDK and the Identity Provider service.
-        /// If not set, a random one will be generated. 
-        /// </summary>
-        /// <param name="correlationId">Correlation id of the authentication request.</param>
-        /// <returns>The builder to chain the .With methods.</returns>
-        public T WithCorrelationId(Guid correlationId)
+        internal /* for testing */ T WithAuthenticationOperation(IAuthenticationOperation authOperation)
         {
-            CommonParameters.UserProvidedCorrelationId = correlationId;
-            CommonParameters.UseCorrelationIdFromUser = true;
-            return (T)this;
-        }
-
-        internal /* for testing */ T WithAuthenticationScheme(IAuthenticationScheme scheme)
-        {
-            CommonParameters.AuthenticationScheme = scheme ?? throw new ArgumentNullException(nameof(scheme));
-            return (T)this;
-        }
-
-        /// <summary>
-        /// Validates the parameters of the AcquireToken operation.
-        /// </summary>
-        protected virtual void Validate()
-        {
-        }
-
-        internal void ValidateAndCalculateApiId()
-        {
-            Validate();
-            CommonParameters.ApiId = CalculateApiEventId();
-            CommonParameters.CorrelationId = CommonParameters.UseCorrelationIdFromUser ? CommonParameters.UserProvidedCorrelationId : Guid.NewGuid();
-        }
-
-        internal void ValidateUseOfExperimentalFeature([System.Runtime.CompilerServices.CallerMemberName] string memberName = "")
-        {
-            if (!ServiceBundle.Config.ExperimentalFeaturesEnabled)
-            {
-                throw new MsalClientException(
-                    MsalError.ExperimentalFeature,
-                    MsalErrorMessage.ExperimentalFeature(memberName));
-            }
+            ValidateUseOfExperimentalFeature();
+            CommonParameters.AuthenticationOperation = authOperation ?? throw new ArgumentNullException(nameof(authOperation));
+            return this as T;
         }
     }
 }

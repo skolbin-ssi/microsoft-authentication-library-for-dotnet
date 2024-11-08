@@ -219,7 +219,7 @@ namespace Microsoft.Identity.Client.Platforms.iOS
                 () => iOSBrokerConstants.BrokerPayloadPii + paramsAsQuery,
                 () => iOSBrokerConstants.BrokerPayloadNoPii + brokerPayload.Count);
 
-            DispatchQueue.MainQueue.DispatchAsync(() => UIApplication.SharedApplication.OpenUrl(url));
+            DispatchQueue.MainQueue.DispatchAsync(() => UIApplication.SharedApplication.OpenUrl(url, new UIApplicationOpenUrlOptions(), null));
 
             using (_logger.LogBlockDuration("waiting for broker response"))
             {
@@ -390,6 +390,11 @@ namespace Microsoft.Identity.Client.Platforms.iOS
         {
             s_brokerResponse = responseUrl;
             s_brokerResponseReady?.Release();
+        }
+
+        public IReadOnlyDictionary<string, string> GetSsoPolicyHeaders()
+        {
+            return CollectionHelpers.GetEmptyDictionary<string, string>();
         }
 
         #region Silent Flow - not supported

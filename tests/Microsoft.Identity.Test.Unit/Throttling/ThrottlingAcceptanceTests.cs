@@ -142,7 +142,7 @@ namespace Microsoft.Identity.Test.Unit.Throttling
         }
 
         /// <summary>
-        /// 400 with Retry After with 2 hours, should be throttled on DefaultThrottlig timeout
+        /// 400 with Retry After with 2 hours, should be throttled on DefaultThrottling timeout
         /// </summary>
         [TestMethod]
         public async Task RetryAfter_LargeTimeoutHeader_DefaultTimeout_IsUsed_Async()
@@ -177,7 +177,7 @@ namespace Microsoft.Identity.Test.Unit.Throttling
                                                               .BuildConcrete();
 
                 var throttlingManager = (httpManagerAndBundle.ServiceBundle.ThrottlingManager as SingletonThrottlingManager);
-                var (retryAfterProvider, _, _) = throttlingManager.GetTypedThrottlingProviders();
+                var (_, _, _) = throttlingManager.GetTypedThrottlingProviders();
 
                 httpManager.AddInstanceDiscoveryMockHandler();
                 var tokenResponse = httpManager.AddMockHandlerSuccessfulClientCredentialTokenResponseMessage();

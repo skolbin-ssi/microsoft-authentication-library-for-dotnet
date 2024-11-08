@@ -28,6 +28,20 @@ steps:
     custom: 'workload'
     arguments: 'restore .\src\client\Microsoft.Identity.Client\Microsoft.Identity.Client.csproj'
 
+- task: Bash@3
+  displayName: Install MAUI
+  inputs:
+    targetType: 'inline'
+    script: |
+      dotnet workload install android ios macos maui --source https://api.nuget.org/v3/index.json
+
+- task: JavaToolInstaller@0
+  displayName: 'Use Java 11'
+  inputs:
+    versionSpec: 11
+    jdkArchitectureOption: x64
+    jdkSourceOption: PreInstalled
+
 - task: VSBuild@1
   displayName: 'NuGet restore ${{ parameters.Solution }}'
   inputs:

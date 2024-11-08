@@ -5,8 +5,6 @@ using System;
 using System.Diagnostics;
 using System.Reflection;
 using System.Windows.Forms;
-using Microsoft.Identity.Client.Broker;
-using Interop = Microsoft.Identity.Client.NativeInterop;
 
 namespace NetDesktopWinForms
 {
@@ -41,7 +39,7 @@ namespace NetDesktopWinForms
                 CheckMemLeak(interOpAssembly, 1);
 
                 // Dispose off core from static
-                Type runtimeBrokerType = assemblyBroker.GetType("Microsoft.Identity.Client.Broker.RuntimeBroker");
+                Type runtimeBrokerType = assemblyBroker.GetType("Microsoft.Identity.Client.Platforms.Features.RuntimeBroker.RuntimeBroker");
                 
                 FieldInfo coreField = runtimeBrokerType.GetField("s_lazyCore", BindingFlags.Static | BindingFlags.NonPublic);
                 Lazy<Microsoft.Identity.Client.NativeInterop.Core> core = (Lazy<Microsoft.Identity.Client.NativeInterop.Core>)coreField.GetValue(null);

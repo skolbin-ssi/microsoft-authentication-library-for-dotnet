@@ -9,26 +9,19 @@ using Microsoft.Identity.Client.Internal;
 
 namespace Microsoft.Identity.Client.ManagedIdentity
 {
-    /// <summary>
-    /// Original source of code: https://github.com/Azure/azure-sdk-for-net/blob/main/sdk/identity/Azure.Identity/src/CloudShellManagedIdentitySource.cs
-    /// </summary>
-    internal class CloudShellManagedIdentitySource : ManagedIdentitySource
+    internal class CloudShellManagedIdentitySource : AbstractManagedIdentity
     {
         private readonly Uri _endpoint;
         private const string CloudShell = "Cloud Shell";
 
-        public static ManagedIdentitySource TryCreate(RequestContext requestContext)
+        public static AbstractManagedIdentity Create(RequestContext requestContext)
         {
             string msiEndpoint = EnvironmentVariables.MsiEndpoint;
 
-            // if ONLY the env var MSI_ENDPOINT is set the MsiType is CloudShell
-            if (string.IsNullOrEmpty(msiEndpoint))
-            {
-                requestContext.Logger.Verbose(()=>"[Managed Identity] Cloud shell managed identity is unavailable.");
-                return null;
-            }
-
             Uri endpointUri;
+
+            requestContext.Logger.Info(() => "[Managed Identity] Cloud shell managed identity is available.");
+
             try
             {
                 endpointUri = new Uri(msiEndpoint);
@@ -36,21 +29,47 @@ namespace Microsoft.Identity.Client.ManagedIdentity
             catch (FormatException ex)
             {
                 requestContext.Logger.Error("[Managed Identity] Invalid endpoint found for the environment variable MSI_ENDPOINT: " + msiEndpoint);
-                throw new MsalClientException(MsalError.InvalidManagedIdentityEndpoint, string.Format(
-                    CultureInfo.InvariantCulture, MsalErrorMessage.ManagedIdentityEndpointInvalidUriError, "MSI_ENDPOINT", msiEndpoint, CloudShell), ex);
+
+                string errorMessage = string.Format(
+                    CultureInfo.InvariantCulture,
+                    MsalErrorMessage.ManagedIdentityEndpointInvalidUriError,
+                    "MSI_ENDPOINT", msiEndpoint, CloudShell);
+
+                // Use the factory to create and throw the exception
+                var exception = MsalServiceExceptionFactory.CreateManagedIdentityException(
+                    MsalError.InvalidManagedIdentityEndpoint,
+                    errorMessage,
+                    ex, 
+                    ManagedIdentitySource.CloudShell,
+                    null); 
+
+                throw exception;
             }
 
             requestContext.Logger.Verbose(()=>"[Managed Identity] Creating cloud shell managed identity. Endpoint URI: " + msiEndpoint);
             return new CloudShellManagedIdentitySource(endpointUri, requestContext);
         }
 
-        private CloudShellManagedIdentitySource(Uri endpoint, RequestContext requestContext) : base(requestContext)
+        private CloudShellManagedIdentitySource(Uri endpoint, RequestContext requestContext) : 
+            base(requestContext, ManagedIdentitySource.CloudShell)
         {
             _endpoint = endpoint;
-            if (!string.IsNullOrEmpty(requestContext.ServiceBundle.Config.ManagedIdentityUserAssignedId))
+
+            if (requestContext.ServiceBundle.Config.ManagedIdentityId.IsUserAssigned)
             {
-                throw new MsalClientException(MsalError.UserAssignedManagedIdentityNotSupported, 
-                    string.Format(CultureInfo.InvariantCulture, MsalErrorMessage.ManagedIdentityUserAssignedNotSupported, CloudShell));
+                string errorMessage = string.Format(
+                    CultureInfo.InvariantCulture, 
+                    MsalErrorMessage.ManagedIdentityUserAssignedNotSupported, 
+                    CloudShell);
+
+                var exception = MsalServiceExceptionFactory.CreateManagedIdentityException(
+                    MsalError.UserAssignedManagedIdentityNotSupported,
+                    errorMessage,
+                    null,
+                    ManagedIdentitySource.CloudShell,
+                    null);
+
+                throw exception;
             }
         }
 

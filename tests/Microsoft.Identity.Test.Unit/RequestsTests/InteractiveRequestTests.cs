@@ -30,8 +30,6 @@ namespace Microsoft.Identity.Test.Unit.RequestsTests
         {
             using (var harness = new MockHttpAndServiceBundle())
             {
-                var bundle = harness.ServiceBundle;
-
                 AuthenticationRequestParameters requestParams = harness.CreateAuthenticationRequestParameters(
                     TestConstants.AuthorityHomeTenant,
                     TestConstants.s_scope,
@@ -70,10 +68,16 @@ namespace Microsoft.Identity.Test.Unit.RequestsTests
 
                 MockInstanceDiscoveryAndOpenIdRequest(harness.HttpManager);
 
+                IDictionary<string, string> expectedQueryParams = new Dictionary<string, string>();
+                foreach (var kvp in TestConstants.ExtraQueryParameters)
+                {
+                    expectedQueryParams[kvp.Key] = kvp.Value;
+                }
+                expectedQueryParams.Add("haschrome", "1");
                 var tokenResponseHandler = new MockHttpMessageHandler
                 {
                     ExpectedMethod = HttpMethod.Post,
-                    ExpectedQueryParams = TestConstants.ExtraQueryParameters,
+                    ExpectedQueryParams = expectedQueryParams,
                     ExpectedPostData = new Dictionary<string, string>()
                         { {OAuth2Parameter.Claims,  TestConstants.Claims } },
                     ResponseMessage = MockHelpers.CreateSuccessTokenResponseMessage()
@@ -84,7 +88,7 @@ namespace Microsoft.Identity.Test.Unit.RequestsTests
                     TestConstants.AuthorityHomeTenant,
                     TestConstants.s_scope,
                     cache,
-                    extraQueryParameters: TestConstants.ExtraQueryParameters,
+                    extraQueryParameters: expectedQueryParams,
                     claims: TestConstants.Claims);
 
                 parameters.RedirectUri = new Uri("some://uri");
@@ -103,8 +107,8 @@ namespace Microsoft.Identity.Test.Unit.RequestsTests
                 AuthenticationResult result = await request.RunAsync().ConfigureAwait(false);
 
                 Assert.IsNotNull(result);
-                Assert.AreEqual(1, ((ITokenCacheInternal)cache).Accessor.GetAllRefreshTokens().Count());
-                Assert.AreEqual(1, ((ITokenCacheInternal)cache).Accessor.GetAllAccessTokens().Count());
+                Assert.AreEqual(1, ((ITokenCacheInternal)cache).Accessor.GetAllRefreshTokens().Count);
+                Assert.AreEqual(1, ((ITokenCacheInternal)cache).Accessor.GetAllAccessTokens().Count);
                 Assert.AreEqual(result.AccessToken, "some-access-token");
             }
         }
@@ -166,8 +170,8 @@ namespace Microsoft.Identity.Test.Unit.RequestsTests
 
                 AuthenticationResult result = await request.RunAsync().ConfigureAwait(false);
 
-                Assert.AreEqual(1, ((ITokenCacheInternal)cache).Accessor.GetAllRefreshTokens().Count());
-                Assert.AreEqual(2, ((ITokenCacheInternal)cache).Accessor.GetAllAccessTokens().Count());
+                Assert.AreEqual(1, ((ITokenCacheInternal)cache).Accessor.GetAllRefreshTokens().Count);
+                Assert.AreEqual(2, ((ITokenCacheInternal)cache).Accessor.GetAllAccessTokens().Count);
                 Assert.AreEqual(result.AccessToken, "some-access-token");
             }
         }
@@ -345,15 +349,19 @@ namespace Microsoft.Identity.Test.Unit.RequestsTests
         [DataRow(false)]
         public async Task WithMultiCloudSupportEnabledAsync(bool multiCloudSupportEnabled)
         {
-            var expectedQueryParams = TestConstants.ExtraQueryParameters;
+            IDictionary<string, string> expectedQueryParams = new Dictionary<string, string>();
+            foreach (var kvp in TestConstants.ExtraQueryParameters)
+            {
+                expectedQueryParams[kvp.Key] = kvp.Value;
+            }
+            expectedQueryParams.Add("haschrome", "1");
             var authorizationResultUri = TestConstants.AuthorityHomeTenant + "?code=some-code";
 
             if (multiCloudSupportEnabled)
             {
                 expectedQueryParams.Add("instance_aware", "true");
-                authorizationResultUri = authorizationResultUri + "&cloud_instance_name=microsoftonline.us&cloud_instance_host_name=login.microsoftonline.us";
+                authorizationResultUri += "&cloud_instance_name=microsoftonline.us&cloud_instance_host_name=login.microsoftonline.us";
             }
-                
 
             using (MockHttpAndServiceBundle harness = CreateTestHarness(isMultiCloudSupportEnabled: multiCloudSupportEnabled))
             {
@@ -406,8 +414,8 @@ namespace Microsoft.Identity.Test.Unit.RequestsTests
                     Assert.AreEqual("https://login.microsoftonline.us/home/oauth2/v2.0/token", result.AuthenticationResultMetadata.TokenEndpoint);
                 else
                     Assert.AreEqual("https://login.microsoftonline.com/home/oauth2/v2.0/token", result.AuthenticationResultMetadata.TokenEndpoint);
-                Assert.AreEqual(1, ((ITokenCacheInternal)cache).Accessor.GetAllRefreshTokens().Count());
-                Assert.AreEqual(1, ((ITokenCacheInternal)cache).Accessor.GetAllAccessTokens().Count());
+                Assert.AreEqual(1, ((ITokenCacheInternal)cache).Accessor.GetAllRefreshTokens().Count);
+                Assert.AreEqual(1, ((ITokenCacheInternal)cache).Accessor.GetAllAccessTokens().Count);
                 Assert.AreEqual(result.AccessToken, "some-access-token");
             }
         }

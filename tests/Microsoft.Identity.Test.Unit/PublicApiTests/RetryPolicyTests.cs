@@ -22,9 +22,8 @@ namespace Microsoft.Identity.Test.Unit.PublicApiTests
         [TestMethod]        
         public async Task RetryPolicyAsync()
         {
-            using (var httpManager = new MockHttpManager(retryOnceOn5xx: false))
+            using (var httpManager = new MockHttpManager(retry: false))
             {
-
                 var app = ConfidentialClientApplicationBuilder.Create(TestConstants.ClientId)
                                                               .WithClientSecret(TestConstants.ClientSecret)
                                                               .WithHttpManager(httpManager)
@@ -49,7 +48,7 @@ namespace Microsoft.Identity.Test.Unit.PublicApiTests
                 {
                     return IsMsalRetryableException(ex, out retryAfter);
                 }).RetryAsync(5,
-                    async (exception, retryCount, context) =>
+                    async (exception, retryCount, _) =>
                     {
                         IsMsalRetryableException(exception, out retryAfter);
                         switch (retryCount)

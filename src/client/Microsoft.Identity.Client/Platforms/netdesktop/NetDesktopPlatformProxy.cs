@@ -20,20 +20,20 @@ using Microsoft.Identity.Client.PlatformsCommon.Shared;
 using Microsoft.Identity.Client.UI;
 using Microsoft.Win32;
 
-namespace Microsoft.Identity.Client.Platforms.net45
+namespace Microsoft.Identity.Client.Platforms.netdesktop
 {
     /// <summary>
     ///     Platform / OS specific logic.
     /// </summary>
     internal class NetDesktopPlatformProxy : AbstractPlatformProxy
     {
-        /// <inheritdoc />
+        /// <inheritdoc/>
         public NetDesktopPlatformProxy(ILoggerAdapter logger)
             : base(logger)
         {
         }
 
-        private bool IsWindows
+        private static bool IsWindows
         {
             get
             {
@@ -60,9 +60,9 @@ namespace Microsoft.Identity.Client.Platforms.net45
             return Task.FromResult(GetUserPrincipalName(NameUserPrincipal));
         }
 
-        private string GetUserPrincipalName(int nameFormat)
+        private static string GetUserPrincipalName(int nameFormat)
         {
-            // TODO: there is discrepancy between the implementation of this method on net45 - throws if upn not found - and uap and
+            // there is discrepancy between the implementation of this method on net45 - throws if upn not found - and uap and
             // the rest of the platforms - returns ""
 
             uint userNameSize = 0;
@@ -87,7 +87,7 @@ namespace Microsoft.Identity.Client.Platforms.net45
             return sb.ToString();
         }
 
-        /// <inheritdoc />
+        /// <inheritdoc/>
         public override string GetDefaultRedirectUri(string clientId, bool useRecommendedRedirectUri = false)
         {
             if (useRecommendedRedirectUri)
@@ -98,52 +98,55 @@ namespace Microsoft.Identity.Client.Platforms.net45
             return Constants.DefaultRedirectUri;
         }
 
-        /// <inheritdoc />
+        /// <inheritdoc/>
         public override ILegacyCachePersistence CreateLegacyCachePersistence()
         {
             return new InMemoryLegacyCachePersistance();
         }
 
-        /// <inheritdoc />
+        /// <inheritdoc/>
         protected override IWebUIFactory CreateWebUiFactory()
         {
             return new NetDesktopWebUIFactory();
         }
 
-        /// <inheritdoc />
+        /// <inheritdoc/>
         protected override string InternalGetDeviceModel()
         {
             // Since MSAL .NET may be used on servers, for security reasons, we do not emit device type.
             return null;
         }
 
-        /// <inheritdoc />
+        /// <inheritdoc/>
         protected override string InternalGetOperatingSystem()
         {
-            return DesktopOsHelper.GetWindowsVersionString();
+            return IsWindows ?
+                  DesktopOsHelper.GetWindowsVersionString()               
+                : Environment.OSVersion.Platform.ToString(); // probably for Mono, which we don't support
+            ;
         }
 
-        /// <inheritdoc />
+        /// <inheritdoc/>
         protected override string InternalGetProcessorArchitecture()
         {
             return IsWindows ? WindowsNativeMethods.GetProcessorArchitecture() : null;
         }
 
-        /// <inheritdoc />
+        /// <inheritdoc/>
         protected override string InternalGetCallingApplicationName()
         {
             // Considered PII, ensure that it is hashed.
             return Assembly.GetEntryAssembly()?.GetName()?.Name;
         }
 
-        /// <inheritdoc />
+        /// <inheritdoc/>
         protected override string InternalGetCallingApplicationVersion()
         {
             // Considered PII, ensure that it is hashed.
             return Assembly.GetEntryAssembly()?.GetName()?.Version?.ToString();
         }
 
-        /// <inheritdoc />
+        /// <inheritdoc/>
         protected override string InternalGetDeviceId()
         {
             try
@@ -159,7 +162,7 @@ namespace Microsoft.Identity.Client.Platforms.net45
             }
         }
 
-        /// <inheritdoc />
+        /// <inheritdoc/>
         protected override string InternalGetProductName()
         {
             return "MSAL.Desktop";
@@ -167,7 +170,7 @@ namespace Microsoft.Identity.Client.Platforms.net45
 
         protected override string InternalGetRuntimeVersion()
         {
-            // https://docs.microsoft.com/en-us/dotnet/framework/migration-guide/how-to-determine-which-versions-are-installed#query-the-registry-using-code
+            // https://learn.microsoft.com/dotnet/framework/migration-guide/how-to-determine-which-versions-are-installed#query-the-registry-using-code
             try
             {
                 string subkey = @"SOFTWARE\Microsoft\NET Framework Setup\NDP\v4\Full\";
@@ -206,8 +209,8 @@ namespace Microsoft.Identity.Client.Platforms.net45
             }
         }
 
-        /// <inheritdoc />
-        protected override ICryptographyManager InternalGetCryptographyManager() => new NetDesktopCryptographyManager();
+        /// <inheritdoc/>
+        protected override ICryptographyManager InternalGetCryptographyManager() => new CommonCryptographyManager(Logger);
 
         protected override IPlatformLogger InternalGetPlatformLogger() => new EventSourcePlatformLogger();
 
@@ -236,12 +239,12 @@ namespace Microsoft.Identity.Client.Platforms.net45
 
         public override IPoPCryptoProvider GetDefaultPoPCryptoProvider()
         {
-            return PoPProviderFactory.GetOrCreateProvider();
+            return PoPCryptoProviderFactory.GetOrCreateProvider();
         }
 
         public override IDeviceAuthManager CreateDeviceAuthManager()
         {
-            return new NetDesktopDeviceAuthManager();
+            return new DeviceAuthManager(CryptographyManager);
         }
 
         public override bool BrokerSupportsWamAccounts => true;

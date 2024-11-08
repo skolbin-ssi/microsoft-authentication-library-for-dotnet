@@ -2,15 +2,20 @@
 // Licensed under the MIT License.
 
 using System;
+using System.Collections.Generic;
 using System.ComponentModel;
+using System.Configuration;
 using System.Diagnostics;
 using System.Drawing;
 using System.Globalization;
+using System.Net.Http;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Windows.Forms;
 using Microsoft.Identity.Client.Core;
+using Microsoft.Identity.Client.Http;
 using Microsoft.Identity.Client.Internal;
+using Microsoft.Identity.Client.Internal.Broker;
 using Microsoft.Identity.Client.Platforms.Features.DesktopOs;
 using Microsoft.Identity.Client.UI;
 using Microsoft.Identity.Client.Utils;
@@ -42,7 +47,6 @@ namespace Microsoft.Identity.Client.Platforms.Features.WinFormsLegacyWebUi
         /// </summary>
         protected WindowsFormsWebAuthenticationDialogBase(object ownerWindow)
         {
-            // From MSDN (http://msdn.microsoft.com/en-us/library/ie/dn720860(v=vs.85).aspx):
             // The net session count tracks the number of instances of the web browser control.
             // When a web browser control is created, the net session count is incremented. When the control
             // is destroyed, the net session count is decremented. When the net session count reaches zero,
@@ -60,13 +64,13 @@ namespace Microsoft.Identity.Client.Platforms.Features.WinFormsLegacyWebUi
             {
                 this.ownerWindow = null;
             }
-            else if (ownerWindow is IWin32Window)
+            else if (ownerWindow is IWin32Window window)
             {
-                this.ownerWindow = (IWin32Window)ownerWindow;
+                this.ownerWindow = window;
             }
-            else if (ownerWindow is IntPtr)
+            else if (ownerWindow is IntPtr ptr)
             {
-                this.ownerWindow = new Win32Window((IntPtr)ownerWindow);
+                this.ownerWindow = new Win32Window(ptr);
             }
             else
             {
@@ -143,7 +147,7 @@ namespace Microsoft.Identity.Client.Platforms.Features.WinFormsLegacyWebUi
 
             if (!e.Cancel)
             {
-                string urlDecode = CoreHelpers.UrlDecode(e.Url.ToString());
+                string urlDecode = CoreHelpers.UrlDecode(e.Url);
                 RequestContext.Logger.VerbosePii(
                     () => string.Format(CultureInfo.InvariantCulture, "[Legacy WebView] Navigating to '{0}'.", urlDecode),
                     () => string.Empty);
@@ -276,7 +280,21 @@ namespace Microsoft.Identity.Client.Platforms.Features.WinFormsLegacyWebUi
             _webBrowser.Navigated += WebBrowserNavigatedHandler;
             _webBrowser.NavigateError += WebBrowserNavigateErrorHandler;
 
-            _webBrowser.Navigate(requestUri);
+            if(RequestContext.ServiceBundle.Config.IsWebviewSsoPolicyEnabled)
+            {
+                IBroker broker = RequestContext.ServiceBundle.Config.BrokerCreatorFunc(null, RequestContext.ServiceBundle.Config, RequestContext.Logger);
+                var ssoPolicyHeaders = broker.GetSsoPolicyHeaders();
+                string ssoPolicyHeadersString="";
+                foreach (KeyValuePair<string, string> kvp in ssoPolicyHeaders)
+                {
+                    ssoPolicyHeadersString += kvp.Key + ":" + kvp.Value + Environment.NewLine;
+                }
+                _webBrowser.Navigate(requestUri, null, null, ssoPolicyHeadersString);
+            }
+            else
+            {
+                _webBrowser.Navigate(requestUri);
+            }
             OnAuthenticate(cancellationToken);
 
             return Result;
@@ -396,10 +414,10 @@ namespace Microsoft.Identity.Client.Platforms.Features.WinFormsLegacyWebUi
         /// </summary>
         protected MsalClientException CreateExceptionForAuthenticationUiFailed(int statusCode)
         {
-            if (NavigateErrorStatus.Messages.ContainsKey(statusCode))
+            if (NavigateErrorStatus.Messages.TryGetValue(statusCode, out string statusCodeMessages))
             {
                 string format = "The browser based authentication dialog failed to complete. Reason: {0}";
-                string message = string.Format(CultureInfo.InvariantCulture, format, NavigateErrorStatus.Messages[statusCode]);
+                string message = string.Format(CultureInfo.InvariantCulture, format, statusCodeMessages);
                 return new MsalClientException(MsalError.AuthenticationUiFailedError, message);
             }
 

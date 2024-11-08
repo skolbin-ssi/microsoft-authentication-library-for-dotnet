@@ -9,6 +9,9 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 using Microsoft.Identity.Client.Utils;
 using Microsoft.Identity.Test.Unit;
+using Microsoft.Identity.Client;
+using Microsoft.Identity.Client.OAuth2;
+using Microsoft.Identity.Client.ManagedIdentity;
 
 namespace Microsoft.Identity.Test.Common.Core.Mocks
 {
@@ -44,6 +47,18 @@ namespace Microsoft.Identity.Test.Common.Core.Mocks
             "\",\"id_token_expires_in\":\"3600\"}";
         }
 
+        public static string GetTokenResponseWithNoOidClaim()
+        {
+            return "{\"token_type\": \"Bearer\"," +
+                "\"scope\": \"https://management.core.windows.net//user_impersonation https://management.core.windows.net//.default\"," +
+                "\"expires_in\": 4771," +
+                "\"ext_expires_in\": 4771," +
+                "\"access_token\": \"secret\"," +
+                "\"refresh_token\": \"secret\"," +
+                "\"id_token\": \"eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiIsImtpZCI6InVFQnBBVkVBTVBaUVpGS2lJRFVWdjFEdFRkayJ9.eyJhdWQiOiI0OTliODRhYy0xMzIxLTQyN2YtYWExNy0yNjdjYTY5NzU3OTgiLCJpc3MiOiJodHRwczovL2xvZ2luLndpbmRvd3MtcHBlLm5ldC85OGVjYjBlZi1iYjhkLTQyMTYtYjQ1YS03MGRmOTUwZGM2ZTMvdjIuMCIsImlhdCI6MTY4NDMxMzA1NCwibmJmIjoxNjg0MzEzMDU0LCJleHAiOjE2ODQzMTY5NTQsImFhaSI6InRlbmFudDogODExOTg5MGItNGMzZi00NjVkLTk4NDAtNTk5MTMxZDE0ZDk4LCBvYmplY3Q6IDRlNjJhMmI0LTBiZTYtNDI0Yi1hMDg0LWYyZmYwOTIxOGUyMyIsImF1dGhfdGltZSI6MTY4NDMxMzMzOCwiaG9tZV9vaWQiOiI0ZTYyYTJiNC0wYmU2LTQyNGItYTA4NC1mMmZmMDkyMThlMjMiLCJob21lX3B1aWQiOiIxMDAzREZGRDAwOURGODQ3IiwiaG9tZV90aWQiOiI4MTE5ODkwYi00YzNmLTQ2NWQtOTg0MC01OTkxMzFkMTRkOTgiLCJpZHAiOiJodHRwczovL3N0cy53aW5kb3dzLXBwZS5uZXQvODExOTg5MGItNGMzZi00NjVkLTk4NDAtNTk5MTMxZDE0ZDk4LyIsIm5hbWUiOiJ0ZXN0X3Rlc3RfY3NwXzAyMiBUZWNobmljaWFuIiwibm9uY2UiOiIzMGJiYTU0Ny05MjViLTQxZWItOTFiYy05YTM1YTY3M2JmZDkiLCJwcmVmZXJyZWRfdXNlcm5hbWUiOiJ1c2VyXzRlNjJhMmI0MGJlNjQyNGJhMDg0ZjJmZjA5MjE4ZTIzQHN1YmdkYXAuYWxpbmMueHl6IiwicmgiOiIwLkFBRUE3N0RzbUkyN0ZrSzBXbkRmbFEzRzQ2eUVtMGtoRTM5Q3FoY21mS2FYVjVnQkFKUS4iLCJzdWIiOiJBdWpMRFFwNXlSTVJjR3BQY0RCZnQ5TmI1dUZTS1l4RFpxNjUtZWJmSGxzIiwidGlkIjoiOThlY2IwZWYtYmI4ZC00MjE2LWI0NWEtNzBkZjk1MGRjNmUzIiwidXRpIjoiODZyeGRJTlhiMDJMY3RIMDltVW1BQSIsInZlciI6IjIuMCIsIndpZHMiOlsiODhkOGUzZTMtOGY1NS00YTFlLTk1M2EtOWI5ODk4Yjg4NzZiIiwiMDgzNzJiODctN2QwMi00ODJhLTllMDItZmIwM2VhNWZlMTkzIl0sInhtc19tcGNpIjoyNTkyMDAsInhtc19wY2kiOjM2MDAsInhtc193c2l0IjoxODAwfQ.no_signature\"," +
+                "\"client_info\": \"eyJ1aWQiOiI0ZTYyYTJiNC0wYmU2LTQyNGItYTA4NC1mMmZmMDkyMThlMjMiLCJ1dGlkIjoiODExOTg5MGItNGMzZi00NjVkLTk4NDAtNTk5MTMxZDE0ZDk4In0\"}";
+        }
+
         public static readonly string DefaultEmtpyFailureErrorMessage =
             "{\"the-error-is-not-here\":\"erorwithouterrorfield\",\"error_description\":\"AADSTS991: " +
                                         "This is an error message which doesn't contain the error field. " +
@@ -53,15 +68,14 @@ namespace Microsoft.Identity.Test.Common.Core.Mocks
                                         "\"trace_id\":\"dd25f4fb-3e8d-458e-90e7-179524ce0000\",\"correlation_id\":" +
                                         "\"f11508ab-067f-40d4-83cb-ccc67bf57e45\"}";
 
-        public static string GetDefaultTokenResponse()
+        public static string GetDefaultTokenResponse(string accessToken = TestConstants.ATSecret, string refreshToken = TestConstants.RTSecret)
         {
               return
             "{\"token_type\":\"Bearer\",\"expires_in\":\"3599\",\"refresh_in\":\"2400\",\"scope\":" +
-            "\"r1/scope1 r1/scope2\",\"access_token\":\"" + TestConstants.ATSecret + "\"" +
-            ",\"refresh_token\":\"" + Guid.NewGuid() + "\",\"client_info\"" +
+            "\"r1/scope1 r1/scope2\",\"access_token\":\"" + accessToken + "\"" +
+            ",\"refresh_token\":\"" + refreshToken + "\",\"client_info\"" +
             ":\"" + CreateClientInfo() + "\",\"id_token\"" +
-            ":\"" + CreateIdToken(TestConstants.UniqueId, TestConstants.DisplayableId) +
-            "\",\"id_token_expires_in\":\"3600\"}";
+            ":\"" + CreateIdToken(TestConstants.UniqueId, TestConstants.DisplayableId) + "\"}";
         }
 
         public static string GetPopTokenResponse()
@@ -69,7 +83,7 @@ namespace Microsoft.Identity.Test.Common.Core.Mocks
             return
           "{\"token_type\":\"pop\",\"expires_in\":\"3599\",\"scope\":" +
           "\"r1/scope1 r1/scope2\",\"access_token\":\"" + TestConstants.ATSecret + "\"" +
-          ",\"refresh_token\":\"" + Guid.NewGuid() + "\",\"client_info\"" +
+          ",\"refresh_token\":\"" + TestConstants.RTSecret + "\",\"client_info\"" +
           ":\"" + CreateClientInfo() + "\",\"id_token\"" +
           ":\"" + CreateIdToken(TestConstants.UniqueId, TestConstants.DisplayableId) +
           "\",\"id_token_expires_in\":\"3600\"}";
@@ -80,16 +94,40 @@ namespace Microsoft.Identity.Test.Common.Core.Mocks
             return
             "{\"token_type\":\"Bearer\",\"expires_in\":\"3599\",\"refresh_in\":\"2400\",\"scope\":" +
             "\"r1/scope1 r1/scope2\",\"access_token\":\"" + TestConstants.ATSecret + "\"" +
-            ",\"refresh_token\":\"" + Guid.NewGuid() + "\",\"client_info\"" +
+            ",\"refresh_token\":\"" + TestConstants.RTSecret + "\",\"client_info\"" +
             ":\"" + CreateClientInfo() + "\",\"id_token\"" +
             ":\"" + CreateIdToken(TestConstants.UniqueId, TestConstants.DisplayableId) +
             "\",\"spa_code\":\"" + spaCode + "\"" +
             ",\"id_token_expires_in\":\"3600\"}";
         }
 
-        public static string GetMsiSuccessfulResponse()
+        public static string GetBridgedHybridSpaTokenResponse(string spaAccountId)
         {
-            string expiresOn = DateTimeHelpers.DateTimeToUnixTimestamp(DateTime.UtcNow.AddHours(1));
+            return
+            "{\"token_type\":\"Bearer\",\"expires_in\":\"3599\",\"refresh_in\":\"2400\",\"scope\":" +
+            "\"r1/scope1 r1/scope2\",\"access_token\":\"" + TestConstants.ATSecret + "\"" +
+            ",\"refresh_token\":\"" + TestConstants.RTSecret + "\",\"client_info\"" +
+            ":\"" + CreateClientInfo() + "\",\"id_token\"" +
+            ":\"" + CreateIdToken(TestConstants.UniqueId, TestConstants.DisplayableId) +
+            "\",\"spa_accountId\":\"" + spaAccountId + "\"" +
+            ",\"id_token_expires_in\":\"3600\"}";
+        }
+
+        public static string GetMsiSuccessfulResponse(int expiresInHours = 1, bool useIsoFormat = false)
+        {
+            string expiresOn;
+
+            if (useIsoFormat)
+            {
+                // Return ISO 8601 format
+                expiresOn = DateTime.UtcNow.AddHours(expiresInHours).ToString("o", CultureInfo.InvariantCulture);
+            }
+            else
+            {
+                // Return Unix timestamp format
+                expiresOn = DateTimeHelpers.DateTimeToUnixTimestamp(DateTime.UtcNow.AddHours(expiresInHours));
+            }
+
             return
           "{\"access_token\":\"" + TestConstants.ATSecret + "\",\"expires_on\":\"" + expiresOn + "\",\"resource\":\"https://management.azure.com/\",\"token_type\":" +
           "\"Bearer\",\"client_id\":\"client_id\"}";
@@ -104,9 +142,24 @@ namespace Microsoft.Identity.Test.Common.Core.Mocks
           "\"ext_expires_in\":\"12345\",\"token_type\":\"Bearer\"}";
         }
 
-        public static string GetMsiErrorResponse()
+        public static string GetMsiErrorResponse(ManagedIdentitySource source)
         {
-            return "{\"statusCode\":\"500\",\"message\":\"An unexpected error occured while fetching the AAD Token.\",\"correlationId\":\"7d0c9763-ff1d-4842-a3f3-6d49e64f4513\"}";
+            switch (source)
+            {
+                case ManagedIdentitySource.AppService:
+                    return "{\"statusCode\":500,\"message\":\"An unexpected error occured while fetching the AAD Token.\",\"correlationId\":\"4ce26535-1769-4001-96e3-9019ce00922d\"}";
+
+                case ManagedIdentitySource.Imds:
+                case ManagedIdentitySource.AzureArc:
+                case ManagedIdentitySource.ServiceFabric:
+                    return "{\"error\":\"invalid_resource\",\"error_description\":\"AADSTS500011: The resource principal named scope was not found in the tenant named Microsoft. This can happen if the application has not been installed by the administrator of the tenant or consented to by any user in the tenant. You might have sent your authentication request to the wrong tenant.\\r\\nTrace ID: GUID\\r\\nCorrelation ID: GUID\\r\\nTimestamp: 2024-02-14 23:11:50Z\",\"error_codes\":\"[500011]\",\"timestamp\":\"2022-11-10 23:11:50Z\",\"trace_id\":\"GUID\",\"correlation_id\":\"GUID\",\"error_uri\":\"errorUri\"}";
+
+                case ManagedIdentitySource.CloudShell:
+                    return "{\"error\":{\"code\":\"AudienceNotSupported\",\"message\":\"Audience scope is not a supported MSI token audience.Supported audiences:https://management.core.windows.net/,https://management.azure.com/,https://graph.windows.net/,https://vault.azure.net,https://datalake.azure.net/,https://outlook.office365.com/,https://graph.microsoft.com/,https://batch.core.windows.net/,https://analysis.windows.net/powerbi/api,https://storage.azure.com/,https://rest.media.azure.net,https://api.loganalytics.io,https://ossrdbms-aad.database.windows.net,https://www.yammer.com,https://digitaltwins.azure.net,0b07f429-9f4b-4714-9392-cc5e8e80c8b0,822c8694-ad95-4735-9c55-256f7db2f9b4,https://dev.azuresynapse.net,https://database.windows.net,https://quantum.microsoft.com,https://iothubs.azure.net,2ff814a6-3304-4ab8-85cb-cd0e6f879c1d,https://azuredatabricks.net/,ce34e7e5-485f-4d76-964f-b3d2b16d1e4f,https://azure-devices-provisioning.net,https://managedhsm.azure.net,499b84ac-1321-427f-aa17-267ca6975798,https://api.adu.microsoft.com/,https://purview.azure.net/,6dae42f8-4368-4678-94ff-3960e28e3630\"}}";
+
+                default:
+                    return "";
+            }
         }
 
         public static string GetMsiImdsErrorResponse()
@@ -114,8 +167,8 @@ namespace Microsoft.Identity.Test.Common.Core.Mocks
             return "{\"error\":\"invalid_resource\"," +
                 "\"error_description\":\"AADSTS500011: The resource principal named user.read was not found in the tenant named Microsoft. " +
                 "This can happen if the application has not been installed by the administrator of the tenant or consented to by any user in the tenant. " +
-                "You might have sent your authentication request to the wrong tenant.\r\nTrace ID: 2dff494a-0226-4f41-8859-d9f560ca8903" +
-                "\r\nCorrelation ID: 77145480-bc5a-4ebe-ae4d-e4a8b7d727cf\r\nTimestamp: 2022-11-10 23:12:37Z\"," +
+                "You might have sent your authentication request to the wrong tenant.\\r\\nTrace ID: 2dff494a-0226-4f41-8859-d9f560ca8903" +
+                "\\r\\nCorrelation ID: 77145480-bc5a-4ebe-ae4d-e4a8b7d727cf\\r\\nTimestamp: 2022-11-10 23:12:37Z\"," +
                 "\"error_codes\":[500011],\"timestamp\":\"2022-11-10 23:12:37Z\",\"trace_id\":\"2dff494a-0226-4f41-8859-d9f560ca8903\"," +
                 "\"correlation_id\":\"77145480-bc5a-4ebe-ae4d-e4a8b7d727cf\",\"error_uri\":\"https://westus2.login.microsoft.com/error?code=500011\"}";
         }
@@ -181,10 +234,10 @@ namespace Microsoft.Identity.Test.Common.Core.Mocks
                 scopes, idToken, clientInfo));
         }
 
-        public static HttpResponseMessage CreateSuccessTokenResponseMessage(bool foci = false)
+        public static HttpResponseMessage CreateSuccessTokenResponseMessage(bool foci = false, string accessToken = TestConstants.ATSecret, string refreshToken = TestConstants.RTSecret)
         {
             return CreateSuccessResponseMessage(
-                foci ? GetFociTokenResponse() : GetDefaultTokenResponse());
+                foci ? GetFociTokenResponse() : GetDefaultTokenResponse(accessToken, refreshToken));
         }
 
         public static HttpResponseMessage CreateSuccessTokenResponseMessageWithUid(
@@ -225,7 +278,7 @@ namespace Microsoft.Identity.Test.Common.Core.Mocks
             return CreateFailureMessage(statusCode, message);
         }
 
-        public static HttpResponseMessage CreateInvalidGrantTokenResponseMessage(string subError = null)
+        public static HttpResponseMessage CreateInvalidGrantTokenResponseMessage(string subError = null, string claims = null)
         {
             return CreateFailureMessage(HttpStatusCode.BadRequest,
                 "{\"error\":\"invalid_grant\",\"error_description\":\"AADSTS70002: Error " +
@@ -235,6 +288,7 @@ namespace Microsoft.Identity.Test.Common.Core.Mocks
                 "\"error_codes\":[70002,70008],\"timestamp\":\"2015-09-16 07:24:55Z\"," +
                 "\"trace_id\":\"f7ec686c-9196-4220-a754-cd9197de44e9\"," +
                 (subError != null ? ("\"suberror\":" + "\"" + subError + "\",") : "") +
+                (claims != null ? ("\"claims\":" + "\"" + claims + "\",") : "") +
                 "\"correlation_id\":" +
                 "\"04bb0cae-580b-49ac-9a10-b6c3316b1eaa\"}");
         }
@@ -299,7 +353,18 @@ namespace Microsoft.Identity.Test.Common.Core.Mocks
             string tokenType = "Bearer")
         {
             return CreateSuccessResponseMessage(
-                "{\"token_type\":\"" + tokenType + "\",\"expires_in\":\"" + expiry + "\",\"client_info\":\"" + CreateClientInfo() + "\",\"access_token\":\"" + token + "\"}");
+                "{\"token_type\":\"" + tokenType + "\",\"expires_in\":\"" + expiry + "\",\"access_token\":\"" + token + "\",\"additional_param1\":\"value1\",\"additional_param2\":\"value2\",\"additional_param3\":\"value3\"}");
+        }
+
+        public static HttpResponseMessage CreateSuccessfulClientCredentialTokenResponseWithAdditionalParamsMessage(
+            string token = "header.payload.signature",
+            string expiry = "3599",
+            string tokenType = "Bearer",
+            string additionalparams = ",\"additional_param1\":\"value1\",\"additional_param2\":\"value2\",\"additional_param3\":\"value3\",\"additional_param4\":[\"GUID\",\"GUID2\",\"GUID3\"],\"additional_param5\":{\"value5json\":\"value5\"}"
+            )
+        {
+            return CreateSuccessResponseMessage(
+                "{\"token_type\":\"" + tokenType + "\",\"expires_in\":\"" + expiry + "\",\"access_token\":\"" + token + "\"" + additionalparams + "}");
         }
 
         public static HttpResponseMessage CreateSuccessTokenResponseMessage(
@@ -311,17 +376,30 @@ namespace Microsoft.Identity.Test.Common.Core.Mocks
             string accessToken = "some-access-token",
             string refreshToken = "OAAsomethingencrypedQwgAA")
         {
-            string idToken = CreateIdToken(uniqueId, displayableId, TestConstants.Utid);
             HttpResponseMessage responseMessage = new HttpResponseMessage(HttpStatusCode.OK);
+            string stringContent = CreateSuccessTokenResponseString(uniqueId, displayableId, scope, foci, utid, accessToken, refreshToken);
+            HttpContent content = new StringContent(stringContent);
+            responseMessage.Content = content;
+            return responseMessage;
+        }
+
+        public static string CreateSuccessTokenResponseString(string uniqueId,
+            string displayableId,
+            string[] scope,
+            bool foci = false,
+            string utid = TestConstants.Utid,
+            string accessToken = "some-access-token",
+            string refreshToken = "OAAsomethingencrypedQwgAA")
+        {
+            string idToken = CreateIdToken(uniqueId, displayableId, TestConstants.Utid);
             string stringContent = "{\"token_type\":\"Bearer\",\"expires_in\":\"3599\",\"refresh_in\":\"2400\",\"scope\":\"" +
                                   scope.AsSingleString() +
                                   "\",\"access_token\":\"" + accessToken + "\",\"refresh_token\":\"" + refreshToken + "\",\"id_token\":\"" +
                                   idToken +
                                   (foci ? "\",\"foci\":\"1" : "") +
                                   "\",\"id_token_expires_in\":\"3600\",\"client_info\":\"" + CreateClientInfo(uniqueId, utid) + "\"}";
-            HttpContent content = new StringContent(stringContent);
-            responseMessage.Content = content;
-            return responseMessage;
+            
+            return stringContent;
         }
 
         public static string CreateIdToken(string uniqueId, string displayableId)
@@ -467,9 +545,6 @@ namespace Microsoft.Identity.Test.Common.Core.Mocks
 
         public static HttpResponseMessage CreateAdfsOpenIdConfigurationResponse(string authority, string qp = "")
         {
-            var authorityUri = new Uri(authority);
-            string path = authorityUri.AbsolutePath.Substring(1);
-
             if (!string.IsNullOrEmpty(qp))
             {
                 qp = "?" + qp;
@@ -495,5 +570,20 @@ namespace Microsoft.Identity.Test.Common.Core.Mocks
             };
         }
 
+        public static MsalTokenResponse CreateMsalRunTimeBrokerTokenResponse(string accessToken = null, string tokenType = null)
+        {
+            return new MsalTokenResponse()
+            {
+                AccessToken = accessToken ?? TestConstants.UserAccessToken,
+                IdToken = null,
+                CorrelationId = null,
+                Scope = TestConstants.ScopeStr,
+                ExpiresIn = 3600,
+                ClientInfo = null,
+                TokenType = tokenType ?? "Bearer",
+                WamAccountId = TestConstants.LocalAccountId,
+                TokenSource = TokenSource.Broker
+            };
+        }
     }
 }

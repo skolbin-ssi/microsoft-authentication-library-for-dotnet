@@ -126,7 +126,7 @@ namespace Microsoft.Identity.Test.Unit
                 }).ConfigureAwait(false);
         }
 
-#if DESKTOP
+#if NETFRAMEWORK
         [TestMethod]
         public void PKeyAuthSuccessResponseTest()
         {
@@ -200,7 +200,7 @@ namespace Microsoft.Identity.Test.Unit
                      .WithExtraQueryParameters("qp1=v1")
                      .ExecuteAsync()
                      .ConfigureAwait(false);
-                // Assert that the endpoint sent to the device auth manager doesn not have query params
+                // Assert that the endpoint sent to the device auth manager doesnt not have query params
                 //await builder.Config.DeviceAuthManagerForTest.Received()
                 //    .TryCreateDeviceAuthChallengeResponseAsync(Arg.Any<HttpResponseHeaders>(), "foo", Arg.Any<string>());
                 Assert.AreEqual("https://login.microsoftonline.com/common/oauth2/v2.0/token", actualUri.AbsoluteUri);
@@ -243,7 +243,8 @@ namespace Microsoft.Identity.Test.Unit
 
                 OAuth2Client client = new OAuth2Client(
                     harness.ServiceBundle.ApplicationLogger,
-                    harness.HttpManager);
+                    harness.HttpManager,
+                    null);
 
                 Exception ex = await AssertException.TaskThrowsAsync<Exception>(
                     () => client.ExecuteRequestAsync<OAuth2ResponseBase>(

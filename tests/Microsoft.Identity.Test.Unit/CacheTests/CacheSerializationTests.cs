@@ -608,18 +608,20 @@ namespace Microsoft.Identity.Test.Unit.CacheTests
         [TestMethod]
         public void TestSerializeContainsNoNulls()
         {
+            var prefix = $"_SOMERANDOMPREFIX";
             var accessor = CreateTokenCacheAccessor();
 
             // Create a refresh token with a null family id in it
             var item = CreateRefreshTokenItem();
             item.FamilyId = null;
-            item.Environment += $"_SOMERANDOMPREFIX"; // ensure we get unique cache keys
+            item.Environment += prefix; // ensure we get unique cache keys
             accessor.SaveRefreshToken(item);
 
             var s1 = new TokenCacheJsonSerializer(accessor);
             byte[] bytes = s1.Serialize(null);
             string json = CoreHelpers.ByteArrayToString(bytes);
-            Console.WriteLine(json);
+
+            Assert.IsTrue(json.Contains(prefix));
             Assert.IsFalse(json.ToLowerInvariant().Contains("null"));
         }
 
@@ -637,10 +639,10 @@ namespace Microsoft.Identity.Test.Unit.CacheTests
             byte[] differentBytes = s2.Serialize(null);
 
             // Assert that they have different counts of items...
-            Assert.AreNotEqual(originalAccessor.GetAllAccessTokens().Count(), differentAccessor.GetAllAccessTokens().Count());
-            Assert.AreNotEqual(originalAccessor.GetAllRefreshTokens().Count(), differentAccessor.GetAllRefreshTokens().Count());
-            Assert.AreNotEqual(originalAccessor.GetAllIdTokens().Count(), differentAccessor.GetAllIdTokens().Count());
-            Assert.AreNotEqual(originalAccessor.GetAllAccounts().Count(), differentAccessor.GetAllAccounts().Count());
+            Assert.AreNotEqual(originalAccessor.GetAllAccessTokens().Count, differentAccessor.GetAllAccessTokens().Count);
+            Assert.AreNotEqual(originalAccessor.GetAllRefreshTokens().Count, differentAccessor.GetAllRefreshTokens().Count);
+            Assert.AreNotEqual(originalAccessor.GetAllIdTokens().Count, differentAccessor.GetAllIdTokens().Count);
+            Assert.AreNotEqual(originalAccessor.GetAllAccounts().Count, differentAccessor.GetAllAccounts().Count);
 
             // Now, deserialize differentBytes into originalAccessor with cacheFlush = true
             // This means we should destroy the contents of originalAccessor and replace them with the
@@ -677,15 +679,15 @@ namespace Microsoft.Identity.Test.Unit.CacheTests
 
             // Assert that they have different counts of items...
 
-            int originalAccessTokenCount = originalAccessor.GetAllAccessTokens().Count();
-            int originalRefreshTokenCount = originalAccessor.GetAllRefreshTokens().Count();
-            int originalIdTokenCount = originalAccessor.GetAllIdTokens().Count();
-            int originalAccountsCount = originalAccessor.GetAllAccounts().Count();
+            int originalAccessTokenCount = originalAccessor.GetAllAccessTokens().Count;
+            int originalRefreshTokenCount = originalAccessor.GetAllRefreshTokens().Count;
+            int originalIdTokenCount = originalAccessor.GetAllIdTokens().Count;
+            int originalAccountsCount = originalAccessor.GetAllAccounts().Count;
 
-            Assert.AreNotEqual(originalAccessTokenCount, differentAccessor.GetAllAccessTokens().Count());
-            Assert.AreNotEqual(originalRefreshTokenCount, differentAccessor.GetAllRefreshTokens().Count());
-            Assert.AreNotEqual(originalIdTokenCount, differentAccessor.GetAllIdTokens().Count());
-            Assert.AreNotEqual(originalAccountsCount, differentAccessor.GetAllAccounts().Count());
+            Assert.AreNotEqual(originalAccessTokenCount, differentAccessor.GetAllAccessTokens().Count);
+            Assert.AreNotEqual(originalRefreshTokenCount, differentAccessor.GetAllRefreshTokens().Count);
+            Assert.AreNotEqual(originalIdTokenCount, differentAccessor.GetAllIdTokens().Count);
+            Assert.AreNotEqual(originalAccountsCount, differentAccessor.GetAllAccounts().Count);
 
             // Now, deserialize differentBytes into originalAccessor with cacheFlush = false
             // This means we should merge the contents of originalAccessor and the
@@ -693,12 +695,12 @@ namespace Microsoft.Identity.Test.Unit.CacheTests
 
             s1.Deserialize(differentBytes, false);
 
-            Assert.AreEqual(originalAccessor.GetAllAccessTokens().Count(), differentAccessor.GetAllAccessTokens().Count() + originalAccessTokenCount);
+            Assert.AreEqual(originalAccessor.GetAllAccessTokens().Count, differentAccessor.GetAllAccessTokens().Count + originalAccessTokenCount);
 
             // This is -1 because the PRT FOCI refresh token will not duplicate since it has the same key.
-            Assert.AreEqual(originalAccessor.GetAllRefreshTokens().Count(), differentAccessor.GetAllRefreshTokens().Count() + originalRefreshTokenCount - 1);
-            Assert.AreEqual(originalAccessor.GetAllIdTokens().Count(), differentAccessor.GetAllIdTokens().Count() + originalIdTokenCount);
-            Assert.AreEqual(originalAccessor.GetAllAccounts().Count(), differentAccessor.GetAllAccounts().Count() + originalAccountsCount);
+            Assert.AreEqual(originalAccessor.GetAllRefreshTokens().Count, differentAccessor.GetAllRefreshTokens().Count + originalRefreshTokenCount - 1);
+            Assert.AreEqual(originalAccessor.GetAllIdTokens().Count, differentAccessor.GetAllIdTokens().Count + originalIdTokenCount);
+            Assert.AreEqual(originalAccessor.GetAllAccounts().Count, differentAccessor.GetAllAccounts().Count + originalAccountsCount);
         }
 
         #endregion // JSON SERIALIZATION TESTS
@@ -713,11 +715,11 @@ namespace Microsoft.Identity.Test.Unit.CacheTests
             byte[] bytes = File.ReadAllBytes(binFilePath);
             s.Deserialize(bytes, false);
 
-            Assert.AreEqual(1, accessor.GetAllAccessTokens().Count());
-            Assert.AreEqual(1, accessor.GetAllRefreshTokens().Count());
-            Assert.AreEqual(1, accessor.GetAllIdTokens().Count());
-            Assert.AreEqual(1, accessor.GetAllAccounts().Count());
-            Assert.AreEqual(0, accessor.GetAllAppMetadata().Count());
+            Assert.AreEqual(1, accessor.GetAllAccessTokens().Count);
+            Assert.AreEqual(1, accessor.GetAllRefreshTokens().Count);
+            Assert.AreEqual(1, accessor.GetAllIdTokens().Count);
+            Assert.AreEqual(1, accessor.GetAllAccounts().Count);
+            Assert.AreEqual(0, accessor.GetAllAppMetadata().Count);
 
             MsalAccessTokenCacheItem expectedAccessTokenItem = new MsalAccessTokenCacheItem(
                "login.windows.net",
@@ -773,10 +775,10 @@ namespace Microsoft.Identity.Test.Unit.CacheTests
 
         private void AssertAccessorsAreEqual(ITokenCacheAccessor expected, ITokenCacheAccessor actual)
         {
-            Assert.AreEqual(expected.GetAllAccessTokens().Count(), actual.GetAllAccessTokens().Count());
-            Assert.AreEqual(expected.GetAllRefreshTokens().Count(), actual.GetAllRefreshTokens().Count());
-            Assert.AreEqual(expected.GetAllIdTokens().Count(), actual.GetAllIdTokens().Count());
-            Assert.AreEqual(expected.GetAllAccounts().Count(), actual.GetAllAccounts().Count());
+            Assert.AreEqual(expected.GetAllAccessTokens().Count, actual.GetAllAccessTokens().Count);
+            Assert.AreEqual(expected.GetAllRefreshTokens().Count, actual.GetAllRefreshTokens().Count);
+            Assert.AreEqual(expected.GetAllIdTokens().Count, actual.GetAllIdTokens().Count);
+            Assert.AreEqual(expected.GetAllAccounts().Count, actual.GetAllAccounts().Count);
         }
 
         private void AssertContainsKey(JObject j, string key)

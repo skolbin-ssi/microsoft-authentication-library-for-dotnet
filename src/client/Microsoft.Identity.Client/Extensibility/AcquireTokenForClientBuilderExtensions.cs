@@ -2,12 +2,12 @@
 // Licensed under the MIT License.
 
 using System;
+using System.ComponentModel;
 
 namespace Microsoft.Identity.Client.Extensibility
 {
-
     /// <summary>
-    /// Extensions for <see cref="AcquireTokenForClientBuilderExtensions"/> class
+    /// 
     /// </summary>
     public static class AcquireTokenForClientBuilderExtensions
     {
@@ -19,7 +19,8 @@ namespace Microsoft.Identity.Client.Extensibility
         /// <param name="keyId">A key id to which the access token is associated. The token will not be retrieved from the cache unless the same key id is presented. Can be null.</param>
         /// <param name="expectedTokenTypeFromAad">AAD issues several types of bound tokens. MSAL checks the token type, which needs to match the value set by ESTS. Normal POP tokens have this as "pop"</param>
         /// <returns>the builder</returns>
-        public static AcquireTokenForClientParameterBuilder WithProofOfPosessionKeyId(
+        [EditorBrowsable(EditorBrowsableState.Never)] // https://github.com/AzureAD/microsoft-authentication-library-for-dotnet/issues/4789        
+        public static AcquireTokenForClientParameterBuilder WithProofOfPosessionKeyId( 
             this AcquireTokenForClientParameterBuilder builder,
             string keyId,
             string expectedTokenTypeFromAad = "Bearer")
@@ -30,7 +31,7 @@ namespace Microsoft.Identity.Client.Extensibility
             }
 
             builder.ValidateUseOfExperimentalFeature();
-            builder.CommonParameters.AuthenticationScheme = new ExternalBoundTokenScheme(keyId, expectedTokenTypeFromAad);
+            builder.CommonParameters.AuthenticationOperation = new ExternalBoundTokenScheme(keyId, expectedTokenTypeFromAad);
 
             return builder;
         }

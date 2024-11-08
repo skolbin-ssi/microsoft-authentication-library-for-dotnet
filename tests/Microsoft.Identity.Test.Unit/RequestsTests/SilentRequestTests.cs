@@ -32,12 +32,6 @@ namespace Microsoft.Identity.Test.Unit.RequestsTests
     [TestClass]
     public class SilentRequestTests : TestBase
     {
-        [TestInitialize]
-        public void TestInitialize()
-        {
-            TestCommon.ResetInternalStaticCaches();
-        }
-
         [TestMethod]
         public void ConstructorTests()
         {
@@ -119,7 +113,7 @@ namespace Microsoft.Identity.Test.Unit.RequestsTests
                 IBroker mockBroker = Substitute.For<IBroker>();
                 mockBroker.IsBrokerInstalledAndInvokable(AuthorityType.Aad).ReturnsForAnyArgs(brokerIsInstalledAndInvokable);
 
-                harness.ServiceBundle.Config.BrokerCreatorFunc = (app, config, logger) => mockBroker;
+                harness.ServiceBundle.Config.BrokerCreatorFunc = (_, _, _) => mockBroker;
 
                 var parameters = harness.CreateRequestParams(
                     harness.Cache,
@@ -136,75 +130,21 @@ namespace Microsoft.Identity.Test.Unit.RequestsTests
 
                 var request = new SilentRequest(harness.ServiceBundle, parameters, silentParameters);
 
-                if (brokerConfiguredByUser) //When broker is enabled, local cache should not be used
-                {
-                    var exception = await AssertException.TaskThrowsAsync<MsalUiRequiredException>(() =>
-                        request.RunAsync(default)
-                        ,false
-                        ).ConfigureAwait(false);
+                var result = await request.RunAsync(default).ConfigureAwait(false);
 
-                    Assert.IsNotNull(exception);
-                    Assert.AreEqual(MsalError.FailedToAcquireTokenSilentlyFromBroker, exception.ErrorCode);
-                    Assert.AreEqual("Broker could not satisfy the silent request.", exception.Message);
-                }
-                else
+                // even if broker is configured by user but not installed, the result will be from the local cache
+                Assert.IsNotNull(result);
+                Assert.IsNotNull(result.AccessToken);
+                Assert.AreEqual(TestConstants.s_scope.AsSingleString(), result.Scopes.AsSingleString());
+                Assert.AreEqual(brokerID, result.Account.Username);
+                if (!brokerConfiguredByUser)
                 {
-                    var result = await request.RunAsync(default).ConfigureAwait(false);
-
-                    Assert.IsNotNull(result);
-                    Assert.IsNotNull(result.AccessToken);
-                    Assert.AreEqual(TestConstants.s_scope.AsSingleString(), result.Scopes.AsSingleString());
-                    Assert.AreEqual(brokerID, result.Account.Username);
                     await mockBroker.DidNotReceiveWithAnyArgs().AcquireTokenSilentAsync(null, null).ConfigureAwait(false);
                 }
             }
         }
 
-        [TestMethod]
-        public async Task IosBrokerSilentRequestLocalCacheTestAsync()
-        {
-            string brokerID = "Broker@broker.com";
-            IBroker mockBroker = CreateBroker(typeof(IosBrokerMock));
-            IPlatformProxy platformProxy = Substitute.For<IPlatformProxy>();
-            platformProxy.CanBrokerSupportSilentAuth().Returns(false); //Ios sets this to false so local cache should be used
-            platformProxy.CreateTokenCacheAccessor(Arg.Any<CacheOptions>()).Returns(PlatformProxyFactory.CreatePlatformProxy(null).CreateTokenCacheAccessor(null));
-            platformProxy.CreateBroker(Arg.Any<ApplicationConfiguration>(), Arg.Any<CoreUIParent>()).ReturnsForAnyArgs(mockBroker);
-
-            using (var harness = new MockHttpTestHarness(TestConstants.AuthorityHomeTenant, platformProxy))
-            {
-                // result will be from the local cache
-                TokenCacheHelper.PopulateCache(harness.Cache.Accessor,
-                    TestConstants.Uid,
-                    TestConstants.Utid,
-                    TestConstants.ClientId,
-                    TestConstants.ProductionPrefCacheEnvironment,
-                    brokerID);
-
-                harness.ServiceBundle.Config.BrokerCreatorFunc = (app, config, logger) => mockBroker;
-
-                var parameters = harness.CreateRequestParams(
-                    harness.Cache,
-                    null,
-                    TestConstants.ExtraQueryParameters,
-                    null,
-                    authorityOverride: AuthorityInfo.FromAuthorityUri(TestConstants.AuthorityCommonTenant, false));
-                parameters.AppConfig.IsBrokerEnabled = true;
-
-                var silentParameters = new AcquireTokenSilentParameters()
-                {
-                    Account = new Account(TestConstants.HomeAccountId, TestConstants.DisplayableId, TestConstants.ProductionPrefCacheEnvironment),
-                };
-
-                var request = new SilentRequest(harness.ServiceBundle, parameters, silentParameters);
-
-                var result = await request.RunAsync(default).ConfigureAwait(false);
-
-                Assert.IsNotNull(result);
-                Assert.IsNotNull(result.AccessToken);
-                Assert.AreEqual(TestConstants.s_scope.AsSingleString(), result.Scopes.AsSingleString());
-                Assert.AreEqual(brokerID, result.Account.Username);
-            }
-        }
+      
 
         [TestMethod]
         public void RequestParamsNullArg()
@@ -254,7 +194,53 @@ namespace Microsoft.Identity.Test.Unit.RequestsTests
             }
         }
 
-        private class MockHttpTestHarness : IDisposable
+        [TestMethod]
+        public async Task IosBrokerSilentRequestLocalCacheTestAsync()
+        {
+            string brokerID = "Broker@broker.com";
+            IBroker mockBroker = Microsoft.Identity.Test.Unit.BrokerTests.BrokerTests.CreateBroker(typeof(IosBrokerMock));
+            IPlatformProxy platformProxy = Substitute.For<IPlatformProxy>();
+            platformProxy.CanBrokerSupportSilentAuth().Returns(false); //Ios sets this to false so local cache should be used
+            platformProxy.CreateTokenCacheAccessor(Arg.Any<CacheOptions>()).Returns(PlatformProxyFactory.CreatePlatformProxy(null).CreateTokenCacheAccessor(null));
+            platformProxy.CreateBroker(Arg.Any<ApplicationConfiguration>(), Arg.Any<CoreUIParent>()).ReturnsForAnyArgs(mockBroker);
+
+            using (var harness = new MockHttpTestHarness(TestConstants.AuthorityHomeTenant, platformProxy))
+            {
+                // result will be from the local cache
+                TokenCacheHelper.PopulateCache(harness.Cache.Accessor,
+                    TestConstants.Uid,
+                    TestConstants.Utid,
+                    TestConstants.ClientId,
+                    TestConstants.ProductionPrefCacheEnvironment,
+                    brokerID);
+
+                harness.ServiceBundle.Config.BrokerCreatorFunc = (_, _, _) => mockBroker;
+
+                var parameters = harness.CreateRequestParams(
+                    harness.Cache,
+                    null,
+                    TestConstants.ExtraQueryParameters,
+                    null,
+                    authorityOverride: AuthorityInfo.FromAuthorityUri(TestConstants.AuthorityCommonTenant, false));
+                parameters.AppConfig.IsBrokerEnabled = true;
+
+                var silentParameters = new AcquireTokenSilentParameters()
+                {
+                    Account = new Account(TestConstants.HomeAccountId, TestConstants.DisplayableId, TestConstants.ProductionPrefCacheEnvironment),
+                };
+
+                var request = new SilentRequest(harness.ServiceBundle, parameters, silentParameters);
+
+                var result = await request.RunAsync(default).ConfigureAwait(false);
+
+                Assert.IsNotNull(result);
+                Assert.IsNotNull(result.AccessToken);
+                Assert.AreEqual(TestConstants.s_scope.AsSingleString(), result.Scopes.AsSingleString());
+                Assert.AreEqual(brokerID, result.Account.Username);
+            }
+        }
+
+        internal class MockHttpTestHarness : IDisposable
         {
             private readonly MockHttpAndServiceBundle _mockHttpAndServiceBundle;
 
@@ -270,7 +256,7 @@ namespace Microsoft.Identity.Test.Unit.RequestsTests
             public Authority Authority { get; }
             public ITokenCacheInternal Cache { get; }
 
-            /// <inheritdoc />
+            /// <inheritdoc/>
             public void Dispose()
             {
                 _mockHttpAndServiceBundle.Dispose();

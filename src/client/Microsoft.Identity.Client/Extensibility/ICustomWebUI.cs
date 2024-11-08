@@ -25,17 +25,15 @@ namespace Microsoft.Identity.Client.Extensibility
         /// will redirect to it.
         /// </param>
         /// <param name="cancellationToken">The cancellation token to which you should respond to.
-        /// See https://docs.microsoft.com/en-us/dotnet/standard/parallel-programming/task-cancellation for details.
+        /// See <see href="https://learn.microsoft.com/dotnet/standard/parallel-programming/task-cancellation">Task cancellation</see> for details.
         /// </param>
         /// <returns> The URI returned back from the STS authorization endpoint. This URI contains a code=CODE
         /// parameters that MSAL.NET will extract and redeem.
         /// </returns>
         /// <remarks>
-        /// The <paramref name="authorizationUri">authorizationUri</paramref>"/> is crafted to
+        /// The <paramref name="authorizationUri">authorizationUri</paramref> is crafted to
         /// leverage PKCE in order to protect the token from a man in the middle attack.
         /// Only MSAL.NET can redeem the code.
-        ///
-        /// In the event of cancellation, the implementer should return OperationCanceledException.
         /// </remarks>
         Task<Uri> AcquireAuthorizationCodeAsync(Uri authorizationUri, Uri redirectUri, CancellationToken cancellationToken);
     }

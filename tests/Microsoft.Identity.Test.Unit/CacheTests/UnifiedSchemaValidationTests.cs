@@ -75,7 +75,7 @@ namespace Microsoft.Identity.Test.Unit.CacheTests
             var expectedJsonObject = new JObject
             {
                 ["secret"] = "<removed_at>",
-                ["target"] = "Calendars.Read openid profile Tasks.Read User.Read email",
+                ["target"] = "Calendars.Read email openid profile Tasks.Read User.Read",
                 ["extended_expires_on"] = extExpiresOn,
                 ["ext_expires_on"] = extExpiresOn,
                 ["credential_type"] = "AccessToken",
@@ -93,7 +93,7 @@ namespace Microsoft.Identity.Test.Unit.CacheTests
             // 2. Verify cache key
             IiOSKey key = credential.iOSCacheKey;
 
-            string expectedServiceKey = "accesstoken-b6c69a37-df96-4db0-9088-2ab96e1d8215-f645ad92-e38d-4d1a-b510-d1b09a74a8ca-calendars.read openid profile tasks.read user.read email";
+            string expectedServiceKey = "accesstoken-b6c69a37-df96-4db0-9088-2ab96e1d8215-f645ad92-e38d-4d1a-b510-d1b09a74a8ca-calendars.read email openid profile tasks.read user.read";
             Assert.AreEqual(expectedServiceKey, key.iOSService);
 
             string expectedAccountKey = "9f4880d8-80ba-4c40-97bc-f7a23c703084.f645ad92-e38d-4d1a-b510-d1b09a74a8ca-login.microsoftonline.com";
@@ -193,6 +193,7 @@ namespace Microsoft.Identity.Test.Unit.CacheTests
                 MsalEnvironment,
                 response.ClientInfo,
                 homeAccountId,
+                null,
                 idToken,
                 "idlab@msidlab4.onmicrosoft.com",
                 AadTenantId,
@@ -248,7 +249,7 @@ namespace Microsoft.Identity.Test.Unit.CacheTests
             var expectedJsonObject = new JObject
             {
                 ["secret"] = "<removed_at>",
-                ["target"] = "Tasks.Read User.Read openid profile",
+                ["target"] = "openid profile Tasks.Read User.Read",
                 ["extended_expires_on"] = extExpiresOn,
                 ["ext_expires_on"] = extExpiresOn,
                 ["credential_type"] = "AccessToken",
@@ -266,7 +267,7 @@ namespace Microsoft.Identity.Test.Unit.CacheTests
             // 2. Verify cache key
             IiOSKey key = credential.iOSCacheKey;
 
-            string expectedServiceKey = "accesstoken-b6c69a37-df96-4db0-9088-2ab96e1d8215-9188040d-6c67-4c5b-b112-36a304b66dad-tasks.read user.read openid profile";
+            string expectedServiceKey = "accesstoken-b6c69a37-df96-4db0-9088-2ab96e1d8215-9188040d-6c67-4c5b-b112-36a304b66dad-openid profile tasks.read user.read";
             Assert.AreEqual(expectedServiceKey, key.iOSService);
 
             string expectedAccountKey = "00000000-0000-0000-40c0-3bac188d01d1.9188040d-6c67-4c5b-b112-36a304b66dad-login.microsoftonline.com";
@@ -497,6 +498,7 @@ namespace Microsoft.Identity.Test.Unit.CacheTests
                 MsalEnvironment,
                 response.ClientInfo,
                 homeAccountId,
+                null,
                 IdToken.Parse(response.IdToken),
                 "Missing from the token response",
                 B2CTenantId,
@@ -671,6 +673,7 @@ namespace Microsoft.Identity.Test.Unit.CacheTests
                 MsalEnvironment,
                 response.ClientInfo,
                 homeAccountId,
+                null,
                 IdToken.Parse(response.IdToken),
                 "Missing from the token response",
                 B2CTenantId,
@@ -728,7 +731,7 @@ namespace Microsoft.Identity.Test.Unit.CacheTests
             var expectedJsonObject = new JObject
             {
                 ["secret"] = "<removed_at>",
-                ["target"] = "Calendars.Read openid profile Tasks.Read User.Read email",
+                ["target"] = "Calendars.Read email openid profile Tasks.Read User.Read",
                 ["extended_expires_on"] = extExpiresOn,
                 ["ext_expires_on"] = extExpiresOn,
                 ["credential_type"] = "AccessToken",
@@ -746,7 +749,7 @@ namespace Microsoft.Identity.Test.Unit.CacheTests
             // 2. Verify cache key
             IiOSKey key = credential.iOSCacheKey;
 
-            string expectedServiceKey = "accesstoken-b6c69a37-df96-4db0-9088-2ab96e1d8215-f645ad92-e38d-4d1a-b510-d1b09a74a8ca-calendars.read openid profile tasks.read user.read email";
+            string expectedServiceKey = "accesstoken-b6c69a37-df96-4db0-9088-2ab96e1d8215-f645ad92-e38d-4d1a-b510-d1b09a74a8ca-calendars.read email openid profile tasks.read user.read";
             Assert.AreEqual(expectedServiceKey, key.iOSService);
 
             string expectedAccountKey = "9f4880d8-80ba-4c40-97bc-f7a23c703084.f645ad92-e38d-4d1a-b510-d1b09a74a8ca-login.microsoftonline.com";
@@ -881,6 +884,7 @@ namespace Microsoft.Identity.Test.Unit.CacheTests
                 MsalEnvironment,
                 response.ClientInfo,
                 homeAccountId,
+                null,
                 IdToken.Parse(response.IdToken),
                 "idlab@msidlab4.onmicrosoft.com",
                 AadTenantId,

@@ -55,7 +55,6 @@ namespace Microsoft.Identity.Test.Unit.TelemetryTests
         ///
         /// Sent to the server - 
         ///        Current_request = 4 | ATC_ID, 1, centralus, 2, 4 |
-        ///        Last_request = 4 | 0 |  ATC_ID, corr_step_2  | ServiceUnavailable | centralus, 3
         /// </summary>
         [TestMethod]
         public async Task TelemetryAcceptanceTestAsync()
@@ -67,19 +66,14 @@ namespace Microsoft.Identity.Test.Unit.TelemetryTests
             AssertCurrentTelemetry(result.HttpRequest, ApiIds.AcquireTokenForClient,
                 RegionAutodetectionSource.EnvVariable.ToString("D"),
                 RegionOutcome.AutodetectSuccess.ToString("D"));
-            AssertPreviousTelemetry(result.HttpRequest, expectedSilentCount: 0);
 
             Trace.WriteLine("Step 2. Acquire Token For Client -> HTTP 5xx error (i.e. AAD is down)");
             result = await RunAcquireTokenForClientAsync(AcquireTokenForClientOutcome.AADUnavailableError).ConfigureAwait(false);
-            Guid step2CorrelationId = result.Correlationid;
 
             // we can assert telemetry here, as it will be sent to AAD. However, AAD is down, so it will not record it.
             AssertCurrentTelemetry(result.HttpRequest, ApiIds.AcquireTokenForClient,
                 RegionAutodetectionSource.Cache.ToString("D"),
-                RegionOutcome.AutodetectSuccess.ToString("D"));
-            AssertPreviousTelemetry(
-                result.HttpRequest,
-                expectedSilentCount: 0);
+                RegionOutcome.AutodetectSuccess.ToString("D"));          
 
             // the 5xx error puts MSAL in a throttling state, so "wait" until this clears
             _harness.ServiceBundle.ThrottlingManager.SimulateTimePassing(
@@ -111,7 +105,6 @@ namespace Microsoft.Identity.Test.Unit.TelemetryTests
                 RegionAutodetectionSource.EnvVariable.ToString("D"),
                 RegionOutcome.AutodetectSuccess.ToString("D"),
                 isCacheSerialized: true);
-            AssertPreviousTelemetry(result.HttpRequest, expectedSilentCount: 0);
         }
 
         [TestMethod]
@@ -127,7 +120,6 @@ namespace Microsoft.Identity.Test.Unit.TelemetryTests
                 RegionOutcome.FallbackToGlobal.ToString("D"),
                 isCacheSerialized: false,
                 region: "");
-            AssertPreviousTelemetry(result.HttpRequest, expectedSilentCount: 0);
         }
 
         [TestMethod]
@@ -143,7 +135,6 @@ namespace Microsoft.Identity.Test.Unit.TelemetryTests
                 RegionOutcome.UserProvidedAutodetectionFailed.ToString("D"),
                 isCacheSerialized: false,
                 region: TestConstants.Region);
-            AssertPreviousTelemetry(result.HttpRequest, expectedSilentCount: 0);
         }
 
         /// <summary>
@@ -164,7 +155,6 @@ namespace Microsoft.Identity.Test.Unit.TelemetryTests
                 RegionOutcome.UserProvidedValid.ToString("D"),
                 isCacheSerialized: false,
                 region: TestConstants.Region);
-            AssertPreviousTelemetry(result.HttpRequest, expectedSilentCount: 0);
         }
 
         /// <summary>
@@ -185,7 +175,6 @@ namespace Microsoft.Identity.Test.Unit.TelemetryTests
                 RegionOutcome.UserProvidedInvalid.ToString("D"),
                 isCacheSerialized: false,
                 region: TestConstants.InvalidRegion);
-            AssertPreviousTelemetry(result.HttpRequest, expectedSilentCount: 0);
         }
 
         private enum AcquireTokenForClientOutcome
@@ -200,8 +189,8 @@ namespace Microsoft.Identity.Test.Unit.TelemetryTests
         private async Task<(HttpRequestMessage HttpRequest, Guid Correlationid)> RunAcquireTokenForClientAsync(
             AcquireTokenForClientOutcome outcome, bool forceRefresh = false, bool serializeCache = false)
         {
-            MockHttpMessageHandler tokenRequestHandler = null;
-            Guid correlationId = default;
+            MockHttpMessageHandler tokenRequestHandler;
+            Guid correlationId;
 
             switch (outcome)
             {
@@ -357,9 +346,9 @@ namespace Microsoft.Identity.Test.Unit.TelemetryTests
             Assert.AreEqual(3, telemetryCategories.Length);
             Assert.AreEqual(1, telemetryCategories[0].Split(',').Length); // version
             Assert.AreEqual(5, telemetryCategories[1].Split(',').Length); // api_id, cache_info, region_used, region_source, region_outcome
-            Assert.AreEqual(3, telemetryCategories[2].Split(',').Length); // platform_fields
+            Assert.AreEqual(5, telemetryCategories[2].Split(',').Length); // platform_fields
 
-            Assert.AreEqual(TelemetryConstants.HttpTelemetrySchemaVersion, telemetryCategories[0]); // version
+            Assert.AreEqual(TelemetryConstants.HttpTelemetrySchemaVersion.ToString(), telemetryCategories[0]); // version
 
             Assert.AreEqual(
                 apiId.ToString("D"),
@@ -375,90 +364,6 @@ namespace Microsoft.Identity.Test.Unit.TelemetryTests
                 telemetryCategories[1].Split(',')[4]); // region_outcome
 
             Assert.AreEqual(isCacheSerialized ? "1" : "0", telemetryCategories[2].Split(',')[0]);
-        }
-
-        private static void AssertPreviousTelemetry(
-           HttpRequestMessage requestMessage,
-           int expectedSilentCount,
-           ApiIds[] expectedFailedApiIds = null,
-           Guid[] expectedCorrelationIds = null,
-           string[] expectedErrors = null,
-           string[] expectedRegions = null,
-           string[] expectedRegionSources = null)
-        {
-            expectedFailedApiIds = expectedFailedApiIds ?? new ApiIds[0];
-            expectedCorrelationIds = expectedCorrelationIds ?? new Guid[0];
-            expectedErrors = expectedErrors ?? new string[0];
-            expectedRegions = expectedRegions ?? new string[0];
-            expectedRegionSources = expectedRegionSources ?? new string[0];
-
-            var actualHeader = ParseLastRequestHeader(requestMessage);
-
-            Assert.AreEqual(expectedSilentCount, actualHeader.SilentCount);
-            CoreAssert.AreEqual(actualHeader.FailedApis.Length, actualHeader.CorrelationIds.Length, actualHeader.Errors.Length);
-
-            CollectionAssert.AreEqual(
-                expectedFailedApiIds.Select(apiId => ((int)apiId).ToString(CultureInfo.InvariantCulture)).ToArray(),
-                actualHeader.FailedApis);
-
-            CollectionAssert.AreEqual(
-                expectedCorrelationIds.Select(g => g.ToString()).ToArray(),
-                actualHeader.CorrelationIds);
-
-            CollectionAssert.AreEqual(
-                expectedErrors,
-                actualHeader.Errors);
-
-            CollectionAssert.AreEqual(
-                expectedRegions,
-                actualHeader.Regions);
-
-            CollectionAssert.AreEqual(
-                expectedRegionSources,
-                actualHeader.RegionSources);
-        }
-
-        private static (int SilentCount, string[] FailedApis, string[] CorrelationIds, string[] Errors, string[] Regions, string[] RegionSources) ParseLastRequestHeader(HttpRequestMessage requestMessage)
-        {
-            // schema_version | silent_succesful_count | failed_requests | errors | platform_fields
-            // where a failed_request is "api_id, correlation_id"
-            string lastTelemetryHeader = requestMessage.Headers.GetValues(
-               TelemetryConstants.XClientLastTelemetry).Single();
-            var lastRequestParts = lastTelemetryHeader.Split('|');
-
-            Assert.AreEqual(5, lastRequestParts.Length); //  2 | 1 | | |
-            Assert.AreEqual(TelemetryConstants.HttpTelemetrySchemaVersion, lastRequestParts[0]); // version
-
-            int actualSuccessfullSilentCount = int.Parse(lastRequestParts[1], CultureInfo.InvariantCulture);
-
-            string[] actualFailedApiIds = lastRequestParts[2]
-                .Split(',')
-                .Where((item, index) => index % 2 == 0)
-                .Where(it => !string.IsNullOrEmpty(it))
-                .ToArray();
-            string[] correlationIds = lastRequestParts[2]
-                .Split(',')
-                .Where((item, index) => index % 2 != 0)
-                .Where(it => !string.IsNullOrEmpty(it))
-                .ToArray();
-
-            string[] actualErrors = lastRequestParts[3]
-                .Split(',')
-                .Where(it => !string.IsNullOrEmpty(it))
-                .ToArray();
-
-            string[] regions = lastRequestParts[4]
-                .Split(',')
-                .Where((item, index) => index % 2 == 0)
-                .Where(it => !string.IsNullOrEmpty(it))
-                .ToArray();
-            string[] regionSources = lastRequestParts[4]
-                .Split(',')
-                .Where((item, index) => index % 2 != 0)
-                .Where(it => !string.IsNullOrEmpty(it))
-                .ToArray();
-
-            return (actualSuccessfullSilentCount, actualFailedApiIds, correlationIds, actualErrors, regions, regionSources);
         }
     }
 }

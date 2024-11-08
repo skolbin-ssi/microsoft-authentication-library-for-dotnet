@@ -1,8 +1,9 @@
 ﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-using System;
 using System.Globalization;
+using System.Threading.Tasks;
+using Microsoft.Identity.Client.Internal;
 
 namespace Microsoft.Identity.Client.Instance
 {
@@ -17,40 +18,46 @@ namespace Microsoft.Identity.Client.Instance
         {
         }
 
-        //ADFS does not have a concept of a tenant ID. This prevents ADFS from supporting multiple tenants
-
-        internal override string GetTenantedAuthority(string tenantId, bool forceTenantless = false)
-        {
-            return AuthorityInfo.CanonicalAuthority.ToString();
-        }
-
-        internal override string GetTokenEndpoint()
+        internal override Task<string> GetTokenEndpointAsync(RequestContext requestContext)
         {
             string tokenEndpoint = string.Format(
                               CultureInfo.InvariantCulture,
                               TokenEndpointTemplate,
                              AuthorityInfo.CanonicalAuthority);
-            return tokenEndpoint;
+            return Task.FromResult(tokenEndpoint);
         }
 
-        internal override string GetAuthorizationEndpoint()
+        internal override Task<string> GetAuthorizationEndpointAsync(RequestContext requestContext)
         {
             string authEndpoint = string.Format(CultureInfo.InvariantCulture,
                     AuthorizationEndpointTemplate,
                     AuthorityInfo.CanonicalAuthority);
 
-            return authEndpoint;
+            return Task.FromResult(authEndpoint);
 
         }
 
-        internal override string GetDeviceCodeEndpoint()
+        internal override Task<string> GetDeviceCodeEndpointAsync(RequestContext requestContext)
         {
             string deviceEndpoint = string.Format(
                   CultureInfo.InvariantCulture,
                   DeviceCodeEndpointTemplate,
                   AuthorityInfo.CanonicalAuthority);
 
-            return deviceEndpoint;  
+            return Task.FromResult(deviceEndpoint);  
+        }
+
+        /// <summary>
+        /// ADFS seems to support tenanted authorities, but the tenant ID is fixed so for all intents and purposes 
+        /// it remains constant
+        /// </summary>
+        /// <param name="tenantId"></param>
+        /// <param name="forceSpecifiedTenant"></param>
+        /// <returns></returns>
+        /// <exception cref="System.NotImplementedException"></exception>
+        internal override string GetTenantedAuthority(string tenantId, bool forceSpecifiedTenant)
+        {
+            return AuthorityInfo.CanonicalAuthority.ToString();
         }
 
         internal override string TenantId => null;

@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Diagnostics.Tracing;
 using System.Globalization;
 using System.Linq;
 using System.Text;
@@ -21,7 +20,10 @@ using Microsoft.Identity.Client.Utils;
 using Microsoft.Identity.Client.TelemetryCore;
 using Microsoft.IdentityModel.Abstractions;
 using Microsoft.Identity.Client.TelemetryCore.TelemetryClient;
-using System.Net.Http;
+using Microsoft.Identity.Client.TelemetryCore.OpenTelemetry;
+using Microsoft.Identity.Client.Internal.Broker;
+using System.Runtime.ConstrainedExecution;
+using Microsoft.Identity.Client.AuthScheme;
 
 namespace Microsoft.Identity.Client.Internal.Requests
 {
@@ -52,7 +54,6 @@ namespace Microsoft.Identity.Client.Internal.Requests
                 throw new ArgumentNullException(nameof(acquireTokenParameters));
             }
 
-            ValidateScopeInput(authenticationRequestParameters.Scope);
             acquireTokenParameters.LogParameters(AuthenticationRequestParameters.RequestContext.Logger);
         }
 
@@ -66,112 +67,160 @@ namespace Microsoft.Identity.Client.Internal.Requests
             return null;
         }
 
-        private void ValidateScopeInput(ISet<string> scopesToValidate)
-        {
-            if (scopesToValidate.Contains(AuthenticationRequestParameters.AppConfig.ClientId))
-            {
-                throw new ArgumentException("API does not accept client id as a user-provided scope");
-            }
-        }
-
         protected abstract Task<AuthenticationResult> ExecuteAsync(CancellationToken cancellationToken);
 
         public async Task<AuthenticationResult> RunAsync(CancellationToken cancellationToken = default)
         {
-            Stopwatch sw = Stopwatch.StartNew();
+            ApiEvent apiEvent = null;
 
-            ApiEvent apiEvent = InitializeApiEvent(AuthenticationRequestParameters.Account?.HomeAccountId?.Identifier);
-            AuthenticationRequestParameters.RequestContext.ApiEvent = apiEvent;
-            MsalTelemetryEventDetails telemetryEventDetails = new MsalTelemetryEventDetails(TelemetryConstants.AcquireTokenEventName);
-            ITelemetryClient[] telemetryClients = AuthenticationRequestParameters.RequestContext.ServiceBundle.Config.TelemetryClients;
-
-            using (AuthenticationRequestParameters.RequestContext.CreateTelemetryHelper(apiEvent))
+            var measureTelemetryDurationResult = StopwatchService.MeasureCodeBlock(() =>
             {
-                try
+                apiEvent = InitializeApiEvent(AuthenticationRequestParameters.Account?.HomeAccountId?.Identifier);
+                AuthenticationRequestParameters.RequestContext.ApiEvent = apiEvent;
+            });
+
+            try
+            {
+                AuthenticationResult authenticationResult = null;
+                var measureDurationResult = await StopwatchService.MeasureCodeBlockAsync(async () =>
                 {
                     AuthenticationRequestParameters.LogParameters();
                     LogRequestStarted(AuthenticationRequestParameters);
 
-                    AuthenticationResult authenticationResult = await ExecuteAsync(cancellationToken).ConfigureAwait(false);
+                    authenticationResult = await ExecuteAsync(cancellationToken).ConfigureAwait(false);
                     LogReturnedToken(authenticationResult);
-                    UpdateTelemetry(sw, apiEvent, authenticationResult);
-                    LogMetricsFromAuthResult(authenticationResult, AuthenticationRequestParameters.RequestContext.Logger);
-                    LogSuccessfulTelemetryToClient(authenticationResult, telemetryEventDetails, telemetryClients);
+                }).ConfigureAwait(false);
 
-                    return authenticationResult;
-                }
-                catch (MsalException ex)
-                {
-                    apiEvent.ApiErrorCode = ex.ErrorCode;
-                    AuthenticationRequestParameters.RequestContext.Logger.ErrorPii(ex);
-                    LogErrorTelemetryToClient(ex.ErrorCode, telemetryEventDetails, telemetryClients);
-                    throw;
-                }
-                catch (Exception ex)
-                {
-                    apiEvent.ApiErrorCode = ex.GetType().Name;
-                    AuthenticationRequestParameters.RequestContext.Logger.ErrorPii(ex);
-                    throw;
-                }
-                finally
-                {
-                    telemetryClients.TrackEvent(telemetryEventDetails);
-                }
+                UpdateTelemetry(measureDurationResult.Milliseconds + measureTelemetryDurationResult.Milliseconds, apiEvent, authenticationResult);
+                LogMetricsFromAuthResult(authenticationResult, AuthenticationRequestParameters.RequestContext.Logger);
+                LogSuccessTelemetryToOtel(authenticationResult, apiEvent, measureDurationResult.Microseconds);
+
+                return authenticationResult;
             }
+            catch (MsalException ex)
+            {
+                apiEvent.ApiErrorCode = ex.ErrorCode;
+                if (string.IsNullOrWhiteSpace(ex.CorrelationId))
+                {
+                    ex.CorrelationId = AuthenticationRequestParameters.CorrelationId.ToString();
+                }
+                AuthenticationRequestParameters.RequestContext.Logger.ErrorPii(ex);
+
+                LogFailureTelemetryToOtel(ex.ErrorCode, apiEvent, apiEvent.CacheInfo);
+                throw;
+            }
+            catch (Exception ex)
+            {
+                apiEvent.ApiErrorCode = ex.GetType().Name;
+                AuthenticationRequestParameters.RequestContext.Logger.ErrorPii(ex);
+
+                LogFailureTelemetryToOtel(ex.GetType().Name, apiEvent, apiEvent.CacheInfo);
+                throw;
+            }           
         }
 
-        private void LogErrorTelemetryToClient(string errorCode, MsalTelemetryEventDetails telemetryEventDetails, ITelemetryClient[] telemetryClients)
+        private void LogSuccessTelemetryToOtel(AuthenticationResult authenticationResult, ApiEvent apiEvent, long durationInUs)
         {
-            if (telemetryClients.HasEnabledClients(TelemetryConstants.AcquireTokenEventName))
-            {
-                telemetryEventDetails.SetProperty(TelemetryConstants.Succeeded, false);
-                telemetryEventDetails.SetProperty(TelemetryConstants.ErrorCode, errorCode);
-            }
+            // Log metrics
+            ServiceBundle.PlatformProxy.OtelInstrumentation.LogSuccessMetrics(
+                        ServiceBundle.PlatformProxy.GetProductName(),
+                        apiEvent.ApiId,
+                        apiEvent.CallerSdkApiId,
+                        apiEvent.CallerSdkVersion,
+                        GetCacheLevel(authenticationResult),
+                        durationInUs,
+                        authenticationResult.AuthenticationResultMetadata,
+                        AuthenticationRequestParameters.RequestContext.Logger);
         }
 
-        private void LogSuccessfulTelemetryToClient(AuthenticationResult authenticationResult, MsalTelemetryEventDetails telemetryEventDetails, ITelemetryClient[] telemetryClients)
+        private void LogFailureTelemetryToOtel(string errorCodeToLog, ApiEvent apiEvent, CacheRefreshReason cacheRefreshReason)
         {
-            if (telemetryClients.HasEnabledClients(TelemetryConstants.AcquireTokenEventName))
+            // Log metrics
+            ServiceBundle.PlatformProxy.OtelInstrumentation.LogFailureMetrics(
+                        ServiceBundle.PlatformProxy.GetProductName(),
+                        errorCodeToLog,
+                        apiEvent.ApiId,
+                        apiEvent.CallerSdkApiId, 
+                        apiEvent.CallerSdkVersion,
+                        cacheRefreshReason);
+        }
+
+        private Tuple<string, string> ParseScopesForTelemetry()
+        {
+            string resource = null;
+            string scopes = null;
+            if (AuthenticationRequestParameters.Scope.Count > 0)
             {
-                telemetryEventDetails.SetProperty(TelemetryConstants.CacheInfoTelemetry, Convert.ToInt64(authenticationResult.AuthenticationResultMetadata.CacheRefreshReason));
-                telemetryEventDetails.SetProperty(TelemetryConstants.TokenSource, Convert.ToInt64(authenticationResult.AuthenticationResultMetadata.TokenSource));
-                telemetryEventDetails.SetProperty(TelemetryConstants.Duration, authenticationResult.AuthenticationResultMetadata.DurationTotalInMs);
-                telemetryEventDetails.SetProperty(TelemetryConstants.DurationInCache, authenticationResult.AuthenticationResultMetadata.DurationInCacheInMs);
-                telemetryEventDetails.SetProperty(TelemetryConstants.DurationInHttp, authenticationResult.AuthenticationResultMetadata.DurationInHttpInMs);
-                telemetryEventDetails.SetProperty(TelemetryConstants.Succeeded, true);
-                telemetryEventDetails.SetProperty(TelemetryConstants.PopToken, authenticationResult.TokenType.Equals(Constants.PoPTokenType));
-                telemetryEventDetails.SetProperty(TelemetryConstants.RemainingLifetime, (authenticationResult.ExpiresOn - DateTime.Now).TotalMilliseconds);
-                telemetryEventDetails.SetProperty(TelemetryConstants.ActivityId, authenticationResult.CorrelationId);
+                string firstScope = AuthenticationRequestParameters.Scope.First();
+
+                if (Uri.IsWellFormedUriString(firstScope, UriKind.Absolute))
+                {
+                    Uri firstScopeAsUri = new Uri(firstScope);
+                    resource = $"{firstScopeAsUri.Scheme}://{firstScopeAsUri.Host}";
+
+                    StringBuilder stringBuilder = new StringBuilder();
+
+                    foreach (string scope in AuthenticationRequestParameters.Scope)
+                    {
+                        var splitString = scope.Split(new[] { firstScopeAsUri.Host }, StringSplitOptions.None);
+                        string scopeToAppend = splitString.Length > 1 ? splitString[1].TrimStart('/') + " " : splitString.FirstOrDefault();
+                        stringBuilder.Append(scopeToAppend);
+                    }
+
+                    scopes = stringBuilder.ToString().TrimEnd(' ');
+                }
+                else
+                {
+                    scopes = AuthenticationRequestParameters.Scope.AsSingleString();
+                }
             }
+
+            return new(resource, scopes);
+        }
+
+        private CacheLevel GetCacheLevel(AuthenticationResult authenticationResult)
+        {
+            if (authenticationResult.AuthenticationResultMetadata.TokenSource == TokenSource.Cache) //Check if token source is cache
+            {
+                if (AuthenticationRequestParameters.RequestContext.ApiEvent.CacheLevel > CacheLevel.Unknown) //Check if cache has indicated which level was used
+                {
+                    return AuthenticationRequestParameters.RequestContext.ApiEvent.CacheLevel;
+                }
+
+                //If no level was used, set to unknown
+                return CacheLevel.Unknown;
+            }
+
+            return CacheLevel.None;
         }
 
         private static void LogMetricsFromAuthResult(AuthenticationResult authenticationResult, ILoggerAdapter logger)
         {
             if (logger.IsLoggingEnabled(LogLevel.Always))
             {
-                var sb = new StringBuilder(250);
-                sb.AppendLine();
-                sb.Append("[LogMetricsFromAuthResult] Cache Refresh Reason: ");
-                sb.AppendLine(authenticationResult.AuthenticationResultMetadata.CacheRefreshReason.ToString());
-                sb.Append("[LogMetricsFromAuthResult] DurationInCacheInMs: ");
-                sb.AppendLine(authenticationResult.AuthenticationResultMetadata.DurationInCacheInMs.ToString());
-                sb.Append("[LogMetricsFromAuthResult] DurationTotalInMs: ");
-                sb.AppendLine(authenticationResult.AuthenticationResultMetadata.DurationTotalInMs.ToString());
-                sb.Append("[LogMetricsFromAuthResult] DurationInHttpInMs: ");
-                sb.AppendLine(authenticationResult.AuthenticationResultMetadata.DurationInHttpInMs.ToString());
-                logger.Always(sb.ToString());
-                logger.AlwaysPii($"[LogMetricsFromAuthResult] TokenEndpoint: {authenticationResult.AuthenticationResultMetadata.TokenEndpoint ?? ""}",
+                var metadata = authenticationResult.AuthenticationResultMetadata;
+                logger.Always(
+                    $"""
+                     
+                     [LogMetricsFromAuthResult] Cache Refresh Reason: {metadata.CacheRefreshReason}
+                     [LogMetricsFromAuthResult] DurationInCacheInMs: {metadata.DurationInCacheInMs}
+                     [LogMetricsFromAuthResult] DurationTotalInMs: {metadata.DurationTotalInMs}
+                     [LogMetricsFromAuthResult] DurationInHttpInMs: {metadata.DurationInHttpInMs}
+                     """);
+                logger.AlwaysPii($"[LogMetricsFromAuthResult] TokenEndpoint: {metadata.TokenEndpoint ?? ""}",
                                     "TokenEndpoint: ****");
             }
         }
 
-        private static void UpdateTelemetry(Stopwatch sw, ApiEvent apiEvent, AuthenticationResult authenticationResult)
+        private void UpdateTelemetry(long elapsedMilliseconds, ApiEvent apiEvent, AuthenticationResult authenticationResult)
         {
-            authenticationResult.AuthenticationResultMetadata.DurationTotalInMs = sw.ElapsedMilliseconds;
+            authenticationResult.AuthenticationResultMetadata.DurationTotalInMs = elapsedMilliseconds;
             authenticationResult.AuthenticationResultMetadata.DurationInHttpInMs = apiEvent.DurationInHttpInMs;
             authenticationResult.AuthenticationResultMetadata.DurationInCacheInMs = apiEvent.DurationInCacheInMs;
             authenticationResult.AuthenticationResultMetadata.TokenEndpoint = apiEvent.TokenEndpoint;
             authenticationResult.AuthenticationResultMetadata.CacheRefreshReason = apiEvent.CacheInfo;
+            authenticationResult.AuthenticationResultMetadata.CacheLevel = GetCacheLevel(authenticationResult);
+            authenticationResult.AuthenticationResultMetadata.Telemetry = apiEvent.MsalRuntimeTelemetry;
             authenticationResult.AuthenticationResultMetadata.RegionDetails = CreateRegionDetails(apiEvent);
 
             Metrics.IncrementTotalDurationInMs(authenticationResult.AuthenticationResultMetadata.DurationTotalInMs);
@@ -189,15 +238,76 @@ namespace Microsoft.Identity.Client.Internal.Requests
                 ApiId = AuthenticationRequestParameters.ApiId,
             };
 
-            apiEvent.IsTokenCacheSerialized = AuthenticationRequestParameters.CacheSessionManager.TokenCacheInternal.IsExternalSerializationConfiguredByUser();
-            apiEvent.IsLegacyCacheEnabled = AuthenticationRequestParameters.RequestContext.ServiceBundle.Config.LegacyCacheCompatibilityEnabled;
+            apiEvent.IsTokenCacheSerialized =
+                AuthenticationRequestParameters.CacheSessionManager.TokenCacheInternal.IsAppSubscribedToSerializationEvents();
+
+            apiEvent.IsLegacyCacheEnabled =
+                AuthenticationRequestParameters.RequestContext.ServiceBundle.Config.LegacyCacheCompatibilityEnabled;
+
             apiEvent.CacheInfo = CacheRefreshReason.NotApplicable;
-            apiEvent.TokenType = AuthenticationRequestParameters.AuthenticationScheme.TelemetryTokenType;
+            apiEvent.TokenType = (TokenType)AuthenticationRequestParameters.AuthenticationScheme.TelemetryTokenType;
+            apiEvent.AssertionType = GetAssertionType();
+
+            UpdateCallerSdkDetails(apiEvent);
 
             // Give derived classes the ability to add or modify fields in the telemetry as needed.
             EnrichTelemetryApiEvent(apiEvent);
 
             return apiEvent;
+        }
+
+        private void UpdateCallerSdkDetails(ApiEvent apiEvent)
+        {
+            string callerSdkId;
+            string callerSdkVer;
+
+            // Check if ExtraQueryParameters contains caller-sdk-id and caller-sdk-ver
+            if (AuthenticationRequestParameters.ExtraQueryParameters.TryGetValue("caller-sdk-id", out callerSdkId))
+            {
+                AuthenticationRequestParameters.ExtraQueryParameters.Remove("caller-sdk-id");
+            } 
+            else
+            {
+                callerSdkId = AuthenticationRequestParameters.RequestContext.ServiceBundle.Config.ClientName;
+            }
+            
+            if (AuthenticationRequestParameters.ExtraQueryParameters.TryGetValue("caller-sdk-ver", out callerSdkVer))
+            {
+                AuthenticationRequestParameters.ExtraQueryParameters.Remove("caller-sdk-ver");
+            }
+            else
+            {
+                callerSdkVer = AuthenticationRequestParameters.RequestContext.ServiceBundle.Config.ClientVersion;
+            }
+
+            apiEvent.CallerSdkApiId = callerSdkId == null ? null : callerSdkId.Substring(0, Math.Min(callerSdkId.Length, Constants.CallerSdkIdMaxLength));
+            apiEvent.CallerSdkVersion = callerSdkVer == null ? null : callerSdkVer.Substring(0, Math.Min(callerSdkVer.Length, Constants.CallerSdkVersionMaxLength));
+        }
+
+        private AssertionType GetAssertionType()
+        {
+            if (ServiceBundle.Config.IsManagedIdentity ||
+                ServiceBundle.Config.AppTokenProvider != null)
+            {
+                return AssertionType.ManagedIdentity;
+            }
+
+            if (ServiceBundle.Config.ClientCredential != null)
+            {
+                if (ServiceBundle.Config.ClientCredential.AssertionType == AssertionType.CertificateWithoutSni)
+                {
+                    if (ServiceBundle.Config.SendX5C)
+                    {
+                        return AssertionType.CertificateWithSni;
+                    }
+
+                    return AssertionType.CertificateWithoutSni;
+                }
+
+                return ServiceBundle.Config.ClientCredential.AssertionType;
+            }
+
+            return AssertionType.None;
         }
 
         protected async Task<AuthenticationResult> CacheTokenResponseAndCreateAuthenticationResultAsync(MsalTokenResponse msalTokenResponse)
@@ -208,11 +318,13 @@ namespace Microsoft.Identity.Client.Internal.Requests
             ClientInfo fromServer = null;
 
             if (!AuthenticationRequestParameters.IsClientCredentialRequest &&
+                AuthenticationRequestParameters.ApiId != ApiEvent.ApiIds.AcquireTokenForSystemAssignedManagedIdentity &&
+                AuthenticationRequestParameters.ApiId != ApiEvent.ApiIds.AcquireTokenForUserAssignedManagedIdentity &&
                 AuthenticationRequestParameters.ApiId != ApiEvent.ApiIds.AcquireTokenByRefreshToken &&
                 AuthenticationRequestParameters.AuthorityInfo.AuthorityType != AuthorityType.Adfs &&
                 !(msalTokenResponse.ClientInfo is null))
             {
-                //client_info is not returned from client credential flows because there is no user present.
+                //client_info is not returned from client credential and managed identity flows because there is no user present.
                 fromServer = ClientInfo.CreateFromJson(msalTokenResponse.ClientInfo);
             }
 
@@ -233,46 +345,13 @@ namespace Microsoft.Identity.Client.Internal.Requests
                 msalTokenResponse.TokenSource,
                 AuthenticationRequestParameters.RequestContext.ApiEvent,
                 account,
-                msalTokenResponse.SpaAuthCode);
+                msalTokenResponse.SpaAuthCode,
+                msalTokenResponse.CreateExtensionDataStringMap());
         }
 
-        private void ValidateAccountIdentifiers(ClientInfo fromServer)
+        protected virtual void ValidateAccountIdentifiers(ClientInfo fromServer)
         {
-            if (fromServer == null ||
-                AuthenticationRequestParameters?.Account?.HomeAccountId == null ||
-                PublicClientApplication.IsOperatingSystemAccount(AuthenticationRequestParameters?.Account))
-            {
-                return;
-            }
-
-            if (AuthenticationRequestParameters.AuthorityInfo.AuthorityType == AuthorityType.B2C &&
-                fromServer.UniqueTenantIdentifier.Equals(AuthenticationRequestParameters.Account.HomeAccountId.TenantId,
-                    StringComparison.OrdinalIgnoreCase))
-            {
-                return;
-            }
-
-            if (fromServer.UniqueObjectIdentifier.Equals(AuthenticationRequestParameters.Account.HomeAccountId.ObjectId,
-                    StringComparison.OrdinalIgnoreCase) &&
-                fromServer.UniqueTenantIdentifier.Equals(AuthenticationRequestParameters.Account.HomeAccountId.TenantId,
-                    StringComparison.OrdinalIgnoreCase))
-            {
-                return;
-            }
-
-            AuthenticationRequestParameters.RequestContext.Logger.Error("Returned user identifiers do not match the sent user identifier");
-
-            AuthenticationRequestParameters.RequestContext.Logger.ErrorPii(
-                string.Format(
-                    CultureInfo.InvariantCulture,
-                    "User identifier returned by AAD (uid:{0} utid:{1}) does not match the user identifier sent. (uid:{2} utid:{3})",
-                    fromServer.UniqueObjectIdentifier,
-                    fromServer.UniqueTenantIdentifier,
-                    AuthenticationRequestParameters.Account.HomeAccountId.ObjectId,
-                    AuthenticationRequestParameters.Account.HomeAccountId.TenantId),
-                string.Empty);
-
-            throw new MsalClientException(MsalError.UserMismatch, MsalErrorMessage.UserMismatchSaveToken);
+            //No Op
         }
 
         protected Task ResolveAuthorityAsync()
@@ -280,14 +359,17 @@ namespace Microsoft.Identity.Client.Internal.Requests
             return AuthenticationRequestParameters.AuthorityManager.RunInstanceDiscoveryAndValidationAsync();
         }
 
-        internal Task<MsalTokenResponse> SendTokenRequestAsync(
+        internal async Task<MsalTokenResponse> SendTokenRequestAsync(
             IDictionary<string, string> additionalBodyParameters,
             CancellationToken cancellationToken)
         {
-            var tokenResponse = SendTokenRequestAsync(
-                AuthenticationRequestParameters.Authority.GetTokenEndpoint(),
+            var tokenEndpoint = await AuthenticationRequestParameters.Authority.GetTokenEndpointAsync(AuthenticationRequestParameters.RequestContext).ConfigureAwait(false);
+
+            var tokenResponse = await SendTokenRequestAsync(
+                tokenEndpoint,
                 additionalBodyParameters,
-                cancellationToken);
+                cancellationToken).ConfigureAwait(false);
+
             Metrics.IncrementTotalAccessTokensFromIdP();
             return tokenResponse;
         }
@@ -306,11 +388,30 @@ namespace Microsoft.Identity.Client.Internal.Requests
                 tokenClient.AddHeaderToClient(CcsHeader.Value.Key, CcsHeader.Value.Value);
             }
 
+            InjectPcaSsoPolicyHeader(tokenClient);
+
             return tokenClient.SendTokenRequestAsync(
                 additionalBodyParameters,
                 scopes,
                 tokenEndpoint,
                 cancellationToken);
+        }
+
+        private void InjectPcaSsoPolicyHeader(TokenClient tokenClient)
+        {
+            if (ServiceBundle.Config.IsPublicClient && ServiceBundle.Config.IsWebviewSsoPolicyEnabled)
+            {
+                IBroker broker = ServiceBundle.Config.BrokerCreatorFunc(
+                    null,
+                    ServiceBundle.Config,
+                    AuthenticationRequestParameters.RequestContext.Logger);
+
+                var ssoPolicyHeaders = broker.GetSsoPolicyHeaders();
+                foreach (KeyValuePair<string, string> kvp in ssoPolicyHeaders)
+                {
+                    tokenClient.AddHeaderToClient(kvp.Key, kvp.Value);
+                }
+            }
         }
 
         //The AAD backup authentication system header is used by the AAD backup authentication system service
@@ -336,9 +437,9 @@ namespace Microsoft.Identity.Client.Internal.Requests
                 }
             }
 
-            if (additionalBodyParameters.ContainsKey(OAuth2Parameter.Username))
+            if (additionalBodyParameters.TryGetValue(OAuth2Parameter.Username, out string username))
             {
-                return GetCcsUpnHeader(additionalBodyParameters[OAuth2Parameter.Username]);
+                return GetCcsUpnHeader(username);
             }
 
             if (!String.IsNullOrEmpty(AuthenticationRequestParameters.LoginHint))
@@ -351,43 +452,30 @@ namespace Microsoft.Identity.Client.Internal.Requests
 
         protected KeyValuePair<string, string>? GetCcsUpnHeader(string upnHeader)
         {
-            if (AuthenticationRequestParameters.Authority.AuthorityInfo.AuthorityType == AuthorityType.B2C) 
+            if (AuthenticationRequestParameters.Authority.AuthorityInfo.AuthorityType == AuthorityType.B2C)
             {
                 return null;
             }
 
             string OidCcsHeader = CoreHelpers.GetCcsUpnHint(upnHeader);
 
-            return new KeyValuePair<string, string>(Constants.CcsRoutingHintHeader, OidCcsHeader) as KeyValuePair<string, string>?;
+            return new KeyValuePair<string, string>(Constants.CcsRoutingHintHeader, OidCcsHeader);
         }
 
         private void LogRequestStarted(AuthenticationRequestParameters authenticationRequestParameters)
         {
             if (authenticationRequestParameters.RequestContext.Logger.IsLoggingEnabled(LogLevel.Info))
             {
-                string logFormat = "=== Token Acquisition ({3}) started:\n\tAuthority: {0}\n\tScope: {1}\n\tClientId: {2}\n\t";
                 string scopes = authenticationRequestParameters.Scope.AsSingleString();
-                string messageWithPii = string.Format(
-                    CultureInfo.InvariantCulture,
-                    logFormat,
-                    authenticationRequestParameters.AuthorityInfo?.CanonicalAuthority,
-                    scopes,
-                    authenticationRequestParameters.AppConfig.ClientId,
-                    GetType().Name);
+                var type = GetType().Name;
+                var messageWithPii = $"=== Token Acquisition ({type}) started:\n\tAuthority: {authenticationRequestParameters.AuthorityInfo?.CanonicalAuthority}\n\tScope: {scopes}\n\tClientId: {authenticationRequestParameters.AppConfig.ClientId}\n\t";
 
-                string messageWithoutPii = string.Format(
-                    CultureInfo.InvariantCulture,
-                    "=== Token Acquisition ({0}) started:\n\t Scopes: {1}",
-                    GetType().Name,
-                    scopes);
+                var messageWithoutPii = $"=== Token Acquisition ({type}) started:\n\t Scopes: {scopes}";
 
                 if (authenticationRequestParameters.AuthorityInfo != null &&
                     KnownMetadataProvider.IsKnownEnvironment(authenticationRequestParameters.AuthorityInfo?.Host))
                 {
-                    messageWithoutPii += string.Format(
-                        CultureInfo.CurrentCulture,
-                        "\n\tAuthority Host: {0}",
-                        authenticationRequestParameters.AuthorityInfo?.Host);
+                    messageWithoutPii += $"\n\tAuthority Host: {authenticationRequestParameters.AuthorityInfo?.Host}";
                 }
 
                 authenticationRequestParameters.RequestContext.Logger.InfoPii(messageWithPii, messageWithoutPii);
@@ -408,7 +496,7 @@ namespace Microsoft.Identity.Client.Internal.Requests
                 AuthenticationRequestParameters.RequestContext.Logger.IsLoggingEnabled(LogLevel.Info))
             {
                 string scopes = string.Join(" ", result.Scopes);
-                
+
                 AuthenticationRequestParameters.RequestContext.Logger.Info("\n\t=== Token Acquisition finished successfully:");
                 AuthenticationRequestParameters.RequestContext.Logger.InfoPii(
                        () => $" AT expiration time: {result.ExpiresOn}, scopes: {scopes}. " +
@@ -430,7 +518,7 @@ namespace Microsoft.Identity.Client.Internal.Requests
         internal async Task<AuthenticationResult> HandleTokenRefreshErrorAsync(MsalServiceException e, MsalAccessTokenCacheItem cachedAccessTokenItem)
         {
             var logger = AuthenticationRequestParameters.RequestContext.Logger;
-            
+
             logger.Warning($"Fetching a new AT failed. Is exception retry-able? {e.IsRetryable}. Is there an AT in the cache that is usable? {cachedAccessTokenItem != null}");
 
             if (cachedAccessTokenItem != null && e.IsRetryable)
@@ -447,7 +535,9 @@ namespace Microsoft.Identity.Client.Internal.Requests
                     AuthenticationRequestParameters.RequestContext.CorrelationId,
                     TokenSource.Cache,
                     AuthenticationRequestParameters.RequestContext.ApiEvent,
-                    account);
+                    account,
+                    spaAuthCode: null,
+                    additionalResponseParameters: null);
             }
 
             logger.Warning("Either the exception does not indicate a problem with AAD or the token cache does not have an AT that is usable. ");

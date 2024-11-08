@@ -1,6 +1,6 @@
 ﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-#if !NET48 && !NET7_0
+#if NET
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -11,14 +11,13 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Identity.Client;
 using Microsoft.Identity.Client.ApiConfig.Parameters;
-using Microsoft.Identity.Client.Broker;
+using Microsoft.Identity.Client.Platforms.Features.RuntimeBroker;
 using Microsoft.Identity.Client.Core;
 using Microsoft.Identity.Client.Instance;
 using Microsoft.Identity.Client.Internal;
 using Microsoft.Identity.Client.Internal.Requests;
 using Microsoft.Identity.Client.NativeInterop;
 using Microsoft.Identity.Client.OAuth2;
-using Microsoft.Identity.Client.Platforms.Features.WamBroker;
 using Microsoft.Identity.Client.PlatformsCommon.Shared;
 using Microsoft.Identity.Client.TelemetryCore.Internal.Events;
 using Microsoft.Identity.Client.UI;
@@ -29,6 +28,8 @@ using Microsoft.IdentityModel.Abstractions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using NSubstitute;
 using Account = Microsoft.Identity.Client.Account;
+using Microsoft.Identity.Client.AppConfig;
+using Microsoft.Identity.Client.Broker;
 
 namespace Microsoft.Identity.Test.Unit.BrokerTests
 {
@@ -51,7 +52,8 @@ namespace Microsoft.Identity.Test.Unit.BrokerTests
             _synchronizationContext = new DedicatedThreadSynchronizationContext();
 
             _coreUIParent = new CoreUIParent() { SynchronizationContext = _synchronizationContext };
-            ApplicationConfiguration applicationConfiguration = new ApplicationConfiguration(isConfidentialClient: false);
+            ApplicationConfiguration applicationConfiguration = new ApplicationConfiguration(MsalClientType.PublicClient);
+            applicationConfiguration.BrokerOptions = new BrokerOptions(BrokerOptions.OperatingSystems.Windows);
             _logger = Substitute.For<ILoggerAdapter>();
             _logger.PiiLoggingEnabled.Returns(true);
 
@@ -71,7 +73,10 @@ namespace Microsoft.Identity.Test.Unit.BrokerTests
                .Create("d3adb33f-c0de-ed0c-c0de-deadb33fc0d3")
                .WithAuthority(TestConstants.AuthorityTenant);
 
-            pcaBuilder = pcaBuilder.WithWindowsBroker();
+            pcaBuilder = pcaBuilder.WithBroker(
+                new BrokerOptions(
+                    BrokerOptions.OperatingSystems.Windows));
+
             Assert.IsTrue(pcaBuilder.IsBrokerAvailable());
 
         }
@@ -83,25 +88,32 @@ namespace Microsoft.Identity.Test.Unit.BrokerTests
                .Create("d3adb33f-c0de-ed0c-c0de-deadb33fc0d3")
                .WithAdfsAuthority(TestConstants.ADFSAuthority);
 
-            pcaBuilder = pcaBuilder.WithWindowsBroker();
+            pcaBuilder = pcaBuilder.WithBroker(
+                new BrokerOptions(
+                    BrokerOptions.OperatingSystems.Windows));
 
             Assert.IsFalse(pcaBuilder.IsBrokerAvailable());
-
         }
 
         [TestMethod]
         public async Task ThrowOnNoHandleAsync()
         {
-            var pca = PublicClientApplicationBuilder
-               .Create(TestConstants.ClientId)
-               .WithWindowsBroker()
-               .Build();
+            using (var handle = base.CreateTestHarness())
+            {
+                handle.HttpManager.AddInstanceDiscoveryMockHandler();
+                var pcaBuilder = PublicClientApplicationBuilder
+                   .Create(TestConstants.ClientId)
+                   .WithHttpManager(handle.HttpManager)
+                   .WithBroker(new BrokerOptions(BrokerOptions.OperatingSystems.Windows));
 
-            // no window handle - throw
-            var ex = await AssertException.TaskThrowsAsync<MsalClientException>(
-                () => pca.AcquireTokenInteractive(new[] { "" }).ExecuteAsync()).ConfigureAwait(false);
+                var pca = pcaBuilder.Build();
 
-            Assert.AreEqual("window_handle_required", ex.ErrorCode);
+                // no window handle - throw
+                var ex = await AssertException.TaskThrowsAsync<MsalClientException>(
+                    () => pca.AcquireTokenInteractive(new[] { "" }).ExecuteAsync()).ConfigureAwait(false);
+
+                Assert.AreEqual("window_handle_required", ex.ErrorCode);
+            }
            
         }
        
@@ -121,7 +133,7 @@ namespace Microsoft.Identity.Test.Unit.BrokerTests
             var acquireTokenCommonParameters = new AcquireTokenCommonParameters
             {
                 ApiId = ApiEvent.ApiIds.AcquireTokenSilent,
-                AuthorityOverride = tenantAuthority
+                AuthorityOverride = tenantAuthority                
             };
 
             var authRequestParams = new AuthenticationRequestParameters(

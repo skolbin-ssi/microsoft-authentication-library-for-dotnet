@@ -83,7 +83,7 @@ namespace Microsoft.Identity.Test.Unit.ApiConfigTests
 
                 IEnumerable<IAccount> accounts = await app.GetAccountsAsync().ConfigureAwait(false);
                 result = await app2.AcquireTokenSilent(TestConstants.s_scope, accounts.First())
-                                   .WithAuthority(string.Format(CultureInfo.InvariantCulture, "https://{0}/{1}/", envAlias, TestConstants.Utid))
+                                   .WithTenantId(TestConstants.Utid)
                                    .WithForceRefresh(false)
                                    .ExecuteAsync(CancellationToken.None)
                                    .ConfigureAwait(false);
@@ -125,7 +125,7 @@ namespace Microsoft.Identity.Test.Unit.ApiConfigTests
                         .AcquireTokenSilent(
                             TestConstants.s_scopeForAnotherResource,
                             (await app.GetAccountsAsync().ConfigureAwait(false)).First())
-                        .WithAuthority(string.Format(CultureInfo.InvariantCulture, "https://{0}/{1}/", envAlias, TestConstants.Utid))
+                        .WithTenantId(TestConstants.Utid)
                         .WithForceRefresh(false)
                         .ExecuteAsync(CancellationToken.None).ConfigureAwait(false);
                 }
@@ -152,7 +152,7 @@ namespace Microsoft.Identity.Test.Unit.ApiConfigTests
                                                                         .BuildConcrete();
             app.ServiceBundle.ConfigureMockWebUI();
 
-            //Adding one instance discovery response to ensure the cache is hit for the subsiquent requests.
+            //Adding one instance discovery response to ensure the cache is hit for the subsequent requests.
             //If MSAL tries to do an additional request this test will fail.
             harness.HttpManager.AddInstanceDiscoveryMockHandler();
             harness.HttpManager.AddSuccessTokenResponseMockHandlerForPost("https://" + TestConstants.PpeOrgEnvironment + "/common/");//login.windows-ppe.org is not known to MSAL

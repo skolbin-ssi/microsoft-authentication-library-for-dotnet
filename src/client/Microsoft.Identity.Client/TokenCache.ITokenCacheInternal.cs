@@ -18,6 +18,7 @@ using Microsoft.Identity.Client.Internal;
 using Microsoft.Identity.Client.Internal.Requests;
 using Microsoft.Identity.Client.OAuth2;
 using Microsoft.Identity.Client.TelemetryCore.Internal.Events;
+using Microsoft.Identity.Client.TelemetryCore.TelemetryClient;
 using Microsoft.Identity.Client.Utils;
 
 namespace Microsoft.Identity.Client
@@ -53,7 +54,7 @@ namespace Microsoft.Identity.Client
 
             string suggestedWebCacheKey = CacheKeyFactory.GetExternalCacheKeyFromResponse(requestParams, homeAccountId);
 
-            // token could be comming from a different cloud than the one configured
+            // token could be coming from a different cloud than the one configured
             if (requestParams.AppConfig.MultiCloudSupportEnabled && !string.IsNullOrEmpty(response.AuthorityUrl))
             {
                 var url = new Uri(response.AuthorityUrl);
@@ -78,7 +79,8 @@ namespace Microsoft.Identity.Client
                         tenantId,
                         homeAccountId,
                         requestParams.AuthenticationScheme.KeyId,
-                        CacheKeyFactory.GetOboKey(requestParams.LongRunningOboCacheKey, requestParams.UserAssertion));
+                        CacheKeyFactory.GetOboKey(requestParams.LongRunningOboCacheKey, requestParams.UserAssertion),
+                        requestParams.PersistedCacheParameters);
             }
 
             if (!string.IsNullOrEmpty(response.RefreshToken))
@@ -86,6 +88,11 @@ namespace Microsoft.Identity.Client
                 Debug.Assert(
                     requestParams.ApiId != ApiEvent.ApiIds.AcquireTokenForClient,
                     "client_credentials flow should not receive a refresh token");
+
+                Debug.Assert(
+                    (requestParams.ApiId != ApiEvent.ApiIds.AcquireTokenForSystemAssignedManagedIdentity || 
+                    requestParams.ApiId != ApiEvent.ApiIds.AcquireTokenForUserAssignedManagedIdentity),
+                    "Managed identity flow should not receive a refresh token");
 
                 msalRefreshTokenCacheItem = new MsalRefreshTokenCacheItem(
                                     instanceDiscoveryMetadata.PreferredCache,
@@ -109,6 +116,11 @@ namespace Microsoft.Identity.Client
                     requestParams.ApiId != ApiEvent.ApiIds.AcquireTokenForClient,
                     "client_credentials flow should not receive an ID token");
 
+                Debug.Assert(
+                    (requestParams.ApiId != ApiEvent.ApiIds.AcquireTokenForSystemAssignedManagedIdentity ||
+                    requestParams.ApiId != ApiEvent.ApiIds.AcquireTokenForUserAssignedManagedIdentity),
+                    "Managed identity flow should not receive an ID token");
+
                 msalIdTokenCacheItem = new MsalIdTokenCacheItem(
                     instanceDiscoveryMetadata.PreferredCache,
                     requestParams.AppConfig.ClientId,
@@ -117,10 +129,12 @@ namespace Microsoft.Identity.Client
                     homeAccountId);
 
                 Dictionary<string, string> wamAccountIds = TokenResponseHelper.GetWamAccountIds(requestParams, response);
+                string accountSource = requestParams.ApiId == ApiEvent.ApiIds.AcquireTokenByDeviceCode ? "device_code_flow" : null;
                 msalAccountCacheItem = new MsalAccountCacheItem(
                              instanceDiscoveryMetadata.PreferredCache,
                              response.ClientInfo,
                              homeAccountId,
+                             accountSource,
                              idToken,
                              username,
                              tenantId,
@@ -138,10 +152,12 @@ namespace Microsoft.Identity.Client
                     }
                 }
 
+                
                 account = new Account(
                   homeAccountId,
                   username,
                   instanceDiscoveryMetadata.PreferredNetwork,
+                  accountSource,
                   wamAccountIds,
                   tenantProfiles?.Values);
             }
@@ -179,11 +195,14 @@ namespace Microsoft.Identity.Client
                             identityLogger: requestParams.RequestContext.Logger.IdentityLogger,
                             piiLoggingEnabled: requestParams.RequestContext.Logger.PiiLoggingEnabled);
 
-                        Stopwatch sw = Stopwatch.StartNew();
+                        var measuredResultDuration = await StopwatchService.MeasureCodeBlockAsync( async () => 
+                        {
+                            await tokenCacheInternal.OnBeforeAccessAsync(args).ConfigureAwait(false);
+                            await tokenCacheInternal.OnBeforeWriteAsync(args).ConfigureAwait(false);
 
-                        await tokenCacheInternal.OnBeforeAccessAsync(args).ConfigureAwait(false);
-                        await tokenCacheInternal.OnBeforeWriteAsync(args).ConfigureAwait(false);
-                        requestParams.RequestContext.ApiEvent.DurationInCacheInMs += sw.ElapsedMilliseconds;
+                        }).ConfigureAwait(false);
+
+                        requestParams.RequestContext.ApiEvent.DurationInCacheInMs += measuredResultDuration.Milliseconds;
                     }
 
                     // Don't cache access tokens from broker
@@ -251,13 +270,12 @@ namespace Microsoft.Identity.Client
                             identityLogger: requestParams.RequestContext.Logger.IdentityLogger,
                             piiLoggingEnabled: requestParams.RequestContext.Logger.PiiLoggingEnabled);
 
-                        Stopwatch sw = Stopwatch.StartNew();
-                        await tokenCacheInternal.OnAfterAccessAsync(args).ConfigureAwait(false);
-                        requestParams.RequestContext.ApiEvent.DurationInCacheInMs += sw.ElapsedMilliseconds;
+                        var measuredTimeDuration = await tokenCacheInternal.OnAfterAccessAsync(args).MeasureAsync().ConfigureAwait(false);
+                        requestParams.RequestContext.ApiEvent.DurationInCacheInMs += measuredTimeDuration.Milliseconds;
 
-                        DumpCacheToLogs(requestParams);
-
+                        LogCacheContents(requestParams);
                     }
+
 #pragma warning disable CS0618 // Type or member is obsolete
                     HasStateChanged = false;
 #pragma warning restore CS0618 // Type or member is obsolete
@@ -272,7 +290,7 @@ namespace Microsoft.Identity.Client
             }
         }
 
-        private bool ShouldCacheAccessToken(MsalAccessTokenCacheItem msalAccessTokenCacheItem, TokenSource tokenSource)
+        private static bool ShouldCacheAccessToken(MsalAccessTokenCacheItem msalAccessTokenCacheItem, TokenSource tokenSource)
         {
 #if iOS
             return msalAccessTokenCacheItem != null;
@@ -283,27 +301,34 @@ namespace Microsoft.Identity.Client
 
         //This method pulls all of the access and refresh tokens from the cache and can therefore be very impactful on performance.
         //This will run on a background thread to mitigate this.
-        private void DumpCacheToLogs(AuthenticationRequestParameters requestParameters)
+        private void LogCacheContents(AuthenticationRequestParameters requestParameters)
         {
 
             if (requestParameters.RequestContext.Logger.IsLoggingEnabled(LogLevel.Verbose))
             {
                 var accessTokenCacheItems = Accessor.GetAllAccessTokens();
                 var refreshTokenCacheItems = Accessor.GetAllRefreshTokens();
-                var accessTokenCacheItemsSubset = accessTokenCacheItems.Take(10).Select(item => item).ToList();
+                var accessTokenCacheItemsSubset = accessTokenCacheItems.Take(10).ToList();
+                var refreshTokenCacheItemsSubset = refreshTokenCacheItems.Take(10).ToList();
 
-                StringBuilder tokenCacheKeyDump = new StringBuilder();
+                StringBuilder tokenCacheKeyLog = new StringBuilder();
 
-                tokenCacheKeyDump.AppendLine($"Total number of access tokens in cache: {accessTokenCacheItems.Count}");
-                tokenCacheKeyDump.AppendLine($"Total number of refresh tokens in cache: {refreshTokenCacheItems.Count}");
+                tokenCacheKeyLog.AppendLine($"Total number of access tokens in the cache: {accessTokenCacheItems.Count}");
+                tokenCacheKeyLog.AppendLine($"Total number of refresh tokens in the cache: {refreshTokenCacheItems.Count}");
 
-                tokenCacheKeyDump.AppendLine($"Token cache dump of the first {accessTokenCacheItemsSubset.Count} cache keys.");
+                tokenCacheKeyLog.AppendLine($"First {accessTokenCacheItemsSubset.Count} access token cache keys:");
                 foreach (var cacheItem in accessTokenCacheItemsSubset)
                 {
-                    tokenCacheKeyDump.AppendLine($"AT Cache Key: {cacheItem.ToLogString(requestParameters.RequestContext.Logger.PiiLoggingEnabled)}");
+                    tokenCacheKeyLog.AppendLine($"AT Cache Key: {cacheItem.ToLogString(requestParameters.RequestContext.Logger.PiiLoggingEnabled)}");
                 }
 
-                requestParameters.RequestContext.Logger.Verbose(() => tokenCacheKeyDump.ToString());
+                tokenCacheKeyLog.AppendLine($"First {refreshTokenCacheItemsSubset.Count} refresh token cache keys:");
+                foreach (var cacheItem in refreshTokenCacheItemsSubset)
+                {
+                    tokenCacheKeyLog.AppendLine($"RT Cache Key: {cacheItem.ToLogString(requestParameters.RequestContext.Logger.PiiLoggingEnabled)}");
+                }
+
+                requestParameters.RequestContext.Logger.Verbose(() => tokenCacheKeyLog.ToString());
             }
         }
 
@@ -316,7 +341,7 @@ namespace Microsoft.Identity.Client
             }
 
             if (ServiceBundle.PlatformProxy.LegacyCacheRequiresSerialization &&
-               !(this as ITokenCacheInternal).IsExternalSerializationConfiguredByUser())
+               !(this as ITokenCacheInternal).IsAppSubscribedToSerializationEvents())
             {
                 // serialization is not configured but is required
                 return false;
@@ -328,7 +353,7 @@ namespace Microsoft.Identity.Client
                 return false;
             }
 
-            if (requestParams.AuthorityInfo.AuthorityType == AuthorityType.B2C)
+            if (requestParams.AuthorityInfo.AuthorityType != AuthorityType.Aad)
             {
                 // ADAL did not support B2C
                 return false;
@@ -347,7 +372,7 @@ namespace Microsoft.Identity.Client
             InstanceDiscoveryMetadataEntry instanceDiscoveryMetadata)
         {
             if (msalRefreshTokenCacheItem?.RawClientInfo != null &&
-                msalIdTokenCacheItem?.IdToken?.ObjectId != null &&
+                msalIdTokenCacheItem?.IdToken?.GetUniqueId() != null &&
                 IsLegacyAdalCacheEnabled(requestParams))
             {
 
@@ -362,7 +387,7 @@ namespace Microsoft.Identity.Client
                     msalRefreshTokenCacheItem,
                     msalIdTokenCacheItem,
                     authorityWithPreferredCache.AuthorityInfo.CanonicalAuthority.ToString(),
-                    msalIdTokenCacheItem.IdToken.ObjectId,
+                    msalIdTokenCacheItem.IdToken.GetUniqueId(),
                     response.Scope);
             }
             else
@@ -410,9 +435,9 @@ namespace Microsoft.Identity.Client
             var existingWamAccountIds = existingAccount?.WamAccountIds;
             msalAccountCacheItem.WamAccountIds.MergeDifferentEntries(existingWamAccountIds);
         }
-#endregion
+        #endregion
 
-#region FindAccessToken
+        #region FindAccessToken
         /// <summary>
         /// IMPORTANT: this class is performance critical; any changes must be benchmarked using Microsoft.Identity.Test.Performance.
         /// More information about how to test and what data to look for is in https://aka.ms/msal-net-performance-testing.
@@ -513,7 +538,7 @@ namespace Microsoft.Identity.Client
         {
             tokenCacheItems.FilterWithLogging(item =>
                             string.Equals(
-                                item.TokenType ?? BearerAuthenticationScheme.BearerTokenType,
+                                item.TokenType ?? BearerAuthenticationOperation.BearerTokenType,
                                 requestParams.AuthenticationScheme.AccessTokenType,
                                 StringComparison.OrdinalIgnoreCase),
                             requestParams.RequestContext.Logger,
@@ -527,7 +552,7 @@ namespace Microsoft.Identity.Client
             string requestTenantId = requestParams.Authority.TenantId;
             bool filterByTenantId = true;
 
-            if (requestParams.ApiId == ApiEvent.ApiIds.AcquireTokenOnBehalfOf) // OBO
+            if (ApiEvent.IsOnBehalfOfRequest(requestParams.ApiId))
             {
                 tokenCacheItems.FilterWithLogging(item =>
                         !string.IsNullOrEmpty(item.OboCacheKey) &&
@@ -563,7 +588,9 @@ namespace Microsoft.Identity.Client
 
             // Only AcquireTokenSilent has an IAccount in the request that can be used for filtering
             if (requestParams.ApiId != ApiEvent.ApiIds.AcquireTokenForClient &&
-                requestParams.ApiId != ApiEvent.ApiIds.AcquireTokenOnBehalfOf)
+                requestParams.ApiId != ApiEvent.ApiIds.AcquireTokenForSystemAssignedManagedIdentity &&
+                requestParams.ApiId != ApiEvent.ApiIds.AcquireTokenForUserAssignedManagedIdentity &&
+                !ApiEvent.IsOnBehalfOfRequest(requestParams.ApiId))
             {
                 tokenCacheItems.FilterWithLogging(item => item.HomeAccountId.Equals(
                                 requestParams.Account.HomeAccountId?.Identifier, StringComparison.OrdinalIgnoreCase),
@@ -678,7 +705,7 @@ namespace Microsoft.Identity.Client
                 $"Filtering AT by environment");
         }
 
-        private MsalAccessTokenCacheItem FilterTokensByPopKeyId(MsalAccessTokenCacheItem item, AuthenticationRequestParameters authenticationRequest)
+        private static MsalAccessTokenCacheItem FilterTokensByPopKeyId(MsalAccessTokenCacheItem item, AuthenticationRequestParameters authenticationRequest)
         {
             if (item == null)
             {
@@ -699,14 +726,10 @@ namespace Microsoft.Identity.Client
             }
 
             authenticationRequest.RequestContext.Logger.Info(
-                    () => string.Format(
-                        CultureInfo.InvariantCulture,
-                        "A token bound to the wrong key was found. Token key id: {0} Request key id: {1}",
-                        item.KeyId,
-                        requestKid));
+                    () => $"A token bound to the wrong key was found. Token key id: {item.KeyId} Request key id: {requestKid}");
             return null;
         }
-#endregion
+        #endregion
 
         private void FilterTokensByClientId<T>(List<T> tokenCacheItems) where T : MsalCredentialCacheItemBase
         {
@@ -822,7 +845,7 @@ namespace Microsoft.Identity.Client
             AuthenticationRequestParameters requestParams,
             string familyId)
         {
-            if (requestParams.ApiId == ApiEvent.ApiIds.AcquireTokenOnBehalfOf) // OBO
+            if (ApiEvent.IsOnBehalfOfRequest(requestParams.ApiId))
             {
                 cacheItems.FilterWithLogging(item =>
                                 !string.IsNullOrEmpty(item.OboCacheKey) &&
@@ -903,7 +926,6 @@ namespace Microsoft.Identity.Client
             var logger = requestParameters.RequestContext.Logger;
             var environment = requestParameters.AuthorityInfo.Host;
             bool filterByClientId = !_featureFlags.IsFociEnabled;
-            bool isAadAuthority = requestParameters.AuthorityInfo.AuthorityType == AuthorityType.Aad;
 
             // this will either be the home account ID or null, it can never be OBO assertion or tenant ID
             string partitionKey = CacheKeyFactory.GetKeyFromRequest(requestParameters);
@@ -971,6 +993,7 @@ namespace Microsoft.Identity.Client
                             requestParameters.AppConfig.MultiCloudSupportEnabled ?
                                 account.Environment : // If multi cloud support is enabled keep the cached environment
                                 environment, // Preserve the environment passed in by the user
+                            account.AccountSource,
                             account.WamAccountIds,
                             tenantProfiles?.Values);
 
@@ -1003,6 +1026,7 @@ namespace Microsoft.Identity.Client
                             cachedAccount.HomeAccountId,
                             cachedAccount.PreferredUsername,
                             cachedAccount.Environment,
+                            cachedAccount.AccountSource,
                             cachedAccount.WamAccountIds,
                             tenantProfiles?.Values);
 
@@ -1029,7 +1053,7 @@ namespace Microsoft.Identity.Client
 
                 if (logger.IsLoggingEnabled(LogLevel.Verbose))
                 {
-                    logger.Verbose(() => $"Filtered by home account id. Remaining accounts {accounts.Count()} ");
+                    logger.Verbose(() => $"Filtered by home account id. Remaining accounts {accounts.Count} ");
                 }
             }
 
@@ -1050,12 +1074,12 @@ namespace Microsoft.Identity.Client
                 if (!clientInfoToAccountMap.ContainsKey(accountIdentifier))
                 {
                     clientInfoToAccountMap[accountIdentifier] = new Account(
-                            accountIdentifier, pair.Value.DisplayableId, envFromRequest);
+                            accountIdentifier, pair.Value.DisplayableId, envFromRequest, null);
                 }
             }
         }
 
-        private void UpdateWithAdalAccountsWithoutClientInfo(
+        private static void UpdateWithAdalAccountsWithoutClientInfo(
             string envFromRequest,
             IEnumerable<string> envAliases,
             AdalUsersForMsal adalUsers,
@@ -1067,7 +1091,7 @@ namespace Microsoft.Identity.Client
             {
                 if (!string.IsNullOrEmpty(user.DisplayableId) && !uniqueUserNames.Contains(user.DisplayableId))
                 {
-                    accounts.Add(new Account(null, user.DisplayableId, envFromRequest));
+                    accounts.Add(new Account(null, user.DisplayableId, envFromRequest, null));
                     uniqueUserNames.Add(user.DisplayableId);
                 }
             }
@@ -1083,7 +1107,7 @@ namespace Microsoft.Identity.Client
             AuthenticationRequestParameters requestParameters,
             string homeAccountId)
         {
-            if (!requestParameters.AuthorityInfo.IsMultiTenantSupported)
+            if (!requestParameters.AuthorityInfo.CanBeTenanted)
             {
                 return null;
             }
@@ -1131,19 +1155,98 @@ namespace Microsoft.Identity.Client
 
             var tenantProfiles = await GetTenantProfilesAsync(requestParameters, msalAccessTokenCacheItem.HomeAccountId).ConfigureAwait(false);
 
+            var account = requestParameters.Account as Account;
             var accountCacheItem = Accessor.GetAccount(
                 new MsalAccountCacheItem(
                         msalAccessTokenCacheItem.Environment,
                         msalAccessTokenCacheItem.TenantId,
                         msalAccessTokenCacheItem.HomeAccountId,
-                        requestParameters.Account?.Username));
+                        account?.AccountSource,
+                        account?.Username));
 
             return new Account(
                 msalAccessTokenCacheItem.HomeAccountId,
                 accountCacheItem?.PreferredUsername,
                 accountCacheItem?.Environment,
+                accountCacheItem?.AccountSource,
                 accountCacheItem?.WamAccountIds,
                 tenantProfiles?.Values);
+        }
+
+        async Task<bool> ITokenCacheInternal.StopLongRunningOboProcessAsync(string longRunningOboCacheKey, AuthenticationRequestParameters requestParameters)
+        {
+            bool tokensRemoved;
+
+            requestParameters.RequestContext.Logger.Verbose(() => $"[StopLongRunningOboProcessAsync] Entering token cache semaphore. Count {_semaphoreSlim.GetCurrentCountLogMessage()}");
+            await _semaphoreSlim.WaitAsync(requestParameters.RequestContext.UserCancellationToken).ConfigureAwait(false);
+            requestParameters.RequestContext.Logger.Verbose(() => "[StopLongRunningOboProcessAsync] Entered token cache semaphore");
+
+            try
+            {
+                requestParameters.RequestContext.Logger.Info(() => "[StopLongRunningOboProcessAsync] Stopping long running OBO process by removing tokens from cache.");
+
+                ITokenCacheInternal tokenCacheInternal = this;
+
+                try
+                {
+                    if (tokenCacheInternal.IsAppSubscribedToSerializationEvents())
+                    {
+                        var args = new TokenCacheNotificationArgs(
+                            tokenCache: this,
+                            clientId: ClientId,
+                            account: null,
+                            hasStateChanged: false,
+                            tokenCacheInternal.IsApplicationCache,
+                            suggestedCacheKey: longRunningOboCacheKey,
+                            hasTokens: tokenCacheInternal.HasTokensNoLocks(),
+                            suggestedCacheExpiry: null,
+                            cancellationToken: requestParameters.RequestContext.UserCancellationToken,
+                            correlationId: requestParameters.RequestContext.CorrelationId,
+                            requestScopes: requestParameters.Scope,
+                            requestTenantId: requestParameters.AuthorityManager.OriginalAuthority.TenantId,
+                            identityLogger: requestParameters.RequestContext.Logger.IdentityLogger,
+                            piiLoggingEnabled: requestParameters.RequestContext.Logger.PiiLoggingEnabled);
+
+                        await tokenCacheInternal.OnBeforeAccessAsync(args).ConfigureAwait(false);
+                        await tokenCacheInternal.OnBeforeWriteAsync(args).ConfigureAwait(false);
+                    }
+
+                    tokensRemoved = RemoveOboTokensInternal(longRunningOboCacheKey, requestParameters.RequestContext);
+                }
+                finally
+                {
+                    if (tokenCacheInternal.IsAppSubscribedToSerializationEvents())
+                    {
+                        var args = new TokenCacheNotificationArgs(
+                           tokenCache: this,
+                           clientId: ClientId,
+                           account: null,
+                           hasStateChanged: true,
+                           tokenCacheInternal.IsApplicationCache,
+                           suggestedCacheKey: longRunningOboCacheKey,
+                           hasTokens: tokenCacheInternal.HasTokensNoLocks(),
+                           suggestedCacheExpiry: null,
+                           cancellationToken: requestParameters.RequestContext.UserCancellationToken,
+                           correlationId: requestParameters.RequestContext.CorrelationId,
+                           requestScopes: requestParameters.Scope,
+                           requestTenantId: requestParameters.AuthorityManager.OriginalAuthority.TenantId,
+                           identityLogger: requestParameters.RequestContext.Logger.IdentityLogger,
+                           piiLoggingEnabled: requestParameters.RequestContext.Logger.PiiLoggingEnabled);
+
+                        await tokenCacheInternal.OnAfterAccessAsync(args).ConfigureAwait(false);
+                    }
+                }
+            }
+            finally
+            {
+#pragma warning disable CS0618 // Type or member is obsolete
+                HasStateChanged = false;
+#pragma warning restore CS0618 // Type or member is obsolete
+
+                _semaphoreSlim.Release();
+            }
+
+            return tokensRemoved;
         }
 
         async Task ITokenCacheInternal.RemoveAccountAsync(IAccount account, AuthenticationRequestParameters requestParameters)
@@ -1152,9 +1255,10 @@ namespace Microsoft.Identity.Client
             await _semaphoreSlim.WaitAsync(requestParameters.RequestContext.UserCancellationToken).ConfigureAwait(false);
             requestParameters.RequestContext.Logger.Verbose(() => "[RemoveAccountAsync] Entered token cache semaphore");
 
+            var cacheKey = account.HomeAccountId?.Identifier;
             try
             {
-                requestParameters.RequestContext.Logger.Info("[RemoveAccountAsync] Removing user from cache.");
+                requestParameters.RequestContext.Logger.Info("[RemoveAccountAsync] Removing account from cache.");
 
                 ITokenCacheInternal tokenCacheInternal = this;
 
@@ -1168,7 +1272,7 @@ namespace Microsoft.Identity.Client
                             account: account,
                             hasStateChanged: true,
                             tokenCacheInternal.IsApplicationCache,
-                            suggestedCacheKey: account.HomeAccountId.Identifier,
+                            suggestedCacheKey: cacheKey,
                             hasTokens: tokenCacheInternal.HasTokensNoLocks(),
                             suggestedCacheExpiry: null,
                             cancellationToken: requestParameters.RequestContext.UserCancellationToken,
@@ -1183,14 +1287,15 @@ namespace Microsoft.Identity.Client
                     }
 
                     RemoveAccountInternal(account, requestParameters.RequestContext);
+                    
                     if (IsLegacyAdalCacheEnabled(requestParameters))
                     {
                         CacheFallbackOperations.RemoveAdalUser(
                            requestParameters.RequestContext.Logger,
                            LegacyCachePersistence,
                            ClientId,
-                           account.Username,
-                           account.HomeAccountId?.Identifier);
+                           account?.Username,
+                           cacheKey);
                     }
                 }
                 finally
@@ -1203,7 +1308,7 @@ namespace Microsoft.Identity.Client
                            account: account,
                            hasStateChanged: true,
                            tokenCacheInternal.IsApplicationCache,
-                           suggestedCacheKey: account.HomeAccountId.Identifier,
+                           suggestedCacheKey: cacheKey,
                            hasTokens: tokenCacheInternal.HasTokensNoLocks(),
                            suggestedCacheExpiry: null,
                            cancellationToken: requestParameters.RequestContext.UserCancellationToken,
@@ -1211,7 +1316,7 @@ namespace Microsoft.Identity.Client
                            requestScopes: requestParameters.Scope,
                            requestTenantId: requestParameters.AuthorityManager.OriginalAuthority.TenantId,
                            identityLogger: requestParameters.RequestContext.Logger.IdentityLogger,
-                            piiLoggingEnabled: requestParameters.RequestContext.Logger.PiiLoggingEnabled);
+                           piiLoggingEnabled: requestParameters.RequestContext.Logger.PiiLoggingEnabled);
 
                         await tokenCacheInternal.OnAfterAccessAsync(args).ConfigureAwait(false);
                     }
@@ -1232,6 +1337,25 @@ namespace Microsoft.Identity.Client
             return Accessor.HasAccessOrRefreshTokens();
         }
 
+        /// <summary>
+        /// Removes OBO tokens stored in the cache. Note that the cache is internally and externally partitioned by the oboKey.
+        /// </summary>
+        private bool RemoveOboTokensInternal(string oboPartitionKey, RequestContext requestContext)
+        {
+            ILoggerAdapter logger = requestContext.Logger;
+
+            //Filter and remove tokens based on OBO Cache Key
+            var refreshTokens = Accessor.GetAllRefreshTokens(oboPartitionKey, logger);
+            refreshTokens.RemoveAll(item => !(bool)item?.OboCacheKey.Equals(oboPartitionKey, StringComparison.OrdinalIgnoreCase));
+            var rtsRemoved = RemoveRefreshTokens(refreshTokens, logger, out bool filterByClientId);
+
+            var accessTokens = Accessor.GetAllAccessTokens(oboPartitionKey, logger);
+            accessTokens.RemoveAll(item => !(bool)item?.OboCacheKey.Equals(oboPartitionKey, StringComparison.OrdinalIgnoreCase));
+            var atsRemoved = RemoveAccessTokens(accessTokens, logger, filterByClientId);
+
+            return rtsRemoved > 0 || atsRemoved > 0;
+        }
+
         internal /* internal for test only */ void RemoveAccountInternal(IAccount account, RequestContext requestContext)
         {
             if (account.HomeAccountId == null)
@@ -1240,14 +1364,29 @@ namespace Microsoft.Identity.Client
                 return;
             }
 
+            //Filter and remove tokens based on account identifier as 
             string partitionKey = account.HomeAccountId.Identifier;
 
-            var refreshTokens = Accessor.GetAllRefreshTokens(partitionKey);
-            refreshTokens.RemoveAll(item => !item.HomeAccountId.Equals(account.HomeAccountId.Identifier, StringComparison.OrdinalIgnoreCase));
+            ILoggerAdapter logger = requestContext.Logger;
 
+            var refreshTokens = Accessor.GetAllRefreshTokens(partitionKey, logger);
+            refreshTokens.RemoveAll(item => !item.HomeAccountId.Equals(partitionKey, StringComparison.OrdinalIgnoreCase));
+            RemoveRefreshTokens(refreshTokens, logger, out bool filterByClientId);
+
+            var accessTokens = Accessor.GetAllAccessTokens(partitionKey, logger);
+            accessTokens.RemoveAll(item => !item.HomeAccountId.Equals(partitionKey, StringComparison.OrdinalIgnoreCase));
+            RemoveAccessTokens(accessTokens, logger, filterByClientId);
+
+            RemoveIdTokens(partitionKey, logger, filterByClientId);
+
+            RemoveAccounts(account);
+        }
+
+        private int RemoveRefreshTokens(List<MsalRefreshTokenCacheItem> refreshTokens, ILoggerAdapter logger, out bool filterByClientId)
+        {
             // To maintain backward compatibility with other MSALs, filter all credentials by clientID if
             // FOCI is disabled or if an FRT is not present
-            bool filterByClientId = !_featureFlags.IsFociEnabled || !FrtExists(refreshTokens);
+            filterByClientId = !_featureFlags.IsFociEnabled || !FrtExists(refreshTokens);
 
             // Delete all credentials associated with this IAccount
             if (filterByClientId)
@@ -1260,10 +1399,13 @@ namespace Microsoft.Identity.Client
                 Accessor.DeleteRefreshToken(refreshTokenCacheItem);
             }
 
-            requestContext.Logger.Info(() => $"[RemoveAccountAsync] Deleted {refreshTokens.Count} refresh tokens.");
+            logger.Info(() => $"[RemoveRefreshTokens] Deleted {refreshTokens.Count} refresh tokens.");
 
-            var accessTokens = Accessor.GetAllAccessTokens(partitionKey);
-            accessTokens.RemoveAll(item => !item.HomeAccountId.Equals(account.HomeAccountId.Identifier, StringComparison.OrdinalIgnoreCase));
+            return refreshTokens.Count;
+        }
+
+        private int RemoveAccessTokens(List<MsalAccessTokenCacheItem> accessTokens, ILoggerAdapter logger, bool filterByClientId)
+        {
             if (filterByClientId)
             {
                 FilterTokensByClientId(accessTokens);
@@ -1274,10 +1416,15 @@ namespace Microsoft.Identity.Client
                 Accessor.DeleteAccessToken(accessTokenCacheItem);
             }
 
-            requestContext.Logger.Info(() => $"[RemoveAccountAsync] Deleted {accessTokens.Count} access tokens.");
+            logger.Info(() => $"[RemoveAccessTokens] Deleted {accessTokens.Count} access tokens.");
 
+            return accessTokens.Count;
+        }
+
+        private int RemoveIdTokens(string partitionKey, ILoggerAdapter logger, bool filterByClientId)
+        {
             var idTokens = Accessor.GetAllIdTokens(partitionKey);
-            idTokens.RemoveAll(item => !item.HomeAccountId.Equals(account.HomeAccountId.Identifier, StringComparison.OrdinalIgnoreCase));
+            idTokens.RemoveAll(item => !item.HomeAccountId.Equals(partitionKey, StringComparison.OrdinalIgnoreCase));
             if (filterByClientId)
             {
                 FilterTokensByClientId(idTokens);
@@ -1288,15 +1435,23 @@ namespace Microsoft.Identity.Client
                 Accessor.DeleteIdToken(idTokenCacheItem);
             }
 
-            requestContext.Logger.Info(() => $"[RemoveAccountAsync] Deleted {idTokens.Count} ID tokens.");
+            logger.Info(() => $"[RemoveIdTokens] Deleted {idTokens.Count} ID tokens.");
 
-            var accounts = Accessor.GetAllAccounts(partitionKey);
-            accounts.RemoveAll(item => !(item.HomeAccountId.Equals(account.HomeAccountId.Identifier, StringComparison.OrdinalIgnoreCase) &&
-                               item.PreferredUsername.Equals(account.Username, StringComparison.OrdinalIgnoreCase)));
+            return idTokens.Count;
+        }
 
-            foreach (MsalAccountCacheItem accountCacheItem in accounts)
+        private void RemoveAccounts(IAccount account)
+        {
+            if (account != null)
             {
-                Accessor.DeleteAccount(accountCacheItem);
+                var accounts = Accessor.GetAllAccounts(account.HomeAccountId.Identifier);
+                accounts.RemoveAll(item => !(item.HomeAccountId.Equals(account.HomeAccountId.Identifier, StringComparison.OrdinalIgnoreCase) &&
+                                   item.PreferredUsername.Equals(account.Username, StringComparison.OrdinalIgnoreCase)));
+
+                foreach (MsalAccountCacheItem accountCacheItem in accounts)
+                {
+                    Accessor.DeleteAccount(accountCacheItem);
+                }
             }
         }
     }

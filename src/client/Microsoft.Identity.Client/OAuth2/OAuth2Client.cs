@@ -12,8 +12,12 @@ using Microsoft.Identity.Client.Core;
 using Microsoft.Identity.Client.Extensibility;
 using Microsoft.Identity.Client.Http;
 using Microsoft.Identity.Client.Instance.Discovery;
+using Microsoft.Identity.Client.Instance.Oidc;
 using Microsoft.Identity.Client.Internal;
 using Microsoft.Identity.Client.Utils;
+using Microsoft.Identity.Client.Internal.Broker;
+using System.Security.Cryptography.X509Certificates;
+
 #if SUPPORTS_SYSTEM_TEXT_JSON
 using System.Text.Json;
 #else
@@ -36,11 +40,13 @@ namespace Microsoft.Identity.Client.OAuth2
         private readonly Dictionary<string, string> _queryParameters = new Dictionary<string, string>();
         private readonly IDictionary<string, string> _bodyParameters = new Dictionary<string, string>();
         private readonly IHttpManager _httpManager;
+        private readonly X509Certificate2 _mtlsCertificate;
 
-        public OAuth2Client(ILoggerAdapter logger, IHttpManager httpManager)
+        public OAuth2Client(ILoggerAdapter logger, IHttpManager httpManager, X509Certificate2 mtlsCertificate)
         {
             _headers = new Dictionary<string, string>(MsalIdHelper.GetMsalIdParameters(logger));
             _httpManager = httpManager ?? throw new ArgumentNullException(nameof(httpManager));
+            _mtlsCertificate = mtlsCertificate;
         }
 
         public void AddQueryParameter(string key, string value)
@@ -69,25 +75,29 @@ namespace Microsoft.Identity.Client.OAuth2
             return new ReadOnlyDictionary<string, string>(_bodyParameters);
         }
 
-        public async Task<InstanceDiscoveryResponse> DiscoverAadInstanceAsync(Uri endPoint, RequestContext requestContext)
+        public Task<InstanceDiscoveryResponse> DiscoverAadInstanceAsync(Uri endpoint, RequestContext requestContext)
         {
-            return await ExecuteRequestAsync<InstanceDiscoveryResponse>(endPoint, HttpMethod.Get, requestContext)
-                       .ConfigureAwait(false);
+            return ExecuteRequestAsync<InstanceDiscoveryResponse>(endpoint, HttpMethod.Get, requestContext);
         }
 
-        internal async Task<MsalTokenResponse> GetTokenAsync(
+        public Task<OidcMetadata> DiscoverOidcMetadataAsync(Uri endpoint, RequestContext requestContext)
+        {
+            return ExecuteRequestAsync<OidcMetadata>(endpoint, HttpMethod.Get, requestContext);
+        }
+
+        internal Task<MsalTokenResponse> GetTokenAsync(
             Uri endPoint,
             RequestContext requestContext,
             bool addCommonHeaders,
             Func<OnBeforeTokenRequestData, Task> onBeforePostRequestHandler)
         {
-            return await ExecuteRequestAsync<MsalTokenResponse>(
+            return ExecuteRequestAsync<MsalTokenResponse>(
                 endPoint,
                 HttpMethod.Post,
                 requestContext,
                 false,
                 addCommonHeaders,
-                onBeforePostRequestHandler).ConfigureAwait(false);
+                onBeforePostRequestHandler);
         }
 
         internal async Task<T> ExecuteRequestAsync<T>(
@@ -104,7 +114,7 @@ namespace Microsoft.Identity.Client.OAuth2
                 AddCommonHeaders(requestContext);
             }
 
-            HttpResponse response = null;
+            HttpResponse response;
             Uri endpointUri = AddExtraQueryParams(endPoint);
 
             using (requestContext.Logger.LogBlockDuration($"[Oauth2Client] Sending {method} request "))
@@ -115,26 +125,37 @@ namespace Microsoft.Identity.Client.OAuth2
                     {
                         if (onBeforePostRequestData != null)
                         {
+                            requestContext.Logger.Verbose(() => "[Oauth2Client] Processing onBeforePostRequestData ");
                             var requestData = new OnBeforeTokenRequestData(_bodyParameters, _headers, endpointUri, requestContext.UserCancellationToken);
                             await onBeforePostRequestData(requestData).ConfigureAwait(false);
+                            endpointUri = requestData.RequestUri;
                         }
 
-                        response = await _httpManager.SendPostAsync(
+                        response = await _httpManager.SendRequestAsync(
                             endpointUri,
                             _headers,
-                            _bodyParameters,
-                            requestContext.Logger,
-                            cancellationToken: requestContext.UserCancellationToken)
-                                 .ConfigureAwait(false);
+                            body: new FormUrlEncodedContent(_bodyParameters),
+                            HttpMethod.Post,
+                            logger: requestContext.Logger,
+                            doNotThrow: false,
+                            mtlsCertificate: _mtlsCertificate,
+                            customHttpClient: null,
+                            requestContext.UserCancellationToken)
+                        .ConfigureAwait(false);
                     }
                     else
                     {
-                        response = await _httpManager.SendGetAsync(
+                        response = await _httpManager.SendRequestAsync(
                             endpointUri,
                             _headers,
-                            requestContext.Logger,
-                            cancellationToken: requestContext.UserCancellationToken)
-                                .ConfigureAwait(false);
+                            body: null,
+                            HttpMethod.Get,
+                            logger: requestContext.Logger,
+                            doNotThrow: false,
+                            mtlsCertificate: null,
+                            customHttpClient: null,
+                            requestContext.UserCancellationToken)
+                        .ConfigureAwait(false);
                     }
                 }
                 catch (Exception ex)
@@ -292,7 +313,7 @@ namespace Microsoft.Identity.Client.OAuth2
                 return null;
             }
 
-            MsalTokenResponse msalTokenResponse = null;
+            MsalTokenResponse msalTokenResponse;
 
             try
             {

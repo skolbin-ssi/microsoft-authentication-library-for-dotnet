@@ -17,11 +17,7 @@ namespace Microsoft.Identity.Client.Utils
 #endif
         public static IReadOnlyList<T> GetEmptyReadOnlyList<T>()
         {
-#if NET45
-            return new List<T>();
-#else
             return Array.Empty<T>();
-#endif
         }
 
 #if HAVE_METHOD_IMPL_ATTRIBUTE
@@ -32,9 +28,9 @@ namespace Microsoft.Identity.Client.Utils
             return new List<T>();
         }
 
-        public static IDictionary<TKey, TValue> GetEmptyDictionary<TKey, TValue>()
+        public static IReadOnlyDictionary<TKey, TValue> GetEmptyDictionary<TKey, TValue>()
         {
-#if NET_CORE
+#if NETCOREAPP
             return System.Collections.Immutable.ImmutableDictionary<TKey, TValue>.Empty;
 #else
             return new Dictionary<TKey, TValue>();

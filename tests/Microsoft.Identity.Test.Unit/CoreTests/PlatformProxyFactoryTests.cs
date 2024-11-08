@@ -1,19 +1,19 @@
 ﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+using System.Collections.Generic;
 using System.Linq;
 using System.Net;
+using System.Runtime.InteropServices;
 using Microsoft.Identity.Client.Http;
 using Microsoft.Identity.Client.Internal;
 using Microsoft.Identity.Client.PlatformsCommon.Factories;
 using Microsoft.Identity.Client.PlatformsCommon.Shared;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
-#if SUPPORTS_BROKER
-#endif
-
 namespace Microsoft.Identity.Test.Unit.CoreTests
 {
+
     [TestClass]
     public class PlatformProxyFactoryTests
     {
@@ -74,7 +74,7 @@ namespace Microsoft.Identity.Test.Unit.CoreTests
                 client1.MaxResponseContentBufferSize);
         }
 
-#if NET_CORE || NET6_WIN || DESKTOP
+#if NET_CORE || NETFRAMEWORK
         [TestMethod]
         public void PlatformProxy_HttpClient_NetCore()
         {
@@ -133,21 +133,21 @@ namespace Microsoft.Identity.Test.Unit.CoreTests
             Assert.IsTrue(proxy.BrokerSupportsWamAccounts);
             Assert.IsTrue(proxy.CanBrokerSupportSilentAuth());
 
-            Assert.AreSame(
+            Assert.AreEqual(
                 Constants.DefaultRedirectUri,
                 proxy.GetDefaultRedirectUri("cid", false));
 
-#if DESKTOP || NET6_WIN || NET7_0
-
-            Assert.AreSame(
-                Constants.NativeClientRedirectUri,
-                proxy.GetDefaultRedirectUri("cid", true));
-
-#else            
-             Assert.AreSame(
-                Constants.LocalHostRedirectUri,
-                proxy.GetDefaultRedirectUri("cid", true));
+#if NETFRAMEWORK
+   Assert.AreEqual(
+          Constants.NativeClientRedirectUri,
+          proxy.GetDefaultRedirectUri("cid", true));
+#else
+ Assert.AreEqual(
+          Constants.LocalHostRedirectUri,
+          proxy.GetDefaultRedirectUri("cid", true));
 #endif
+
+
         }
 
     }

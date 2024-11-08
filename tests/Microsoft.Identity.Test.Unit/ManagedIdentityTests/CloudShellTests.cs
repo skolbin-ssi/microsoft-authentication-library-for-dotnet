@@ -6,177 +6,45 @@ using System.Globalization;
 using System.Net;
 using System.Threading.Tasks;
 using Microsoft.Identity.Client;
+using Microsoft.Identity.Client.AppConfig;
+using Microsoft.Identity.Client.ManagedIdentity;
 using Microsoft.Identity.Test.Common;
 using Microsoft.Identity.Test.Common.Core.Helpers;
 using Microsoft.Identity.Test.Common.Core.Mocks;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using static Microsoft.Identity.Test.Common.Core.Helpers.ManagedIdentityTestUtil;
 
 namespace Microsoft.Identity.Test.Unit.ManagedIdentityTests
 {
     [TestClass]
-    public class CloudShellTests
+    public class CloudShellTests : TestBase
     {
-        private const string Endpoint = "http://localhost:40342/metadata/identity/oauth2/token";
-        private const string Resource = "https://management.azure.com";
         private const string CloudShell = "Cloud Shell";
 
-        [TestInitialize]
-        public void TestInitialize()
-        {
-            TestCommon.ResetInternalStaticCaches();
-        }
-
         [DataTestMethod]
-        [DataRow(Endpoint, "https://management.azure.com")]
-        [DataRow(Endpoint, "https://management.azure.com/.default")]
-        public async Task CloudShellHappyPathAsync(
-            string endpoint, 
-            string scope)
+        [DataRow(TestConstants.ClientId, UserAssignedIdentityId.ClientId)]
+        [DataRow("resourceId", UserAssignedIdentityId.ResourceId)]
+        [DataRow(TestConstants.ObjectId, UserAssignedIdentityId.ObjectId)]
+        public async Task CloudShellUserAssignedManagedIdentityNotSupportedAsync(string userAssignedId, UserAssignedIdentityId userAssignedIdentityId)
         {
             using (new EnvVariableContext())
-            using (var httpManager = new MockHttpManager())
+            using (var httpManager = new MockHttpManager(isManagedIdentity: true))
             {
-                SetEnvironmentVariables(endpoint);
+                SetEnvironmentVariables(ManagedIdentitySource.CloudShell, ManagedIdentityTests.CloudShellEndpoint);
 
-                IConfidentialClientApplication cca = ConfidentialClientApplicationBuilder
-                    .Create("clientId")
-                    .WithHttpManager(httpManager)
-                    .WithExperimentalFeatures()
-                    .Build();
+                ManagedIdentityApplicationBuilder miBuilder = CreateMIABuilder(userAssignedId, userAssignedIdentityId);
+                miBuilder.WithHttpManager(httpManager);
 
-                httpManager.AddManagedIdentityMockHandler(
-                    endpoint,
-                    Resource,
-                    MockHelpers.GetMsiSuccessfulResponse(),
-                    ManagedIdentitySourceType.CloudShell);
+                IManagedIdentityApplication mi = miBuilder.Build();
 
-                var result = await cca.AcquireTokenForClient(new string[] { scope })
-                    .WithManagedIdentity()
-                    .ExecuteAsync().ConfigureAwait(false);
-
-                Assert.IsNotNull(result);
-                Assert.IsNotNull(result.AccessToken);
-                Assert.AreEqual(TokenSource.IdentityProvider, result.AuthenticationResultMetadata.TokenSource);
-
-                result = await cca.AcquireTokenForClient(new string[] { scope })
-                    .WithManagedIdentity()
-                    .ExecuteAsync().ConfigureAwait(false);
-
-                Assert.IsNotNull(result);
-                Assert.AreEqual(TokenSource.Cache, result.AuthenticationResultMetadata.TokenSource);
-            }
-        }
-
-        [DataTestMethod]
-        [DataRow(TestConstants.ClientId)]
-        [DataRow("resourceId")]
-        public async Task CloudShellUserAssignedManagedIdentityNotSupportedAsync(string userAssignedClientId)
-        {
-            using (new EnvVariableContext())
-            using (var httpManager = new MockHttpManager())
-            {
-                SetEnvironmentVariables(Endpoint);
-
-                IConfidentialClientApplication cca = ConfidentialClientApplicationBuilder
-                    .Create("clientId")
-                    .WithHttpManager(httpManager)
-                    .WithExperimentalFeatures()
-                    .Build();
-
-                MsalClientException ex = await Assert.ThrowsExceptionAsync<MsalClientException>(async () =>
-                    await cca.AcquireTokenForClient(new string[] { "scope" })
-                    .WithManagedIdentity(userAssignedClientId)
+                MsalServiceException ex = await Assert.ThrowsExceptionAsync<MsalServiceException>(async () =>
+                    await mi.AcquireTokenForManagedIdentity("scope")
                     .ExecuteAsync().ConfigureAwait(false)).ConfigureAwait(false);
 
                 Assert.IsNotNull(ex);
+                Assert.AreEqual(ManagedIdentitySource.CloudShell.ToString(), ex.AdditionalExceptionData[MsalException.ManagedIdentitySource]);
                 Assert.AreEqual(MsalError.UserAssignedManagedIdentityNotSupported, ex.ErrorCode);
                 Assert.AreEqual(string.Format(CultureInfo.InvariantCulture, MsalErrorMessage.ManagedIdentityUserAssignedNotSupported, CloudShell), ex.Message);
-            }
-        }
-
-        [DataTestMethod]
-        [DataRow("user.read")]
-        [DataRow("https://management.core.windows.net//user_impersonation")]
-        [DataRow("s")]
-        public async Task CloudShellTestWrongScopeAsync(string resource)
-        {
-            using (new EnvVariableContext())
-            using (var httpManager = new MockHttpManager())
-            {
-                SetEnvironmentVariables(Endpoint);
-                IConfidentialClientApplication cca = ConfidentialClientApplicationBuilder
-                    .Create("clientId")
-                    .WithHttpManager(httpManager)
-                    .WithExperimentalFeatures()
-                    .Build();
-
-                httpManager.AddManagedIdentityMockHandler(Endpoint, resource, MockHelpers.GetMsiErrorResponse(), 
-                    ManagedIdentitySourceType.CloudShell, statusCode: HttpStatusCode.InternalServerError);
-                httpManager.AddManagedIdentityMockHandler(Endpoint, resource, MockHelpers.GetMsiErrorResponse(), 
-                    ManagedIdentitySourceType.CloudShell, statusCode: HttpStatusCode.InternalServerError);
-
-                MsalServiceException ex = await Assert.ThrowsExceptionAsync<MsalServiceException>(async () =>
-                    await cca.AcquireTokenForClient(new string[] { resource })
-                    .WithManagedIdentity()
-                    .ExecuteAsync().ConfigureAwait(false)).ConfigureAwait(false);
-
-                Assert.IsNotNull(ex);
-                Assert.AreEqual(MsalError.ManagedIdentityRequestFailed, ex.ErrorCode);
-            }
-        }
-
-        [TestMethod]
-        public async Task CloudShellErrorResponseNoPayloadTestAsync()
-        {
-            using(new EnvVariableContext())
-            using (var httpManager = new MockHttpManager())
-            {
-                SetEnvironmentVariables(Endpoint);
-
-                IConfidentialClientApplication cca = ConfidentialClientApplicationBuilder
-                    .Create("clientId")
-                    .WithHttpManager(httpManager)
-                    .WithExperimentalFeatures()
-                    .Build();
-
-                httpManager.AddManagedIdentityMockHandler(Endpoint, "scope", "", ManagedIdentitySourceType.CloudShell, statusCode: HttpStatusCode.InternalServerError);
-                httpManager.AddManagedIdentityMockHandler(Endpoint, "scope", "", ManagedIdentitySourceType.CloudShell, statusCode: HttpStatusCode.InternalServerError);
-
-                MsalServiceException ex = await Assert.ThrowsExceptionAsync<MsalServiceException>(async () =>
-                    await cca.AcquireTokenForClient(new string[] { "scope" })
-                    .WithManagedIdentity()
-                    .ExecuteAsync().ConfigureAwait(false)).ConfigureAwait(false);
-
-                Assert.IsNotNull(ex);
-                Assert.AreEqual(MsalError.ManagedIdentityRequestFailed, ex.ErrorCode);
-                Assert.AreEqual(MsalErrorMessage.ManagedIdentityNoResponseReceived, ex.Message);
-            }
-        }
-
-        [TestMethod]
-        public async Task CloudShellNullResponseAsync()
-        {
-            using(new EnvVariableContext())
-            using (var httpManager = new MockHttpManager())
-            {
-                SetEnvironmentVariables(Endpoint);
-
-                IConfidentialClientApplication cca = ConfidentialClientApplicationBuilder
-                    .Create("clientId")
-                    .WithHttpManager(httpManager)
-                    .WithExperimentalFeatures()
-                    .Build();
-
-                httpManager.AddManagedIdentityMockHandler(Endpoint, "https://management.azure.com", "", ManagedIdentitySourceType.CloudShell, statusCode: HttpStatusCode.OK);
-
-                MsalServiceException ex = await Assert.ThrowsExceptionAsync<MsalServiceException>(async () =>
-                    await cca.AcquireTokenForClient(new string[] { "https://management.azure.com" })
-                    .WithManagedIdentity()
-                    .ExecuteAsync().ConfigureAwait(false)).ConfigureAwait(false);
-
-                Assert.IsNotNull(ex);
-                Assert.AreEqual(MsalError.ManagedIdentityRequestFailed, ex.ErrorCode);
-                Assert.AreEqual(MsalErrorMessage.ManagedIdentityInvalidResponse, ex.Message);
             }
         }
 
@@ -184,29 +52,26 @@ namespace Microsoft.Identity.Test.Unit.ManagedIdentityTests
         public async Task CloudShellInvalidEndpointAsync()
         {
             using(new EnvVariableContext())
-            using (var httpManager = new MockHttpManager())
+            using (var httpManager = new MockHttpManager(isManagedIdentity: true))
             {
-                SetEnvironmentVariables("localhost/token");
+                SetEnvironmentVariables(ManagedIdentitySource.CloudShell, "localhost/token");
 
-                IConfidentialClientApplication cca = ConfidentialClientApplicationBuilder
-                    .Create("clientId")
-                    .WithHttpManager(httpManager)
-                    .WithExperimentalFeatures()
-                    .Build();
+                var miBuilder = ManagedIdentityApplicationBuilder.Create(ManagedIdentityId.SystemAssigned)
+                    .WithHttpManager(httpManager);
 
-                MsalClientException ex = await Assert.ThrowsExceptionAsync<MsalClientException>(async () =>
-                    await cca.AcquireTokenForClient(new string[] { "https://management.azure.com" })
-                    .WithManagedIdentity()
+                // Disabling shared cache options to avoid cross test pollution.
+                miBuilder.Config.AccessorOptions = null;
+
+                var mi = miBuilder.Build();
+
+                MsalServiceException ex = await Assert.ThrowsExceptionAsync<MsalServiceException>(async () =>
+                    await mi.AcquireTokenForManagedIdentity(ManagedIdentityTests.Resource)
                     .ExecuteAsync().ConfigureAwait(false)).ConfigureAwait(false);
 
                 Assert.IsNotNull(ex);
+                Assert.AreEqual(ManagedIdentitySource.CloudShell.ToString(), ex.AdditionalExceptionData[MsalException.ManagedIdentitySource]);
                 Assert.AreEqual(MsalError.InvalidManagedIdentityEndpoint, ex.ErrorCode);
             }
-        }
-
-        private void SetEnvironmentVariables(string endpoint)
-        {
-            Environment.SetEnvironmentVariable("MSI_ENDPOINT", endpoint);
         }
     }
 }
